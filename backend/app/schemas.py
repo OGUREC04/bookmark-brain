@@ -96,6 +96,8 @@ class BookmarkCreate(BaseModel):
     notify_message_id: int | None = None
     # Silent mode: реакции вместо текстовых сообщений
     silent: bool = False
+    # Phase 3D: auto-tag #voice for voice messages
+    voice_tag: bool = False
 
 
 class BookmarkUpdate(BaseModel):

@@ -1,7 +1,7 @@
-"""Phase 3A — Voice & Video Note handler.
+"""Phase 3A+3D — Voice & Video Note handler.
 
 Скачивает аудио/видео из Telegram, транскрибирует через Whisper,
-отправляет текст reply-сообщением и сохраняет как закладку.
+детектирует intent (todo/search/note), роутит соответственно.
 """
 from __future__ import annotations
 
@@ -14,6 +14,8 @@ from aiogram import F, Router, types
 
 from bot.config import get_settings
 from bot.services.stt import STTError, WhisperSTTService
+from bot.services.timestamps import add_timestamps
+from bot.services.voice_intent import VoiceIntent, detect_intent
 from bot.utils import ephemeral_error, safe_react
 
 logger = logging.getLogger(__name__)
@@ -212,15 +214,32 @@ async def _process_audio(
             except Exception:
                 pass
 
-    # Always reply with transcription text
-    reply_msg = await message.reply(text, parse_mode=None)
+    # Add timestamps for long messages (>60s)
+    duration_float = float(duration) if duration else None
+    text_with_ts = add_timestamps(text, duration_float)
+
+    # Detect voice intent (use original text without timestamps for detection)
+    intent_result = detect_intent(text, duration=duration_float)
+
+    # Route by intent
+    if intent_result.intent == VoiceIntent.SEARCH:
+        await _handle_voice_search(message, api, token, text, intent_result.cleaned_text)
+        return
+
+    if intent_result.intent == VoiceIntent.TODO:
+        await _handle_voice_todo(
+            message, api, token, text, intent_result.cleaned_text,
+            file_id=file_id, duration_float=duration_float, silent=silent,
+        )
+        return
+
+    # Default: save as note bookmark
+    # Always reply with transcription text (with timestamps if long)
+    reply_msg = await message.reply(text_with_ts, parse_mode=None)
 
     # Caption (if any) prepended to transcription
     caption = message.caption or ""
     raw_text = f"{caption}\n\n{text}".strip() if caption else text
-
-    # Save as bookmark
-    duration_float = float(duration) if duration else None
 
     try:
         if silent:
@@ -236,6 +255,7 @@ async def _process_audio(
                 media_file_id=file_id,
                 transcription=text,
                 media_duration=duration_float,
+                voice_tag=True,
             )
         else:
             await api.create_bookmark(
@@ -249,6 +269,7 @@ async def _process_audio(
                 media_file_id=file_id,
                 transcription=text,
                 media_duration=duration_float,
+                voice_tag=True,
             )
     except Exception as e:
         # Edge case 3: backend failed AFTER transcription succeeded.
@@ -257,5 +278,102 @@ async def _process_audio(
         await ephemeral_error(
             message,
             "Не удалось сохранить как закладку. Текст выше — можешь скопировать и отправить заново.",
+            delay=15,
+        )
+
+
+# ── Voice intent handlers ─────────────────────────────────────
+
+
+async def _handle_voice_search(
+    message: types.Message, api, token: str, full_text: str, query: str,
+) -> None:
+    """Voice search: transcribe → search bookmarks → show results."""
+    from bot.handlers.search import _format_result
+
+    # Reply with transcription + search marker
+    await message.reply(f"🔍 {full_text}", parse_mode=None)
+
+    if not query.strip():
+        await ephemeral_error(message, "Не удалось распознать поисковый запрос.")
+        return
+
+    try:
+        data = await api.search_bookmarks(token, query, limit=5)
+    except Exception as e:
+        logger.error("Voice search failed: %s", e)
+        await ephemeral_error(message, "Ошибка поиска. Попробуй позже.")
+        return
+
+    results = data.get("results", [])
+    total = data.get("total", 0)
+
+    if not results:
+        await message.answer(f'Ничего не найдено по запросу "{query}"', parse_mode=None)
+        return
+
+    parts = [f'🔍 Результаты по запросу "<b>{query}</b>" ({total} найдено):\n']
+    for i, item in enumerate(results, 1):
+        parts.append(f"{i}. {_format_result(item, item['score'])}")
+
+    if total > 5:
+        parts.append(f"\n...и ещё {total - 5}. Уточни запрос.")
+
+    await message.answer("\n\n".join(parts), parse_mode="HTML", disable_web_page_preview=True)
+
+
+async def _handle_voice_todo(
+    message: types.Message,
+    api,
+    token: str,
+    full_text: str,
+    cleaned_text: str,
+    *,
+    file_id: str,
+    duration_float: float | None,
+    silent: bool,
+) -> None:
+    """Voice todo: transcribe → detect tasks → create task_list bookmark."""
+    # Reply with transcription + todo marker
+    reply_msg = await message.reply(f"📋 {full_text}", parse_mode=None)
+
+    # Build raw_text with todo prefix so backend task_list_detector picks it up
+    raw_text = f"список задач: {cleaned_text}" if cleaned_text else f"список задач: {full_text}"
+
+    try:
+        if silent:
+            await api.create_bookmark(
+                token=token,
+                raw_text=raw_text,
+                source="telegram",
+                source_message_id=message.message_id,
+                notify_chat_id=message.chat.id,
+                notify_message_id=message.message_id,
+                silent=True,
+                content_type="voice",
+                media_file_id=file_id,
+                transcription=full_text,
+                media_duration=duration_float,
+                voice_tag=True,
+            )
+        else:
+            await api.create_bookmark(
+                token=token,
+                raw_text=raw_text,
+                source="telegram",
+                source_message_id=message.message_id,
+                notify_chat_id=reply_msg.chat.id,
+                notify_message_id=reply_msg.message_id,
+                content_type="voice",
+                media_file_id=file_id,
+                transcription=full_text,
+                media_duration=duration_float,
+                voice_tag=True,
+            )
+    except Exception as e:
+        logger.error("Failed to create voice todo: %s", e)
+        await ephemeral_error(
+            message,
+            "Не удалось создать список задач. Текст выше — можешь скопировать.",
             delay=15,
         )

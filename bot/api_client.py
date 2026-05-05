@@ -70,6 +70,7 @@ class BackendClient:
         media_file_id: str | None = None,
         transcription: str | None = None,
         media_duration: float | None = None,
+        voice_tag: bool = False,
     ) -> dict:
         payload = {
             "raw_text": raw_text,
@@ -90,6 +91,8 @@ class BackendClient:
             payload["notify_message_id"] = notify_message_id
         if silent:
             payload["silent"] = True
+        if voice_tag:
+            payload["voice_tag"] = True
 
         response = await self.client.post(
             "/api/v1/bookmarks/",
