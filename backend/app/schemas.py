@@ -91,6 +91,8 @@ class BookmarkCreate(BaseModel):
     media_file_id: str | None = None
     transcription: str | None = None
     media_duration: float | None = None
+    # Phase 3B — document metadata
+    document_page_count: int | None = None
     # Для live-прогресса в Telegram
     notify_chat_id: int | None = None
     notify_message_id: int | None = None
@@ -124,6 +126,7 @@ class BookmarkResponse(BaseModel):
     media_file_id: str | None = None
     transcription: str | None = None
     media_duration: float | None = None
+    document_page_count: int | None = None
     summary: str | None
     category: str | None
     tags: list[TagResponse] = []

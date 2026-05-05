@@ -582,7 +582,7 @@ async def handle_text(message: types.Message, api, store=None):
             await status_msg.edit_text("Ошибка при сохранении. Попробуй ещё раз.")
 
 
-@router.message(F.photo | F.video | F.document | F.sticker)
+@router.message(F.photo | F.video | F.sticker)
 async def handle_media(message: types.Message, api):
     """Обработка медиа-сообщений (фото, видео и т.д.)."""
     token = await _ensure_user(message, api)

@@ -22,7 +22,7 @@ from aiogram.types import BotCommand, MenuButtonWebApp, WebAppInfo
 
 from bot.api_client import BackendClient
 from bot.config import get_settings
-from bot.handlers import clean, media, random, search, settings as settings_handler, start, tasks
+from bot.handlers import clean, documents, media, random, search, settings as settings_handler, start, tasks
 from bot.state_store import StateStore
 
 logging.basicConfig(
@@ -78,6 +78,7 @@ async def main():
     dp.include_router(settings_handler.router)
     dp.include_router(clean.router)
     dp.include_router(media.router)   # voice, video_note, audio — до catch-all
+    dp.include_router(documents.router)  # PDF/DOCX/TXT/MD — до catch-all в start
     dp.include_router(start.router)
     dp.include_router(search.router)
     dp.include_router(random.router)

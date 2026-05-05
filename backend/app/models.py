@@ -120,6 +120,9 @@ class Bookmark(Base):
     transcription: Mapped[str | None] = mapped_column(Text)
     media_duration: Mapped[float | None] = mapped_column(Float)
 
+    # Phase 3B — document metadata (PDF page count etc.)
+    document_page_count: Mapped[int | None] = mapped_column(Integer)
+
     # Full article text (Phase 1a — readability extraction)
     full_text: Mapped[str | None] = mapped_column(Text)
 
