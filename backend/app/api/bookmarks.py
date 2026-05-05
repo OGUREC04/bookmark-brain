@@ -60,6 +60,7 @@ async def create_bookmark(
         media_file_id=data.media_file_id,
         transcription=data.transcription,
         media_duration=data.media_duration,
+        document_page_count=data.document_page_count,
     )
     session.add(bookmark)
     await session.flush()

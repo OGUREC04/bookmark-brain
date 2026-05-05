@@ -71,6 +71,7 @@ class BackendClient:
         transcription: str | None = None,
         media_duration: float | None = None,
         voice_tag: bool = False,
+        document_page_count: int | None = None,
     ) -> dict:
         payload = {
             "raw_text": raw_text,
@@ -86,6 +87,8 @@ class BackendClient:
             payload["transcription"] = transcription
         if media_duration is not None:
             payload["media_duration"] = media_duration
+        if document_page_count is not None:
+            payload["document_page_count"] = document_page_count
         if notify_chat_id and notify_message_id:
             payload["notify_chat_id"] = notify_chat_id
             payload["notify_message_id"] = notify_message_id
