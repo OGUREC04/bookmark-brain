@@ -1,0 +1,32 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "Backend API",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "uvicorn", "main:app", "--reload", "--host", "0.0.0.0", "--port", "8000"],
+      "port": 8000,
+      "cwd": "backend"
+    },
+    {
+      "name": "arq Worker",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["run_worker.py"],
+      "port": 0,
+      "cwd": "backend"
+    },
+    {
+      "name": "Telegram Bot",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "bot.main"],
+      "port": 0
+    },
+    {
+      "name": "frontend",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "port": 3000,
+      "cwd": "frontend"
+    }
+  ]
+}

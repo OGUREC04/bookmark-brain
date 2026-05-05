@@ -1,0 +1,7 @@
+{
+  "database": "dolt",
+  "backend": "dolt",
+  "dolt_mode": "embedded",
+  "dolt_database": "bookmark_brain",
+  "project_id": "acae3c3e-e622-4ef4-aef8-cab3fba27c17"
+}
