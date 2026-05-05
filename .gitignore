@@ -69,3 +69,6 @@ logs/
 .dolt/
 *.db
 .beads-credential-key
+
+# Claude plan files
+streamed-*.md

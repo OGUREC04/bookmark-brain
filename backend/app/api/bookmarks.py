@@ -13,7 +13,7 @@ from sqlalchemy.orm import selectinload
 from app.auth import get_current_user
 from app.config import get_settings
 from app.database import get_session
-from app.models import Bookmark, User
+from app.models import Bookmark, BookmarkTag, Tag, User
 from pydantic import BaseModel
 
 from app.schemas import (
@@ -64,6 +64,10 @@ async def create_bookmark(
     session.add(bookmark)
     await session.flush()
 
+    # Phase 3D: auto-tag #voice for voice messages
+    if data.voice_tag:
+        await _ensure_voice_tag(session, bookmark)
+
     # Ставим задачу на AI-обработку
     pool = await get_arq_pool()
     await pool.enqueue_job(
@@ -74,9 +78,41 @@ async def create_bookmark(
         data.silent,
     )
 
-    # Подгружаем теги (пустые пока)
+    # Подгружаем теги
     await session.refresh(bookmark, ["tags"])
     return bookmark
+
+
+async def _ensure_voice_tag(session: AsyncSession, bookmark: Bookmark) -> None:
+    """Create or find #voice tag and link it to the bookmark."""
+    from sqlalchemy.dialects.postgresql import insert as pg_insert
+
+    # Upsert tag
+    stmt = (
+        pg_insert(Tag)
+        .values(user_id=bookmark.user_id, name="voice")
+        .on_conflict_do_nothing(index_elements=["user_id", "name"])
+        .returning(Tag.id)
+    )
+    result = await session.execute(stmt)
+    row = result.first()
+    if row:
+        tag_id = row[0]
+    else:
+        # Already exists — fetch it
+        tag_result = await session.execute(
+            select(Tag.id).where(Tag.user_id == bookmark.user_id, Tag.name == "voice")
+        )
+        tag_id = tag_result.scalar_one()
+
+    # Link
+    link_stmt = (
+        pg_insert(BookmarkTag)
+        .values(bookmark_id=bookmark.id, tag_id=tag_id)
+        .on_conflict_do_nothing()
+    )
+    await session.execute(link_stmt)
+    await session.flush()
 
 
 @router.get("/", response_model=BookmarkListResponse)
