@@ -1,0 +1,56 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r bot/requirements.txt pytest pytest-asyncio
+
+      - name: Run tests
+        env:
+          TELEGRAM_BOT_TOKEN: "fake:token"
+          BACKEND_URL: "http://localhost:8000"
+          BOT_SECRET: "test-secret"
+          REDIS_URL: "redis://localhost:6379"
+          WHISPER_API_KEY: ""
+          STT_PROVIDER: "openai"
+        run: python -m pytest tests/ -v
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Deploy to VPS via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: |
+            cd ~/bookmark-brain
+            git pull origin main
+
+            # Build new images
+            docker compose -f docker-compose.prod.yml build
+
+            # Graceful deploy: stop worker first (finish in-flight jobs),
+            # then restart backend, then bring worker back
+            docker compose -f docker-compose.prod.yml stop worker
+            docker compose -f docker-compose.prod.yml up -d --wait backend bot
+            docker compose -f docker-compose.prod.yml up -d worker
+
+            echo "Deploy complete at $(date)"

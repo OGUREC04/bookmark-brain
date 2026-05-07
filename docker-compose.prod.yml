@@ -1,0 +1,144 @@
+services:
+  # ── Data stores ──────────────────────────────────────
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: bb_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-bookmarkbrain}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-bookmarkbrain}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-bookmarkbrain} -d ${POSTGRES_DB:-bookmarkbrain}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: bb_redis
+    restart: unless-stopped
+    command: redis-server --maxmemory 128mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Migrations (runs once before app starts) ─────────
+  migrations:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: bb_migrations
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-bookmarkbrain}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-bookmarkbrain}
+    # Override non-root user — alembic needs write access to working dir
+    user: root
+    command: ["alembic", "upgrade", "head"]
+    restart: "no"
+
+  # ── Application ──────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: bb_backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrations:
+        condition: service_completed_successfully
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-bookmarkbrain}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-bookmarkbrain}
+      REDIS_URL: redis://redis:6379
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  worker:
+    build:
+      context: ./backend
+      dockerfile: worker.Dockerfile
+    container_name: bb_worker
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrations:
+        condition: service_completed_successfully
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-bookmarkbrain}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-bookmarkbrain}
+      REDIS_URL: redis://redis:6379
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import redis; r=redis.from_url('redis://redis:6379'); r.ping()\" || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  bot:
+    build:
+      context: .
+      dockerfile: bot/Dockerfile
+    container_name: bb_bot
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    env_file: .env
+    environment:
+      BACKEND_URL: http://backend:8000
+      REDIS_URL: redis://redis:6379
+
+  # ── Reverse proxy (optional, for Mini App / API) ─────
+  nginx:
+    image: nginx:alpine
+    container_name: bb_nginx
+    restart: unless-stopped
+    ports:
+      - "${EXTERNAL_PORT:-80}:80"
+      - "${EXTERNAL_SSL_PORT:-443}:443"
+    volumes:
+      - ./infra/nginx.prod.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./infra/certbot/conf:/etc/letsencrypt:ro
+      - ./infra/certbot/www:/var/www/certbot:ro
+    depends_on:
+      - backend
+    profiles:
+      - with-nginx
+
+  # ── SSL cert renewal (optional) ──────────────────────
+  certbot:
+    image: certbot/certbot
+    container_name: bb_certbot
+    volumes:
+      - ./infra/certbot/conf:/etc/letsencrypt
+      - ./infra/certbot/www:/var/www/certbot
+    entrypoint: /bin/sh -c 'trap exit TERM; while :; do certbot renew --webroot -w /var/www/certbot; sleep 12h; done'
+    profiles:
+      - with-nginx
+
+volumes:
+  postgres_data:
+  redis_data:
