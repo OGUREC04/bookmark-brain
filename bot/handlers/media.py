@@ -13,7 +13,7 @@ from pathlib import Path
 from aiogram import F, Router, types
 
 from bot.config import get_settings
-from bot.services.stt import STTError, WhisperSTTService
+from bot.services.stt import STTError, WhisperSTTService, YandexSTTService, create_stt_service
 from bot.services.timestamps import add_timestamps
 from bot.services.voice_intent import VoiceIntent, detect_intent
 from bot.utils import ephemeral_error, safe_react
@@ -25,7 +25,7 @@ router = Router()
 _settings = get_settings()
 
 # Lazy-init STT service
-_stt: WhisperSTTService | None = None
+_stt: WhisperSTTService | YandexSTTService | None = None
 _stt_checked = False
 
 # Minimum voice duration to avoid Whisper hallucinations on silence/noise
@@ -35,17 +35,35 @@ _MIN_DURATION_SEC = 2
 _TG_MAX_FILE_SIZE = 20 * 1024 * 1024  # 20 MB
 
 
-def _get_stt() -> WhisperSTTService | None:
+def _get_stt() -> WhisperSTTService | YandexSTTService | None:
     global _stt, _stt_checked
     if _stt is not None:
         return _stt
+
+    provider = _settings.STT_PROVIDER
+
+    # Yandex needs its own keys
+    if provider == "yandex":
+        if not _settings.YANDEX_CLOUD_API_KEY or not _settings.YANDEX_CLOUD_FOLDER_ID:
+            if not _stt_checked:
+                logger.warning("YANDEX_CLOUD_API_KEY/FOLDER_ID not set — voice disabled")
+                _stt_checked = True
+            return None
+        _stt = create_stt_service(
+            provider,
+            yandex_api_key=_settings.YANDEX_CLOUD_API_KEY,
+            yandex_folder_id=_settings.YANDEX_CLOUD_FOLDER_ID,
+        )
+        return _stt
+
+    # OpenAI/Groq need WHISPER_API_KEY
     key = _settings.WHISPER_API_KEY
     if not key:
         if not _stt_checked:
             logger.warning("WHISPER_API_KEY is not set — voice messages will be rejected")
             _stt_checked = True
         return None
-    _stt = WhisperSTTService(key, provider=_settings.STT_PROVIDER)
+    _stt = create_stt_service(provider, whisper_api_key=key)
     return _stt
 
 

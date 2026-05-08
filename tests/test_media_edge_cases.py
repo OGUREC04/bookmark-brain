@@ -574,11 +574,11 @@ class TestWhisperSTTService:
 
     @pytest.mark.asyncio
     async def test_transcribe_oversized_file(self, tmp_path):
-        from bot.services.stt import WhisperSTTService, STTError, MAX_FILE_SIZE
+        from bot.services.stt import WhisperSTTService, STTError, _MAX_FILE_SIZE_WHISPER
 
         big_file = tmp_path / "big.ogg"
         # Create a file just over the limit (write sparse)
-        big_file.write_bytes(b"x" * (MAX_FILE_SIZE + 1))
+        big_file.write_bytes(b"x" * (_MAX_FILE_SIZE_WHISPER + 1))
         svc = WhisperSTTService("test-key")
         with pytest.raises(STTError, match="too large"):
             await svc.transcribe(big_file)

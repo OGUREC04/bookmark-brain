@@ -13,7 +13,9 @@ class Settings(BaseSettings):
     MINI_APP_URL: str = ""
     REDIS_URL: str = "redis://localhost:6379"
     WHISPER_API_KEY: str = ""
-    STT_PROVIDER: str = "openai"  # "openai" | "groq"
+    STT_PROVIDER: str = "openai"  # "openai" | "groq" | "yandex"
+    YANDEX_CLOUD_API_KEY: str = ""
+    YANDEX_CLOUD_FOLDER_ID: str = ""
     ENVIRONMENT: str = "development"
 
     model_config = {"env_file": str(_ENV_FILE), "env_file_encoding": "utf-8", "extra": "ignore"}
