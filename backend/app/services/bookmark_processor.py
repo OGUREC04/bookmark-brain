@@ -132,6 +132,24 @@ class BookmarkProcessor:
             bookmark.ai_error = str(e)
             bookmark.retry_count += 1
             await self.session.flush()
+            # Не выходим сразу — попробуем хотя бы task_list-детекцию по raw_text.
+            # GigaChat иногда отказывает на нецензурном контенте; детектор по
+            # маркерам и пунктам всё равно может распознать список задач.
+            classification = None  # type: ignore[assignment]
+            try:
+                detection = detect_task_list(bookmark.raw_text, ai_item_type=None)
+                structured = build_structured_data(detection)
+                if structured is not None:
+                    bookmark.structured_data = structured
+                    # Минимальные поля для рендера task_list
+                    if not bookmark.title:
+                        bookmark.title = "Список задач"
+                    bookmark.item_type = "action"
+                    bookmark.ai_status = "partial"  # классификация упала, но список спасли
+                    bookmark.ai_error = (bookmark.ai_error or "") + " | task_list rescued via detector"
+                    await self.session.flush()
+            except Exception as det_err:
+                logger.debug(f"Fallback task_list detection failed for {bookmark_id}: {det_err}")
             return
 
         # Шаг 1.5: Детекция task_list (Phase 2)

@@ -45,6 +45,24 @@ BULLET_RE = re.compile(r"^\s*(?:[-•*—−]|\d+[.)])\s+", re.MULTILINE)
 # Разделители для inline-списков ("молоко, хлеб, сыр")
 INLINE_SPLIT_RE = re.compile(r"[,;]|\s+и\s+")
 
+# Anti-task-list signals: ad/social/contact patterns в пункте.
+# Если такой паттерн встречается в 2+ пунктах — это рекламный/информационный
+# пост, а не список задач.
+AD_PATTERNS = (
+    re.compile(r"#\w+", re.IGNORECASE),                  # хэштеги
+    re.compile(r"https?://|www\.|\.ru\b|\.com\b", re.IGNORECASE),  # ссылки
+    re.compile(r"\+?\d[\d\s\-()]{8,}"),                  # телефоны
+    re.compile(r"\bподпис(?:ат|ыв)|\bканал[ея]|\bзаявк|чат\b|телеграм", re.IGNORECASE),
+    re.compile(r"@[a-z0-9_]{4,}", re.IGNORECASE),        # @mentions
+)
+
+# Длинный пункт = абзац, не задача. Жёсткий лимит на отдельный элемент.
+MAX_TASK_LENGTH = 100
+
+# Прелюдия перед первым маркером: если описательного текста > N слов,
+# это статья с нумерацией, не список задач.
+MAX_PREAMBLE_WORDS = 25
+
 
 @dataclass
 class TaskListDetection:
@@ -106,6 +124,58 @@ def _looks_like_inline_list(text: str) -> bool:
     return True
 
 
+def _count_ad_signal_items(tasks: list[str]) -> int:
+    """Сколько пунктов содержат ad/social/contact маркеры.
+
+    2+ таких пункта = информационный пост, не список задач.
+    """
+    count = 0
+    for t in tasks:
+        if any(p.search(t) for p in AD_PATTERNS):
+            count += 1
+    return count
+
+
+def _preamble_word_count(text: str) -> int:
+    """Возвращает число слов до первого маркера (если он есть).
+
+    Пустая строка / нет маркеров → 0 (не штрафуем).
+    """
+    match = BULLET_RE.search(text)
+    if not match:
+        return 0
+    preamble = text[:match.start()].strip()
+    if not preamble:
+        return 0
+    return len(preamble.split())
+
+
+def _looks_like_article_with_numbering(text: str, tasks: list[str]) -> bool:
+    """True, если структура текста явно говорит «это пост/статья,
+    а не список задач»:
+
+    - Длинная описательная прелюдия перед первым пунктом
+    - Хотя бы один пункт длиннее MAX_TASK_LENGTH
+    - В нескольких пунктах есть ad/social/contact маркеры
+    """
+    if not tasks:
+        return False
+
+    # 1. Длинный пункт = это абзац статьи, не задача
+    if any(len(t) > MAX_TASK_LENGTH for t in tasks):
+        return True
+
+    # 2. 2+ пункта с рекламными/контактными маркерами
+    if _count_ad_signal_items(tasks) >= 2:
+        return True
+
+    # 3. Описательная прелюдия перед маркерами
+    if _preamble_word_count(text) > MAX_PREAMBLE_WORDS:
+        return True
+
+    return False
+
+
 def detect(text: str, ai_item_type: str | None = None) -> TaskListDetection:
     """Главный детектор. Никогда не бросает исключений."""
     if not text or not text.strip():
@@ -142,9 +212,15 @@ def detect(text: str, ai_item_type: str | None = None) -> TaskListDetection:
         return TaskListDetection(False, forced, [], stripped_text)
 
     # Решение: список или нет
-    # 1. Юзер форсировал → да (если есть хоть что-то парсить)
+    # 1. Юзер форсировал → да (если есть хоть что-то парсить).
+    #    Здесь намеренно не отфильтровываем по article-сигналам — юзер сам сказал.
     if forced and len(tasks) >= 1:
         return TaskListDetection(True, True, tasks, stripped_text)
+
+    # Anti-false-positive фильтр: если структура говорит «это статья/пост»
+    # — не делаем список, даже если AI или маркер-эвристика сказали бы да.
+    if _looks_like_article_with_numbering(content, tasks):
+        return TaskListDetection(False, False, [], stripped_text)
 
     # 2. AI сказал action + ≥2 пункта → да
     if ai_item_type == "action" and len(tasks) >= 2:
@@ -152,7 +228,7 @@ def detect(text: str, ai_item_type: str | None = None) -> TaskListDetection:
 
     # 3. Сильная эвристика: ≥2 маркированных строк → да независимо от AI
     #    НО: если средняя длина пунктов > 80 символов — это не задачи, а длинный
-    #    нумерованный текст (статья, пост, тезисы). Пропускаем.
+    #    нумерованный текст (страховка поверх article-фильтра выше).
     if bullet_count >= 2:
         avg_task_len = sum(len(t) for t in tasks) / len(tasks) if tasks else 0
         if avg_task_len <= 80:
