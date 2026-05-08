@@ -1,419 +1,403 @@
-# BookmarkBrain — Feature Roadmap (May 2026)
+# BookmarkBrain — Roadmap (обновлён 2026-05-08)
 
-## Overview
+## Статус проекта
 
-6 phases, ~44-62 dev-days total. Each phase is independently shippable.
-Based on: code review (2026-05-02), architecture review, wiki recommendations, product vision.
+**Готово:** Phase 0-1.5 (Hardening, Silent Mode, Dedup, Stale Nudge), Phase 3A (Voice), Phase 3B (Documents), Phase 3D (Voice Features), Deploy (VPS Beget Cloud).
 
----
+**В проде:** бот работает на VPS 5.181.109.142, Docker Compose, GigaChat + Voyage AI + Yandex SpeechKit.
 
-## Phase 0: Hardening & Foundation (8-10 days)
-
-**Goal:** Fix CRITICAL/HIGH issues, build shared infrastructure.
-
-### 0A. Security (day 1-2)
-- [ ] Remove SECRET_KEY default, make required + startup guard
-- [ ] Remove BOT_SECRET default, add empty-string guard
-- [ ] Bundle Sber CA cert for GigaChat TLS (`verify=False` → `verify="certs/sber_ca.pem"`)
-- [ ] Fix IDOR: add `user_id` to bookmark fetch WHERE clause
-- [ ] Escape LIKE wildcards in search fallback
-- [ ] Add rate limiting (slowapi)
-
-### 0B. Bot stability (day 2-3)
-- [ ] Fix `_pending_saves` keying → by message_id + 5min TTL
-- [ ] Guard `InaccessibleMessage` in all callback handlers
-- [ ] Token cache with TTL, re-auth on 401
-- [ ] httpx retry/limits on bot API client
-
-### 0C. Worker & data integrity (day 3-4)
-- [ ] Batch tag creation with ON CONFLICT
-- [ ] Fix bookmarks_count inflation on reprocess
-- [ ] Fix worker double-commit race on task_list
-- [ ] Extract Telegram notification from worker → NotificationService
-- [ ] Fix `_rerender_at_bottom` race with per-(chat,bookmark) lock
-
-### 0D. Shared infrastructure (day 5-8)
-- [ ] `search_traces` table + logging every search
-- [ ] `classification_feedback` table
-- [ ] Embedding retry cron for `ai_status = 'partial'`
-- [ ] API versioning: `/api/v1/` prefix
-- [ ] `/health` with Postgres + Redis ping
-- [ ] Extract NotificationService (shared worker/bot)
-
-**Depends on:** Nothing. Foundation for everything.
+**Регламент разработки:** покрыт правилами в `~/.claude/rules/common/` (development-workflow, code-review, security, testing, git-workflow, docs-with-code) + хуком `enforce-review.py` который блокирует `git commit` без security-reviewer на security-sensitive коде. Отдельная фаза R1 не нужна.
 
 ---
 
-## Phase 1: Silent Mode (3-4 days)
+## Приоритеты (порядок выполнения)
 
-**Goal:** Zero-noise saves. Reaction-based receipts like Telegram Saved Messages.
+```
+Phase R0: Project-specific правило      ✅ DONE (2026-05-08)
+Phase R2: Документация продукта         ⏳ почти DONE (API docs остались)
+Phase 2:  Onboarding                    ✅ DONE (2026-05-09)
+Phase 2.5: Reminders MVP                ← СЛЕДУЮЩИЙ (3-5 дней)
+Phase 3C: Photo OCR                     (2-3 дня)
+Phase 4:  Learning Mechanisms           (5-7 дней)
+Phase 4.5: LLM Migration                (2-3 дня)
+Phase 5:  Smart Blocks MVP              (10-14 дней)
+Phase 6:  Proactivity 1.0               (8-12 дней)
+Phase 7:  Proactivity 2.0 Research      (3-5 дней)
+Phase L:  Программа обучения            (параллельно, после R2)
 
-- [ ] Add `silent_mode` to User.settings JSONB (default: true)
-- [ ] `/silent` toggle command
-- [ ] Replace text confirmation with `setMessageReaction(⏳)` 
-- [ ] On complete: reaction → ✅, NO text message
-- [ ] On error: reaction → ❌, ephemeral auto-delete message (10s)
-- [ ] Remove short-message confirmation prompt in silent mode
-- [ ] Non-silent mode as opt-in (legacy behavior)
-
-**Key:** Task lists still get interactive message (checkboxes are essential).
-
-**Depends on:** Phase 0B (bot stability), 0C (NotificationService)
-
----
-
-## Phase 1.5: Task List Smartening (3-4 days)
-
-**Goal:** Списки задач становятся умнее — объединение дубликатов, stale-уведомления.
-
-### 1.5A. Dedup-alert при создании (day 1-2)
-- [ ] При создании нового task_list — embedding similarity с незакрытыми списками (7 дней)
-- [ ] Если similarity > 0.7 → предложить объединить: «У тебя похожий список от вчера (2/5 выполнено). Объединить?»
-- [ ] «Объединить» = NL-edit старого: добавить новые пункты, убрать дубли
-- [ ] «Создать отдельный» = как сейчас
-
-### 1.5B. Stale list nudge (day 3-4)
-- [ ] Cron (утро): проверить незакрытые списки старше 24ч с done < total
-- [ ] Ephemeral: «Вчерашний список: 1/4 выполнено. Перенести незакрытое?»
-- [ ] [Перенести] = новый список из невыполненных, старый → closed
-- [ ] [Закрыть] = пометить старый как done
-- [ ] [Оставить] = не трогать
-
-**Depends on:** Phase 1 (silent mode, task list foundation)
+Бэклог:   Улучшения окружения и хуки    (см. секцию "Бэклог" ниже)
+```
 
 ---
 
-## Phase 2: Learning Mechanisms (5-7 days)
+## ВЫПОЛНЕНО
 
-**Goal:** System learns from user behavior.
+### Phase 0 — Hardening & Foundation ✅
+- Все CRITICAL/HIGH исправлены (SECRET_KEY, BOT_SECRET, verify=False, IDOR, N+1)
+- API versioning /api/v1/, /health, embedding retry cron, CORS
 
-### 2A. Classification feedback (day 1-3)
-- [ ] Inline "wrong classification" button on bookmark card
-- [ ] Callback: item_type picker (action/thought/content/reference)
-- [ ] `POST /api/v1/bookmarks/{id}/feedback` endpoint
-- [ ] Store correction, update bookmark
-- [ ] Few-shot selector: top-3 feedback examples by embedding similarity in classifier prompt
-- [ ] `included_in_prompt` flag for high-confidence corrections
+### Phase 1 — Silent Mode ✅
+- Reaction-based receipts (👀→👍/👎), /silent toggle
+- Task lists: silent rendering, reply-инструкция, мета-команды
+- Deadline extraction, onboarding, /clean защита task lists
 
-### 2B. Usage decay (day 3-4)
-- [ ] Decay coefficient in search scoring based on `last_accessed`
-- [ ] Update `last_accessed` on view/search-click
-- [ ] Track `clicked_id` in search_traces
+### Phase 1.5A — Task List Dedup-Alert ✅
+- Cosine similarity dedup, merge API, bot callbacks
 
-### 2C. Tag co-occurrence (day 5-6)
-- [ ] Materialized view `tag_cooccurrence`
-- [ ] Nightly refresh cron (CONCURRENTLY)
-- [ ] Inject co-occurring tags into classifier prompt
+### Phase 1.5B — Stale List Nudge ✅
+- Worker cron, reply-based UX, transfer undone tasks
 
-**Depends on:** Phase 0D (traces + feedback tables)
+### Phase 1.5C — General Semantic Dedup ✅
+- Двухуровневый dedup (embedding + text overlap), NL edit fast-path
+
+### Phase 3A — Voice Input ✅
+- WhisperSTT (OpenAI/Groq), voice/video_note/audio handlers
+- Migration: transcription, media_duration, media_file_id
+
+### Phase 3B — Documents ✅
+- PDF/DOCX/TXT/MD extraction, document_page_count migration
+
+### Phase 3D — Voice Features ✅
+- Intent detection (todo/search/note), auto-tag #voice, timestamps
+
+### Deploy — Частично ✅
+- VPS Beget Cloud, Docker Compose prod, CI (test.yml)
+- Yandex SpeechKit вместо Groq (заблокирован из РФ)
+- CD pipeline настроен, но GitHub Secrets не добавлены
 
 ---
 
-## Phase 3: Multi-format Input (7-10 days)
+## Phase R0: Project-specific правило + человеко-читаемый гайд (2-3 часа) ← СЛЕДУЮЩИЙ
 
-**Goal:** Voice, files, photos → text → existing AI pipeline.
+**Цель:** Зафиксировать BookmarkBrain-специфику которая НЕ покрыта generic правилами Claude.
 
-### 3A. Voice/video notes ✅ DONE (2026-05-06)
-- [x] `WHISPER_API_KEY` / `STT_PROVIDER` in config (backend + bot)
-- [x] `WhisperSTTService` via raw httpx (OpenAI + Groq providers)
-- [x] Bot: download → STT → reply with transcription → save as bookmark
-- [x] Store `content_type=voice|video_note|audio`, `media_file_id` (Text), `transcription`, `media_duration`
-- [x] Migration: `transcription` (Text), `media_duration` (Float), `media_file_id` VARCHAR→Text
-- [x] Edge cases: duration <2s guard, file >20MB guard, group fallback, backend-fail graceful
-- [x] Removed voice/audio/video_note from start.py catch-all filter
+**Зачем:** Глобальные правила в `~/.claude/rules/common/` уже покрывают git-flow, тесты, security, code review, документацию. Хук `enforce-review.py` блокирует коммит без security-reviewer. Не хватает только проектной специфики и человеко-читаемого гайда для тебя.
 
-### 3B. Documents (day 5-7)
-- [ ] `DocumentExtractor` service (pymupdf for PDF, python-docx for DOCX)
-- [ ] Bot: download document, detect type, extract text, enqueue
-- [ ] Truncation to 8000 chars before AI
+### Что уже покрыто (НЕ делать)
+- ✅ TDD workflow → `common/testing.md` + `tdd-guide` агент
+- ✅ Git-flow и формат коммитов → `common/git-workflow.md`
+- ✅ Security checklist → `common/security.md`
+- ✅ Code review триггеры → `common/code-review.md` + хук `enforce-review.py`
+- ✅ Doc-with-code → `common/docs-with-code.md`
+- ✅ Dev workflow (Research → Plan → TDD → Review → Commit) → `common/development-workflow.md`
 
-### 3C. Photo OCR (day 8-9)
-- [ ] OCR service (Tesseract or Claude Vision)
+### Что делать
+
+#### 1. Правило для Claude (1 час)
+- [x] `.claude/rules/bookmark-brain.md` — ТОЛЬКО проектная специфика:
+  - Dev-бот @bookmarkbrain_dev_bot vs prod @N0teeBot — никогда не путать токены
+  - Перед коммитом с .env — проверить что нет реальных ключей (Yandex/GigaChat/Voyage)
+  - При изменении схемы БД — `alembic revision --autogenerate` + ручная проверка
+  - При деплое: `pytest` локально → ручной тест через dev-бота → `git push` → `git pull && ./deploy.sh` на VPS → `docker compose logs bot --tail 20`
+  - Russian API constraints — не предлагать Groq/OpenAI для прода
+  - GigaChat embeddings 402 — embeddings только через Voyage AI
+
+#### 2. Человеко-читаемый гайд (1-2 часа)
+- [x] `docs/DEVELOPMENT-GUIDE.md` (на русском) — для тебя:
+  - Как запустить локально (ссылка на `start.bat`)
+  - Как создать ветку и PR (5 строк, не лекция)
+  - Как деплоить (одна команда)
+  - Что проверить перед коммитом (чеклист 5 пунктов)
+  - Откат если сломалось
+
+**Depends on:** Ничего.
+
+---
+
+## Phase R2: Документация продукта (3-5 дней)
+
+**Цель:** Задокументировать что есть, зачем, и как работает. Чтобы через месяц не гадать.
+
+**Не путать с регламентом:** регламент = «как разрабатывать» (покрыт правилами + хуком). Здесь = «что построено и почему».
+
+### Спецификация продукта
+- [x] `docs/SPEC.md` — что продукт делает, для кого, какие фичи
+- [x] User stories: основные сценарии использования
+- [x] Границы продукта: что НЕ делает BookmarkBrain
+
+### Архитектурная документация
+- [x] `docs/ARCHITECTURE.md` — компоненты, связи, схема
+- [x] Диаграмма: Bot → Backend → Worker → AI providers
+- [x] Data flow: сообщение → classify → embed → tag → dedup
+- [x] Database schema diagram
+
+### Каталог решений (ADR)
+- [x] `docs/decisions/` — Architecture Decision Records
+- [x] Почему GigaChat (доступен в РФ, бесплатный tier)
+- [x] Почему Yandex SpeechKit (Groq заблокирован из РФ)
+- [x] Почему arq а не Celery (легковесный, async-native)
+- [x] Почему pgvector а не FAISS (единая БД, проще деплой)
+- [x] Почему Voyage AI (GigaChat embeddings 402 на бесплатном тарифе)
+
+### API-документация
+- [ ] Привести в порядок FastAPI `/docs` (описания, примеры) — нужна правка кода в `backend/`, отложено до окна без параллельных фич
+- [x] Документировать bot commands (/start, /list, /search, /silent, /stats) → `docs/BOT-COMMANDS.md`
+- [x] API-обзор для людей → `docs/API.md` (Swagger на `/docs` остаётся источником схем)
+
+**Depends on:** Phase R0 (project-specific правило)
+
+---
+
+## Phase 2: Onboarding ✅ DONE (2026-05-09)
+
+**Цель:** Новый пользователь понимает что делать без инструкций.
+
+- [x] Приветственное сообщение при первом /start (с примерами) — split new vs returning user
+- [x] Первое сохранение — подсказка про forward / голос / /list / /search (4 точки: text, forward, media, short)
+- [x] Первый task list — подсказка про reply-команды (worker → ephemeral 60s)
+- [x] Первое голосовое — подсказка про intent / таймкоды / #voice
+- [x] `/help` с актуальным списком возможностей
+
+**Реализация:**
+- `bot/onboarding.py` — утилита `maybe_show_tip` + cache (TTL 5 мин, batch-eviction при > 5000 записей)
+- State в `user.settings` JSONB через PATCH /users/me/settings (плоские ключи: `onboarding_welcomed`, `onboarding_first_save`, `onboarding_first_task_list`, `onboarding_first_voice`)
+- Race-protection: оптимистичное обновление кэша до `message.answer`
+- Worker → подсказка task_list через `_send_ephemeral` (flush до отправки, чтобы не показывать снова при ошибке БД)
+- Code-review: 0 CRITICAL/HIGH, 3 MEDIUM зафиксированы и устранены
+
+**Depends on:** Phase R2 (спецификация определяет что показывать) — выполнено параллельно
+
+---
+
+## Phase 2.5: Reminders MVP (3-5 дней) ← СЛЕДУЮЩИЙ
+
+**Цель:** Бот замечает сообщения с временными маркерами или намерением «нужно сделать» и предлагает напоминание одной кнопкой.
+
+### Зачем
+
+Пользователь часто пишет себе:
+- «До 15 мая нужно подать на мат помощь»
+- «Поискать на праздниках кто задротит ОС»
+- «Нужно сделать фичу с напоминаниями»
+
+Сейчас это просто сохраняется в закладки и тонет. Хочется чтобы бот замечал намерение и предлагал «напомнить завтра?» — одной кнопкой, без явных команд.
+
+### User stories
+
+1. Юзер пишет сообщение с намерением → бот сохраняет как закладку **+ предлагает «🔔 Напомнить завтра?»** одной inline-кнопкой
+2. Если в сообщении есть явная дата («до 15 мая», «в пятницу», «на праздниках») → бот предлагает напомнить **за день до даты**
+3. Подсказка под кнопкой: «или ответь reply: завтра в 9, через час, в субботу...»
+4. Юзер reply на закладку с reminder-фразой → парсим NL-дату → создаём reminder
+5. В назначенное время — бот шлёт сообщение с текстом закладки и кнопкой «✅ Выполнено / 💤 Отложить»
+
+### Технические задачи
+
+#### Backend
+- [ ] Миграция: таблица `reminders` (id, user_id, bookmark_id, fire_at, status: pending/sent/done/cancelled, created_at)
+- [ ] CRUD API: `POST /api/v1/reminders/`, `PATCH /id`, `DELETE /id`, `GET /upcoming`
+- [ ] Сервис: `IntentDetector.detect_reminder_intent(text)` — паттерны «нужно», «надо», «до X», «к X», «не забыть» + явные даты
+- [ ] Сервис: `parse_natural_date(text, now=...)` — «завтра в 9», «в пятницу», «через час», «на праздниках» (next weekend), «15 мая»
+- [ ] Worker cron: проверка `fire_at <= now()` каждую минуту → отправка сообщения юзеру → `status=sent`
+
+#### Bot
+- [ ] При создании bookmark — если intent «reminder» детектится → добавить inline-кнопку `🔔 Напомнить завтра?`
+- [ ] Callback `rem:{bid}:tomorrow|hour|saturday` → создать reminder, обновить сообщение
+- [ ] Reply-handler на bookmark с фразой типа «через час», «в субботу» → `parse_natural_date` → создать reminder
+- [ ] При срабатывании reminder — кнопки `✅ Выполнено` / `💤 +1 день` / `💤 +неделя`
+
+### Открытые вопросы (обсудить перед стартом)
+
+- **Глубина detection:** только явные маркеры («до X»), или ML-классификатор намерения? MVP — паттерны + явные даты, ML — позже (Phase 4 Learning Mechanisms).
+- **Часовой пояс:** хранить fire_at в UTC, отображать пользователю в его TZ. Откуда брать TZ — настройка `/tz` или из Telegram language? MVP — захардкодить MSK (UTC+3), потом /tz.
+- **Если юзер ничего не нажал** — оставить кнопку или удалить через TTL? MVP — оставить inline-кнопку постоянно, юзер сам решает.
+
+**Depends on:** ничего блокирующего. Зависит от того, что Phase 2 (Onboarding) задал паттерн «бот замечает и предлагает» — продолжаем в том же духе.
+
+---
+
+## Phase 3C: Photo OCR (2-3 дня)
+
+**Цель:** Фото → текст → AI pipeline.
+
+- [ ] OCR service (Tesseract или Yandex Vision)
 - [ ] Bot: download photo, OCR, feed to pipeline
+- [ ] Учитывать что Yandex Vision работает из РФ (Tesseract — self-hosted)
 
-### 3D. Voice Features (day 10-12)
-- [ ] Голосовой /todo — если транскрипция похожа на список задач → авто task list
-- [ ] Голосовой поиск — голосовое < 10с без текста → `/search {transcription}`
-- [ ] Авто-тег `#voice` — все голосовые получают тег для фильтрации
-- [ ] Таймкоды для длинных голосовых (>2мин) — Whisper timestamps → chunks
-
-**Architecture:** All formats converge to text → existing classify → embed → tag pipeline.
-
-**Depends on:** Phase 1 (silent mode UX)
+**Depends on:** Phase 3B (Documents — аналогичный паттерн)
 
 ---
 
-## Phase 4: Smart Blocks MVP (10-14 days)
+## Phase 4: Learning Mechanisms (5-7 дней)
 
-**Goal:** Intelligent collections beyond tags/folders. Blocks = folder + AI behavior + auto-routing.
+**Цель:** Система учится на поведении пользователя.
 
-### 4A. Data model (day 1-3)
-- [ ] `smart_blocks` table: id, user_id, name, emoji, template_type, ai_prompt, routing_rules (JSONB), display_config (JSONB)
-- [ ] `block_id` FK on Bookmark (nullable, alongside existing `folder_id`)
-- [ ] CRUD API: `POST/GET/PUT/DELETE /api/v1/blocks`
-- [ ] `GET /api/v1/blocks/{id}/bookmarks` with pagination
+### 4A. Classification feedback (day 1-3)
+- [ ] Inline "неправильная категория" кнопка
+- [ ] `POST /api/v1/bookmarks/{id}/feedback`
+- [ ] Few-shot selector: топ-3 примера в prompt классификатора
 
-### 4B. Auto-routing (day 4-6)
-- [ ] `BlockRouter` service: evaluate routing rules vs classification output
-- [ ] Integrate into `BookmarkProcessor` after classification
-- [ ] Fallback: unmatched = no block (not error)
+### 4B. Usage decay (day 3-4)
+- [ ] Decay coefficient в поиске по `last_accessed`
+- [ ] Track clicked_id в search_traces
 
-### 4C. Base templates (day 7-9)
-- [ ] 5 preset templates: Goals, Ideas, Read Later, Do Someday, Insights
-- [ ] `POST /api/v1/blocks/from-template`
-- [ ] Bot: `/blocks` command, `/block <name>` view
+### 4C. Tag co-occurrence (day 5-6)
+- [ ] Materialized view `tag_cooccurrence`
+- [ ] Nightly refresh, inject в classifier prompt
 
-### 4D. Bot UX (day 10-12)
-- [ ] Show block name in save notification
-- [ ] `/blocks setup` guided creation
-- [ ] Block stats in `/stats`
-
-**Future:** AI-suggested personalized blocks after 50-100 bookmarks.
-
-**Depends on:** Phase 0D (API versioning), benefits from Phase 2 (feedback for routing)
+**Depends on:** Phase 0D (search_traces, feedback tables)
 
 ---
 
-## Phase 4.5: LLM Provider Migration (2-3 days)
+## Phase 4.5: LLM Provider Migration (2-3 дня)
 
-**Goal:** Заменить GigaChat на DeepSeek для NL-операций. GigaChat нестабилен с JSON — NL edit task_list ломается в ~20% случаев.
+**Цель:** DeepSeek для NL-операций (стабильный JSON).
 
-### Контекст проблемы
-- GigaChat не поддерживает `response_format: {"type": "json_object"}` — возвращает markdown/текст вместо JSON
-- Два раза пришлось обходить LLM: мета-команды (удали список) и fast-path (deadline, toggle, add, remove)
-- Fast-path покрывает ~80% команд, но сложные фразы всё ещё ломаются
-- DeepSeek: гарантированный JSON, $0.14/1M tokens, OpenAI-совместимый API
+- [ ] `AI_PROVIDER=deepseek` для классификации
+- [ ] Fallback chain: DeepSeek → GigaChat
+- [ ] Сравнение качества на 20 тестовых фразах
+- [ ] **Проверить доступность DeepSeek из РФ** (аналог проблемы с Groq)
 
-### Задачи
-- [ ] Получить DeepSeek API key, добавить в `.env`
-- [ ] Переключить `AI_PROVIDER=deepseek` (или отдельный `NL_EDIT_PROVIDER`)
-- [ ] Проверить классификацию на DeepSeek (может быть лучше GigaChat)
-- [ ] Fallback chain: DeepSeek → GigaChat (если DeepSeek недоступен)
-- [ ] Сравнить качество: 20 тестовых фраз на обоих провайдерах
-
-**Depends on:** Phase 4 (Smart Blocks). Можно начать раньше если NL edit критичен.
+**Depends on:** Phase 4
 
 ---
 
-## Phase 5: Proactivity 1.0 (8-12 days)
+## Phase 5: Smart Blocks MVP (10-14 дней)
 
-**Goal:** Brain reminds you. Connections, surfacing, digests.
+**Цель:** Умные коллекции = папка + AI-поведение + авто-роутинг.
 
-### 5A. Auto-connections on save (day 1-3)
-- [ ] `bookmark_connections` table (bookmark_id, related_id, similarity_score)
-- [ ] After embedding: top-3 nearest by cosine similarity
-- [ ] API: `GET /api/v1/bookmarks/{id}/related`
-- [ ] Bot: "Related" section in bookmark view
+- [ ] `smart_blocks` таблица, CRUD API
+- [ ] `BlockRouter` — автоматическая маршрутизация после классификации
+- [ ] 5 шаблонов: Goals, Ideas, Read Later, Do Someday, Insights
+- [ ] Bot: `/blocks`, `/blocks setup`
 
-### 5B. Contextual surfacing (day 4-5)
-- [ ] High-similarity (>0.85) → "You saved something similar X days ago"
-- [ ] Entity matching (from classification) for named connections
-
-### 5C. Periodic digest (day 6-9)
-- [ ] `digest_settings` in User.settings (frequency, time, timezone)
-- [ ] `/digest` command to configure
-- [ ] Cron job: select forgotten-but-important bookmarks using decay scoring
-- [ ] "Still relevant?" buttons (Yes/Archive)
-
-### 5D. Dedup detection (day 10-11)
-- [ ] Similarity > 0.95 → "You already saved this" warning
-- [ ] Offer: merge or keep both
-
-### 5E. Goal coaching (day 12)
-- [ ] Новый item_type=`goal` — долгосрочные цели/намерения (без чекбоксов)
-- [ ] При сохранении goal без дедлайна → coaching hint: «Добавь срок и первый шаг»
-- [ ] Периодическое surfacing: «Как продвигается цель X?»
-- [ ] Отличие от action: goal живёт долго, нет чекбоксов, бот напоминает
-
-**Depends on:** Phase 2 (decay), Phase 4 (blocks context for digest)
+**Depends on:** Phase 4 (feedback для routing)
 
 ---
 
-## Phase 5.5: Session Mode (идея, требует дизайна)
+## Phase 6: Proactivity 1.0 (8-12 дней)
 
-**Goal:** Не всё что пишешь боту — отдельная закладка. Иногда это серия коротких заметок во время рабочей сессии (звонок, работа в Фигме, мозговой штурм). Сохранять по отдельности бессмысленно — нужно собрать в один конспект.
+**Цель:** Мозг напоминает. Связи, surfacing, дайджесты.
 
-### Сценарий
-- Юзер 2-3 часа пишет короткие фрагменты: вопросы, договорённости, идеи
-- Бот копит сообщения без обработки (реакция 📝 вместо 👍)
-- По завершению сессии — бот собирает всё в один конспект → classify → embed → одна закладка
+- [ ] Auto-connections (top-3 by cosine similarity)
+- [ ] Contextual surfacing (>0.85 similarity alert)
+- [ ] Periodic digest (weekly, decay-based)
+- [ ] Goal coaching (item_type=goal)
 
-### Механика
-- [ ] `/session start` — начать сессию (или автодетект: серия коротких сообщений за N минут)
-- [ ] `/session end` — завершить (или авто-закрытие по таймауту 30 мин тишины)
-- [ ] `chat_messages` таблица — временное хранение сообщений сессии
-- [ ] При закрытии: LLM суммаризация → одна закладка типа `session_notes`
-- [ ] Mini App: показ истории переписки (7-14 дней), возможность сделать закладку из сообщения
-
-### Открытые вопросы
-- [ ] Хранить в `chat_messages` или читать через Telegram API?
-- [ ] Какой TTL у истории? (7 дней? 30 дней?)
-- [ ] Как отличить "мысль вслух" от короткой закладки?
-- [ ] Автодетект сессии vs. ручной старт?
-
-**Depends on:** Phase 5 (Mini App). Требует UX-дизайна.
+**Depends on:** Phase 4 (decay), Phase 5 (blocks)
 
 ---
 
-## Phase 5.6: Proactive Call Mode (идея, требует дизайна)
+## Phase 7: Proactivity 2.0 — Research Only (3-5 дней)
 
-**Goal:** Бот понимает контекст звонка и связывает заметки с событием из календаря.
+- [ ] Agent action catalog
+- [ ] Prototype: Google Calendar, Telegram reminders
+- [ ] Architecture: tool-calling pipeline with approval
 
-### Сценарий
-- У юзера стоит звонок в Google Calendar
-- Во время звонка юзер пишет заметки в бота
-- Бот: определяет что сейчас идёт звонок → связывает заметки с событием
-- После звонка: забирает конспект (Google Meet transcript / Otter.ai)
-- Дополняет смысл заметок контекстом из конспекта
-
-### Что нужно
-- [ ] Google Calendar API интеграция (OAuth2)
-- [ ] Детект "сейчас идёт событие" по времени + участники
-- [ ] Линковка заметок с calendar event_id
-- [ ] Post-call: fetch transcript, enrich session notes
-- [ ] Архитектура: event-driven (webhook от Calendar push notifications)
-
-### Зависимости
-- Phase 5.5 (Session Mode — сессия как концепт)
-- Google Calendar API доступ
-- Transcript API (Google Meet / Otter.ai / Fireflies.ai)
-
-**Depends on:** Phase 5.5, Phase 6 (Proactivity 2.0). Research only.
+**Depends on:** Phase 6, user base 100+
 
 ---
 
-## Phase 5.7: Daily Digest & Chat History (идея, требует дизайна)
+## Идеи (не в плане, требуют дизайна)
 
-**Goal:** Показать юзеру итоги дня: что он отправил, что ушло в заметки, что нет. Интерактивная «лента дня» с метриками.
+### Phase 5.5 — Session Mode
+Серия коротких заметок во время рабочей сессии → один конспект.
+`/session start/end`, автодетект, суммаризация.
 
-### Сценарий
-- Юзер вечером нажимает `/day` (или cron-сообщение в 21:00)
-- Бот показывает дайджест: 12 сообщений, 3 голосовых (4м 32с), 8 → закладки, 4 → пропущены
-- В Mini App: полная история диалога за день с пометками «сохранено ✅» / «не сохранено»
-- Юзер может кликнуть на несохранённое → сделать закладку пост-фактум
+### Phase 5.6 — Proactive Call Mode
+Google Calendar API → детект звонка → связать заметки с событием.
+Post-call transcript enrichment.
 
-### Механика
-- [ ] `chat_messages` таблица — все сообщения в боте (текст, тип, timestamp, bookmark_id|null)
-- [ ] Bot middleware: логировать каждое входящее сообщение (не только сохранённые)
-- [ ] `/day` команда — краткая статистика в Telegram
-- [ ] Mini App: `/history` страница — лента сообщений за день/неделю
-- [ ] Маркер «сохранено» — сообщения с bookmark_id подсвечены
-
-### Метрики дня
-- Всего сообщений / голосовых / текстовых / медиа
-- Сохранено в закладки / пропущено
-- Суммарная длительность голосовых
-- Топ-категории сохранённого
-
-### Открытые вопросы
-- [ ] Хранить полный текст или только metadata? (privacy vs. полнота)
-- [ ] TTL хранения: 7 дней? 30 дней? настраиваемый?
-- [ ] Связь с Session Mode (5.5) — сессии как группировка внутри дня?
-
-**Depends on:** Phase 5 (Mini App для визуализации). Бот-часть (`/day`) можно раньше.
+### Phase 5.7 — Daily Digest & Chat History
+`/day` — статистика дня. Mini App: история с пометками "сохранено".
+Post-factum сохранение несохранённых.
 
 ---
 
-## Deploy (3-5 days)
+## Phase L: Программа обучения (параллельно, после R2)
 
-**Goal:** Вывести бота в продакшен. Доступен 24/7 без локальной машины.
+**Цель:** Обучить владельца проекта основам разработки на живом примере BookmarkBrain.
 
-### Инфраструктура
-- [ ] VPS/cloud выбор (Hetzner / Timeweb / Selectel / Railway)
-- [ ] Docker Compose production config (postgres, redis, backend, worker, bot)
-- [ ] Nginx reverse proxy + SSL (Let's Encrypt)
-- [ ] Environment management (.env.production, secrets)
+**Формат:** Модули по темам, каждый на примере реального кода проекта. Не абстрактные туториалы — а "вот наш файл, вот что каждая строчка делает".
 
-### CI/CD
-- [ ] GitHub Actions: lint + test on PR
-- [ ] Auto-deploy on merge to main (SSH / Docker push)
-- [ ] Health check monitoring (UptimeRobot / Healthchecks.io)
+### Модули
 
-### Data
-- [ ] Postgres backup strategy (pg_dump cron → S3/local)
-- [ ] Redis persistence config (AOF)
-- [ ] Migration strategy (Alembic on deploy)
+#### L1. Git и командная работа
+- Что такое коммит, ветка, PR — на примере наших PR (#1, #2, #3)
+- Как читать `git log`, `git diff`
+- Когда создавать ветку, когда можно в main
 
-### Observability
-- [ ] Structured logging (JSON) → file rotation
+#### L2. Docker и деплой
+- Что такое контейнер — на примере нашего `docker-compose.prod.yml`
+- Что делает каждый сервис (postgres, redis, backend, worker, bot)
+- Как работает `deploy.sh`, что значит "здоровый контейнер"
+
+#### L3. API и бэкенд
+- Что такое REST API — на примере нашего `/api/v1/bookmarks/`
+- Как работает авторизация (JWT, bot secret)
+- Как добавить новый endpoint (практическое задание)
+
+#### L4. База данных
+- Что такое миграция — на примере Alembic
+- Как устроена наша схема (bookmarks, tags, users)
+- SQL basics: SELECT, INSERT, JOIN — на примере наших данных
+
+#### L5. AI-интеграции
+- Как работает классификация (GigaChat API)
+- Что такое embedding и semantic search
+- Как работает STT (Yandex SpeechKit)
+
+#### L6. Безопасность
+- Что такое SQL-инъекция, XSS, IDOR — на примере наших фиксов из Phase 0
+- Почему секреты в .env а не в коде
+- Как проверять безопасность (чеклист из `~/.claude/rules/common/security.md` + хук `enforce-review.py`)
+
+#### L7. Тестирование
+- Что такое unit test — на примере наших `test_stt_providers.py`
+- Зачем моки (mock) — на примере тестов бота
+- Как запускать тесты, читать результаты
+
+**Формат доставки:** `docs/learning/` — по одному .md файлу на модуль. Практические задания в конце каждого.
+
+**Depends on:** Phase R2 (спецификация даёт контекст для обучения)
+
+---
+
+## Deploy — Оставшиеся задачи
+
+- [ ] GitHub Secrets для CD (VPS_HOST, VPS_USER, VPS_SSH_KEY)
+- [ ] Сменить пароль VPS (был в чате)
+- [ ] Postgres backup cron (pg_dump → локально)
 - [ ] Error alerting (Telegram notification on crash)
-- [ ] Basic metrics (bookmarks/day, AI latency)
-
-**Depends on:** Phase 3 (Multi-format Input — продукт должен быть полноценным перед деплоем)
+- [ ] Обновить .env на VPS (Yandex STT ключи)
 
 ---
 
-## Phase 6: Proactivity 2.0 — Research Only (3-5 days)
+## Бэклог (улучшения окружения и процесса)
 
-**Goal:** Explore feasibility. Do NOT build full agent.
+Не привязано к фазам. Брать когда заболит или появится время.
 
-- [ ] Define agent action catalog (survey users)
-- [ ] Prototype: Google Calendar event from action bookmark
-- [ ] Prototype: scheduled Telegram reminder from bookmark deadline
-- [ ] Architecture: action pipeline with approval workflow
+### Окружение разработчика
+- [ ] **Makefile** — короткие команды: `make test` / `make deploy` / `make logs` / `make migrate` (вместо длинных ssh+docker)
+- [ ] **scripts/seed-dev-db.py** — засеивает локальную БД 10-20 фейковыми закладками для тестов
+- [ ] **scripts/check-env-sync.sh** — сверяет что все vars из `bot/config.py` и `backend/app/config.py` есть в `.env.production.example`
+- [ ] **VS Code launch.json** — конфиги для дебага бота / бэкенда / воркера (если используется VS Code)
+- [ ] **direnv** — авто-подгрузка `.env` при cd в проект (опционально)
+- [ ] **Sentry / error tracking** — когда появятся реальные юзеры
+- [ ] **pre-commit framework** (black, ruff, mypy) — если pytest в CI станет недостаточно
 
-**Depends on:** Phase 5, significant user base (100+ active users)
+### Хуки (после реализации зависимостей)
+- [ ] **check-spec-staleness.py** — варнит если 10+ коммитов или 14+ дней без обновления `SPEC.md`/`ARCHITECTURE.md` (после Phase R2)
+- [ ] **check-adr.py** — напоминает создать ADR в `docs/decisions/` при добавлении новой зависимости или AI-провайдера (после Phase R2)
+- [ ] **check-env-sync.py** — при изменении `config.py` напоминает обновить `.env.production.example` и `memory/deployment.md`
+- [ ] **check-migration.py** — варнит если в коммите новая миграция в `alembic/versions/`, но `alembic upgrade head` локально не запускался
 
----
+### Правила (.claude/rules/bookmark-brain.md, добавить в Phase R0)
+- [ ] **env-var lifecycle** — новая переменная одновременно в `config.py` + `.env.production.example` + `memory/deployment.md` + (если на VPS) задача в Deploy секции
+- [ ] **migration safety** — `alembic revision` → ручная проверка SQL → тест rollback (`alembic downgrade -1; alembic upgrade head`) перед коммитом
+- [ ] **API contract** — изменение `/api/v1/` endpoint → проверить bot/handlers что не сломается
+- [ ] **provider fallback** — новый AI-провайдер только через `BaseClassifier`/`BaseEmbeddingService`, не привязываться к конкретному
 
-## Shared Components (build once, use everywhere)
-
-| Component | Built in | Used by |
-|-----------|----------|---------|
-| `NotificationService` | Phase 0C | 1, 3, 5 |
-| `SimilarityService` | Phase 5A | 4 (routing), 5 (connections) |
-| `UserSettingsManager` | Phase 1 | 2, 5, 6 |
-| `MediaDownloader` | Phase 3A | 3 (all formats) |
-| `SchedulerService` | Phase 5C | 5, 6 |
-
----
-
-## New External Dependencies
-
-| Service | Phase | Cost | Purpose |
-|---------|-------|------|---------|
-| OpenAI Whisper API | 3 | $0.006/min | STT |
-| pymupdf | 3 | Free (AGPL) | PDF extraction |
-| python-docx | 3 | Free | DOCX extraction |
-| Tesseract | 3 | Free | OCR |
-| slowapi | 0 | Free | Rate limiting |
+### Сделано из бэклога
+- [x] **check-secrets.py хук** — блокирует `git commit` если в staged файлах найдены реальные API-ключи (2026-05-08)
 
 ---
 
-## New API Endpoints Summary
+## Известные решения (для контекста)
 
-| Endpoint | Phase |
-|----------|-------|
-| `PATCH /api/v1/users/settings` | 1 |
-| `POST /api/v1/bookmarks/{id}/feedback` | 2 |
-| `GET/POST/PUT/DELETE /api/v1/blocks` | 4 |
-| `POST /api/v1/blocks/from-template` | 4 |
-| `POST /api/v1/blocks/suggest` | 4 (future) |
-| `GET /api/v1/bookmarks/{id}/related` | 5 |
-| `GET /api/v1/digest/preview` | 5 |
-| `POST/GET/DELETE /api/v1/integrations` | 6 |
-
----
-
-## New Data Model Changes
-
-| Table/Column | Phase |
-|-------------|-------|
-| `search_traces` table | 0D |
-| `classification_feedback` table | 0D |
-| `Bookmark.transcription` column | 3 |
-| `Bookmark.media_duration` column | 3 |
-| `smart_blocks` table | 4 |
-| `Bookmark.block_id` FK | 4 |
-| `bookmark_connections` table | 5 |
-| `Bookmark.last_surfaced_at` column | 5 |
-| `Bookmark.importance_score` column | 5 |
-
----
-
-## Scalability Notes
-
-- **1K bookmarks:** All phases fine
-- **10K:** Search CTE needs ANN pre-filter; reprocess-all needs batching
-- **100K (multi-user):** Connection pool tuning; random() → TABLESAMPLE; consider partitioning
-- **Worker:** Pool httpx connections at worker level, not per-job
+- GigaChat SDK не работает — используем httpx напрямую с OAuth
+- GigaChat embeddings 402 на бесплатном тарифе — используем Voyage AI
+- Groq/OpenAI заблокированы из РФ — используем Yandex SpeechKit
+- arq CLI ломается на Python 3.14 — используем run_worker.py с asyncio.run()
+- Bot Settings: extra="ignore" чтобы не падать от лишних переменных
+- Backend Settings: extra="ignore" (добавлено для Yandex переменных)
+- Yandex Cloud: нужен платёжный аккаунт + clouds.member на уровне облака
