@@ -47,9 +47,15 @@ async def _delete_after(msg: Message, delay: float = 10) -> None:
 async def ephemeral_error(
     message: Message, text: str, delay: float = 10,
 ) -> None:
-    """Отправляет сообщение об ошибке, которое автоудалится через delay секунд."""
+    """Отправляет сообщение об ошибке.
+
+    Имя сохранено для совместимости со всеми вызовами в handlers.
+    `delay` параметр игнорируется — ошибки больше НЕ удаляются автоматически.
+    Юзеру нужно видеть, что пошло не так, и удалять самому когда захочет.
+    Если нужно эфемерное предупреждение без ошибки — используй `_delete_after`
+    напрямую с обычным `message.reply`.
+    """
     try:
-        error_msg = await message.reply(text, parse_mode=None)
-        asyncio.create_task(_delete_after(error_msg, delay))
+        await message.reply(text, parse_mode=None)
     except Exception as e:
         logger.debug("ephemeral_error failed: %s", e)

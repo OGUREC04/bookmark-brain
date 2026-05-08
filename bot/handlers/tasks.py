@@ -1350,7 +1350,17 @@ async def msg_nl_edit_on_reply(message: Message, api, store=None):
             )
         except TelegramBadRequest:
             pass
-        await _ephemeral(message, "Не смог разобрать фразу. Попробуй проще.", delay=8)
+        # Видимая обратная связь: реакция 👎 на reply юзера + объяснение
+        from bot.utils import safe_react
+        await safe_react(message, "\U0001f44e")
+        await message.reply(
+            "Не понял команду. Примеры:\n"
+            "• «закрой 1, 3» — отметить пункты\n"
+            "• «добавь купить хлеб» — новый пункт\n"
+            "• «удали 2» — убрать пункт\n"
+            "• «удали список» — удалить весь список",
+            parse_mode=None,
+        )
         return
 
     # Удаляем reply юзера ДО отправки свежего списка.
@@ -1381,8 +1391,13 @@ EPHEMERAL_DELAY = 8.0
 
 
 async def _ephemeral(message: Message, text: str, delay: float = EPHEMERAL_DELAY) -> None:
-    sent = await message.answer(text, parse_mode=None)
-    asyncio.create_task(_delete_after(sent, delay))
+    """Раньше автоудаляло сообщение через `delay` секунд. Теперь — НЕТ.
+
+    Юзеру важно видеть что бот ответил, даже если это «не понял». Предыдущая
+    эфемерность создавала впечатление что бот молчит. Имя и сигнатура
+    сохранены для обратной совместимости со всеми вызовами в tasks.py.
+    """
+    await message.answer(text, parse_mode=None)
 
 
 async def send_and_autodelete(message: Message, text: str, delay: float = EPHEMERAL_DELAY) -> None:
@@ -1411,11 +1426,10 @@ async def cmd_todo(message: Message, api):
 
     text = (message.text or "").split(maxsplit=1)
     if len(text) < 2 or not text[1].strip():
-        asyncio.create_task(_ephemeral(
-            message,
+        await message.answer(
             "Напиши так: /todo купить молоко, позвонить маме, записаться к зубному",
-        ))
-        asyncio.create_task(_delete_after(message, EPHEMERAL_DELAY))
+            parse_mode=None,
+        )
         return
 
     content = text[1].strip()
@@ -1463,34 +1477,5 @@ async def cmd_todo(message: Message, api):
 
 
 # ───────────────────── /help command ─────────────────────
-
-
-HELP_TEXT = (
-    "<b>Команды:</b>\n\n"
-    "✏️ <b>Создание</b>\n"
-    "  Напиши или перешли сообщение — сохраню\n"
-    "  /todo <i>пункты</i> — создать список задач\n\n"
-    "🔎 <b>Просмотр</b>\n"
-    "  /list — все закладки\n"
-    "  /search <i>запрос</i> — поиск\n"
-    "  /random — случайная\n"
-    "  /stats — статистика\n\n"
-    "✏️ <b>Редактирование списка</b>\n"
-    "  Ответь на сообщение со списком фразой:\n"
-    "  — «добавь хлеб, молоко до пятницы»\n"
-    "  — «удали 2»\n"
-    "  — «3 до завтра»\n"
-    "  — «к 1: нужен бездрожжевой»\n\n"
-    "⚙ <b>Прочее</b>\n"
-    "  /silent — тихий/обычный режим\n"
-    "  /reprocess — переобработать старые\n"
-    "  /clean — очистить чат от сообщений бота\n"
-    "  /help — эта справка"
-)
-
-
-@router.message(Command("help"))
-async def cmd_help(message: Message):
-    sent = await message.answer(HELP_TEXT, parse_mode="HTML")
-    asyncio.create_task(_delete_after(message, 1.0))
-    asyncio.create_task(_delete_after(sent, 20.0))
+# Перенесён в bot/handlers/start.py:cmd_help — там полный, без авто-удаления.
+# Старый handler здесь убит чтобы не перехватывать /help раньше нового.

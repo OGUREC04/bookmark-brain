@@ -148,6 +148,45 @@ async def _send_ephemeral(chat_id: int, text: str, delay: float = 10) -> None:
         logger.debug(f"Failed to send ephemeral: {e}")
 
 
+async def _maybe_send_first_task_list_tip(session, user_id, chat_id: int) -> None:
+    """Phase 2: показать подсказку про reply-команды один раз на юзера.
+
+    Канонический текст подсказки — `bot/onboarding.py: TIP_FIRST_TASK_LIST`.
+    Здесь дубль из-за того, что worker и bot — разные процессы без общего
+    модуля. При правке текста — синхронизировать оба места.
+
+    Флаг хранится в `users.settings.onboarding_first_task_list` (плоский ключ
+    выбран потому что PATCH /users/me/settings делает shallow merge).
+    """
+    from app.models import User
+    user_result = await session.execute(select(User).where(User.id == user_id))
+    user = user_result.scalar_one_or_none()
+    if not user:
+        return
+
+    current_settings = dict(user.settings or {})
+    if current_settings.get("onboarding_first_task_list"):
+        return
+
+    tip_text = (
+        "💡 Это список задач — я распознал его автоматически.\n\n"
+        "Чтобы редактировать — отвечай (reply) на это сообщение:\n"
+        "• «закрой 1, 3» — отметить пункты выполненными\n"
+        "• «добавь купить хлеб» — новый пункт\n"
+        "• «удали 2» — убрать пункт\n"
+        "• «удали список» — убрать всё"
+    )
+
+    # Сначала фиксируем флаг — если flush упадёт, подсказка не уйдёт
+    # (иначе при ошибке БД пользователь получил бы её снова на следующий task_list)
+    current_settings["onboarding_first_task_list"] = True
+    user.settings = current_settings
+    await session.flush()
+
+    # flush прошёл — отправляем подсказку (постоянная, не ephemeral)
+    asyncio.create_task(_send_message(chat_id, tip_text))
+
+
 async def _store_general_dedup(
     chat_id: int, alert_msg_id: int,
     new_bid: str, old_bid: str,
@@ -362,9 +401,21 @@ async def process_bookmark_task(
                         except Exception:
                             pass
 
+                    # Чем выше похожесть, тем явнее текст:
+                    # >0.95 = почти дубликат, 0.85-0.95 = похоже
+                    similarity = dup.get("similarity") or 0.0
+                    if similarity >= 0.95:
+                        prefix = "⚠️ Уже есть почти такая же"
+                    else:
+                        prefix = "🔄 Похожая запись уже сохранялась"
+
                     alert_text = (
-                        f"🔄 Похоже на {dup_type}: <b>{dup_title}</b>{date_str}\n\n"
-                        f"↩️ <i>Ответь reply: открой / удали / обнови / сохрани как новую</i>"
+                        f"{prefix} {dup_type}: <b>{dup_title}</b>{date_str}\n\n"
+                        f"Что делаем с новой? Ответь reply на это сообщение:\n"
+                        f"• <b>открой</b> — покажу старую\n"
+                        f"• <b>удали</b> — удалю новую (старая останется)\n"
+                        f"• <b>обнови</b> — заменю старую новой\n"
+                        f"• <b>сохрани как новую</b> — оставлю обе"
                     )
 
                     if silent:
@@ -463,6 +514,15 @@ async def process_bookmark_task(
                             # Dedup — best-effort, никогда не ломаем основной flow
                             logger.debug(f"Dedup check failed for {bookmark_id}: {e}")
 
+                    # Phase 2 Onboarding: первая подсказка про reply-команды
+                    if task_list_msg_id is not None:
+                        try:
+                            await _maybe_send_first_task_list_tip(
+                                session, bookmark.user_id, chat_id,
+                            )
+                        except Exception as e:
+                            logger.debug(f"First task_list tip failed: {e}")
+
                 else:
                     # Fallback: новое сообщение (нет chat_id/message_id)
                     text = render_task_list_text(
@@ -519,10 +579,12 @@ async def process_bookmark_task(
             # Ошибка обработки
             if silent:
                 await _set_reaction(chat_id, message_id, "\U0001f44e")
-                asyncio.create_task(_send_ephemeral(
+                # Ошибка должна ОСТАВАТЬСЯ в чате — юзер сам решит когда убрать.
+                # Отправляем обычным сообщением без авто-удаления.
+                asyncio.create_task(_send_message(
                     chat_id,
-                    f"⚠️ Не удалось обработать. Попробуй ещё раз или /help",
-                    delay=10,
+                    f"⚠️ Не удалось обработать. Попробуй ещё раз или /help\n"
+                    f"<i>{bookmark.ai_error[:200] if bookmark.ai_error else ''}</i>",
                 ))
             else:
                 elapsed = time.monotonic() - start_time
@@ -542,21 +604,9 @@ async def process_bookmark_task(
             and silent
             and not near_dup_handled
         ):
-            user_result = await session.execute(
-                select(User).where(User.id == bookmark.user_id)
-            )
-            user = user_result.scalar_one_or_none()
-            if user and user.bookmarks_count == 1 and not is_task_list:
-                asyncio.create_task(_send_ephemeral(
-                    chat_id,
-                    "🎉 Первая закладка сохранена!\n\n"
-                    "Попробуй:\n"
-                    "/list — посмотреть все закладки\n"
-                    "/search — найти по смыслу\n"
-                    "/todo — создать список задач\n\n"
-                    "Просто пересылай сообщения или скидывай ссылки — я всё сохраню.",
-                    delay=20,
-                ))
+            # Phase 2 Onboarding: первая подсказка теперь идёт через bot/onboarding.py
+            # после успешного create_bookmark — не дублируем здесь.
+            pass
 
     await embedding_service.close()
     logger.info(f"Task completed for bookmark {bookmark_id} in {duration:.1f}s")
