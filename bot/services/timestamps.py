@@ -18,6 +18,9 @@ _TIMESTAMP_INTERVAL_SEC = 30
 MIN_DURATION_FOR_TIMESTAMPS = 60  # seconds
 
 
+_EXISTING_TIMESTAMP_RE = __import__("re").compile(r"\[\d{2}:\d{2}\]")
+
+
 def add_timestamps(text: str, duration: float | None) -> str:
     """Add approximate [mm:ss] timestamps to long transcription.
 
@@ -29,6 +32,10 @@ def add_timestamps(text: str, duration: float | None) -> str:
         Text with [mm:ss] markers, or original text if too short
     """
     if not text or not duration or duration < MIN_DURATION_FOR_TIMESTAMPS:
+        return text
+
+    # Если в тексте уже есть таймкоды (от Yandex Async реальные) — не дублируем.
+    if _EXISTING_TIMESTAMP_RE.search(text):
         return text
 
     words = text.split()

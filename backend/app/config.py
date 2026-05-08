@@ -29,7 +29,9 @@ class Settings(BaseSettings):
 
     # STT (Speech-to-Text)
     WHISPER_API_KEY: str = ""
-    STT_PROVIDER: str = "openai"  # "openai" | "groq"
+    STT_PROVIDER: str = "openai"  # "openai" | "groq" | "yandex"
+    YANDEX_CLOUD_API_KEY: str = ""
+    YANDEX_CLOUD_FOLDER_ID: str = ""
 
     # App
     SECRET_KEY: str  # Required — no default, must be set in .env
@@ -41,7 +43,7 @@ class Settings(BaseSettings):
     # GigaChat TLS — path to CA bundle for Sber certificates
     GIGACHAT_CA_BUNDLE: str = ""
 
-    model_config = {"env_file": str(_ENV_FILE), "env_file_encoding": "utf-8"}
+    model_config = {"env_file": str(_ENV_FILE), "env_file_encoding": "utf-8", "extra": "ignore"}
 
 
 @lru_cache
