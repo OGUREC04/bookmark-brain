@@ -26,7 +26,6 @@ import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from enum import Enum
-from typing import Optional
 from zoneinfo import ZoneInfo
 
 import dateparser
@@ -42,7 +41,7 @@ class ParseStatus(str, Enum):
 
 @dataclass(frozen=True)
 class ParseResult:
-    dt: Optional[datetime]
+    dt: datetime | None
     status: ParseStatus
 
 
@@ -75,11 +74,16 @@ _TIME_HINT_RE = re.compile(
     re.IGNORECASE,
 )
 
-# Маркеры интервала («через N часов/минут») — там время суток не нужно
+# Маркеры интервала («через N часов / дней / недель») — там время суток не нужно
 _INTERVAL_HINT_RE = re.compile(
-    r"\bчерез\s+\d*\s*(?:часов|часа|час|минут|минуту|мин|секунд)\b",
+    r"\bчерез\s+\d*\s*(?:часов|часа|час|минут|минуту|мин|секунд|"
+    r"дней|дня|день|сутки|недель|недели|неделю|месяцев|месяца|месяц)\b",
     re.IGNORECASE,
 )
+
+# Точное совпадение всей фразы (с опц. пунктуацией) с fallback-маркером.
+# Чтобы «в 9 ок» не классифицировалось как fallback.
+_FALLBACK_PATTERNS_FULL_RE: re.Pattern | None = None  # лениво строится
 
 
 def parse(
@@ -114,16 +118,13 @@ def parse(
     if not text_normalized or len(text_normalized) < 2:
         return ParseResult(dt=None, status=ParseStatus.UNPARSEABLE)
 
-    # Размытое — fallback default
-    if any(phrase == text_normalized or phrase in text_normalized for phrase in _FALLBACK_PATTERNS):
-        # «через час» содержит «час» — но не fallback. Проверим что нет dateparser-парсимого.
-        # Простой тест: «не знаю» / «потом» — это fallback, «через час» — нет.
-        # Делаем строже: точное совпадение или короткое включение.
-        if _is_fallback_phrase(text_normalized):
-            return ParseResult(
-                dt=now + timedelta(hours=_FALLBACK_DEFAULT_HOURS),
-                status=ParseStatus.FALLBACK_DEFAULT,
-            )
+    # Размытое — fallback default. Точное совпадение всей фразы (с опц. пунктуацией),
+    # чтобы «в 9 ок» НЕ классифицировалось как fallback.
+    if _is_fallback_phrase(text_normalized):
+        return ParseResult(
+            dt=now + timedelta(hours=_FALLBACK_DEFAULT_HOURS),
+            status=ParseStatus.FALLBACK_DEFAULT,
+        )
 
     # Базовое время для dateparser — в timezone юзера
     now_in_user_tz = now.astimezone(user_zone)
@@ -201,14 +202,19 @@ def _preprocess_short_time(text: str) -> str:
 
 
 def _is_fallback_phrase(text: str) -> bool:
-    """Точная проверка — это fallback фраза или нет.
+    """Полная фраза совпадает с fallback-маркером (с опц. пунктуацией вокруг).
 
-    `text` уже lowercase + stripped.
+    Match: «не знаю», «  потом ?», «как-нибудь.», «ок».
+    No match: «в 9 ок», «приди не знаю когда», «потом увидимся».
+
+    `text` ожидается lowercase + stripped.
     """
-    # Точное совпадение
-    if text in _FALLBACK_PATTERNS:
-        return True
-    # Короткие фразы (≤ 15 символов) и содержат fallback-маркер
-    if len(text) <= 15:
-        return any(phrase in text for phrase in _FALLBACK_PATTERNS)
-    return False
+    global _FALLBACK_PATTERNS_FULL_RE
+    if _FALLBACK_PATTERNS_FULL_RE is None:
+        # Сортируем по длине убыванием чтобы «как-нибудь» матчилось перед «как»
+        sorted_patterns = sorted(_FALLBACK_PATTERNS, key=len, reverse=True)
+        joined = "|".join(re.escape(p) for p in sorted_patterns)
+        _FALLBACK_PATTERNS_FULL_RE = re.compile(
+            rf"^\s*(?:{joined})\s*[!?.,]*\s*$", re.IGNORECASE
+        )
+    return bool(_FALLBACK_PATTERNS_FULL_RE.match(text))

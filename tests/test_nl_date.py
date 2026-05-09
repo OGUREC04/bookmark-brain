@@ -14,7 +14,7 @@ TDD: тесты сначала (RED), потом реализация (GREEN).
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -89,6 +89,20 @@ class TestRelativeInterval:
         assert result.status == ParseStatus.OK
         # «через 3 дня» без часа — но это интервал, не календарный, время сохраняется (12:00)
         assert result.dt == _expect_msk(2026, 5, 16, 12, 0).astimezone(timezone.utc)
+
+    def test_cherez_nedelyu(self) -> None:
+        result = parse("через неделю", user_tz="Europe/Moscow", now=NOW_UTC)
+        assert result.status == ParseStatus.OK
+
+
+# HIGH-2 regression — интервал «через N дней» при now.hour=0 не должен возвращать NEEDS_TIME.
+def test_cherez_3_dnya_at_midnight() -> None:
+    """Если сейчас полночь, «через 3 дня» без часа — это всё равно интервал, OK."""
+    midnight_msk = datetime(2026, 5, 13, 0, 0, tzinfo=ZoneInfo("Europe/Moscow"))
+    midnight_utc = midnight_msk.astimezone(timezone.utc)
+    with freeze_time(midnight_utc):
+        result = parse("через 3 дня", user_tz="Europe/Moscow", now=midnight_utc)
+    assert result.status == ParseStatus.OK
 
 
 # ──────────────────────────────────────────────────
@@ -168,13 +182,29 @@ class TestFallbackDefault:
     def test_fallback_phrases(self, text: str) -> None:
         result = parse(text, user_tz="Europe/Moscow", now=NOW_UTC)
         assert result.status == ParseStatus.FALLBACK_DEFAULT
-        # +24h от now
-        expected = NOW_UTC.replace(microsecond=0).astimezone(timezone.utc)
-        # +24h
-        from datetime import timedelta
+        assert result.dt == NOW_UTC + timedelta(hours=24)
 
-        assert result.dt is not None
-        assert abs((result.dt - (expected + timedelta(hours=24))).total_seconds()) < 60
+    @pytest.mark.parametrize("text", ["потом!", "  ок ", "не знаю.", "позже?"])
+    def test_fallback_with_punctuation(self, text: str) -> None:
+        """С пунктуацией / пробелами — всё равно fallback."""
+        result = parse(text, user_tz="Europe/Moscow", now=NOW_UTC)
+        assert result.status == ParseStatus.FALLBACK_DEFAULT
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "в 9 ок",                    # «ок» внутри валидного времени — НЕ fallback
+            "приди не знаю когда",       # «не знаю» внутри длинной фразы — НЕ fallback
+            "потом увидимся",            # «потом» как часть фразы — НЕ fallback
+            "позже не приходи",          # «позже» внутри — НЕ fallback
+        ],
+    )
+    def test_fallback_marker_inside_phrase_is_not_fallback(self, text: str) -> None:
+        """HIGH-1 regression — «ок» / «потом» / «не знаю» как часть других фраз
+        не должны попадать в FALLBACK_DEFAULT.
+        """
+        result = parse(text, user_tz="Europe/Moscow", now=NOW_UTC)
+        assert result.status != ParseStatus.FALLBACK_DEFAULT
 
 
 # ──────────────────────────────────────────────────
