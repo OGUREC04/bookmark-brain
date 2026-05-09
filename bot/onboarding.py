@@ -72,7 +72,8 @@ async def _load_flags(api: BackendClient, token: str, telegram_id: int) -> dict:
         return {key: False for key in ALL_KEYS} | {"_expires_at": 0}
 
     settings = user.get("settings") or {}
-    flags = {key: bool(settings.get(key, False)) for key in ALL_KEYS}
+    # dict хранит mixed-type значения: bool для флагов + float для _expires_at
+    flags: dict[str, bool | float] = {key: bool(settings.get(key, False)) for key in ALL_KEYS}
     flags["_expires_at"] = time.monotonic() + _CACHE_TTL
     _flag_cache[telegram_id] = flags
     _evict_if_oversized()

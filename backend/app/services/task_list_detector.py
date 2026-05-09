@@ -161,9 +161,19 @@ def _looks_like_article_with_numbering(text: str, tasks: list[str]) -> bool:
     if not tasks:
         return False
 
-    # 1. Длинный пункт = это абзац статьи, не задача
+    # 1a. Длинный пункт в распарсенных tasks = это абзац статьи
     if any(len(t) > MAX_TASK_LENGTH for t in tasks):
         return True
+
+    # 1b. Длинная строка между маркерами в исходном тексте — могла быть
+    # отфильтрована в _parse_bulleted (>300 chars), но это всё равно статья.
+    # Без этой проверки очень длинный нумерованный абзац + короткий пункт
+    # обходили article-filter.
+    for line in text.split("\n"):
+        # снимаем bullet-маркер в начале строки
+        stripped = BULLET_RE.sub("", line).strip()
+        if len(stripped) > MAX_TASK_LENGTH:
+            return True
 
     # 2. 2+ пункта с рекламными/контактными маркерами
     if _count_ad_signal_items(tasks) >= 2:
