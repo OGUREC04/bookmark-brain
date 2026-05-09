@@ -17,8 +17,8 @@ import logging
 from datetime import datetime, timezone
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select, update
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import get_current_user
@@ -138,14 +138,9 @@ async def cancel_reminder(
 async def list_upcoming(
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
-    limit: int = 50,
+    limit: int = Query(default=50, ge=1, le=200),
 ):
     """Список pending напоминаний юзера, отсортирован по fire_at."""
-    if limit < 1 or limit > 200:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="limit must be 1..200"
-        )
-
     stmt = (
         select(ScheduledMessage)
         .where(

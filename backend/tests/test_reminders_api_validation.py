@@ -152,15 +152,8 @@ class TestUpdateReminderValidation:
 
 
 class TestListUpcoming:
-    async def test_limit_zero_rejected(self, user, session):
-        with pytest.raises(HTTPException) as exc:
-            await list_upcoming(user, session, limit=0)
-        assert exc.value.status_code == 400
-
-    async def test_limit_too_large_rejected(self, user, session):
-        with pytest.raises(HTTPException) as exc:
-            await list_upcoming(user, session, limit=500)
-        assert exc.value.status_code == 400
+    """`limit` валидация теперь через FastAPI Query(ge=1, le=200) — 422 автоматом.
+    Здесь тестируем только happy-path вызов функции."""
 
     async def test_valid_limit_calls_db(self, user, session):
         result = MagicMock()

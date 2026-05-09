@@ -227,14 +227,14 @@ class BookmarkProcessor:
 
         # Phase 2.5: Reminder intent detection.
         # Запускаем после успешной классификации — анализируем raw_text + summary.
-        # Если intent найден — флаг попадёт в structured_data, бот покажет
-        # кнопку «🔔 Создать напоминание?» (логика отображения — T8, патч в bot/).
+        # Флаг всегда переписывается (включая False), чтобы при reprocess'e
+        # старое значение не залипало.
         intent_text = " ".join(filter(None, [bookmark.raw_text, bookmark.summary]))
         intent = detect_reminder_intent(intent_text)
+        structured = bookmark.structured_data or {}
+        structured["reminder_intent"] = intent.has_intent
+        bookmark.structured_data = structured
         if intent.has_intent:
-            structured = bookmark.structured_data or {}
-            structured["reminder_intent"] = True
-            bookmark.structured_data = structured
             logger.info(f"Reminder intent detected for bookmark {bookmark_id}")
 
         await self.session.flush()

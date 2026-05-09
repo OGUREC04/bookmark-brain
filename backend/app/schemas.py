@@ -38,6 +38,12 @@ class UserResponse(BaseModel):
     settings: dict | None = None  # silent_mode, onboarding_*, language, …
 
 
+class TimezoneUpdate(BaseModel):
+    """Тело PATCH /api/v1/users/me/timezone."""
+
+    timezone: str = Field(min_length=1, max_length=64)
+
+
 # ──────────────────── Tag ────────────────────
 
 

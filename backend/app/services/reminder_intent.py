@@ -53,7 +53,7 @@ _PREPOSITION_RE = re.compile(
     re.IGNORECASE,
 )
 
-# Явные даты / относительные интервалы
+# Явные даты / относительные интервалы — самодостаточные (без глагола ОК)
 _DATE_RE = re.compile(
     r"\b("
     # Относительные
@@ -65,10 +65,15 @@ _DATE_RE = re.compile(
     # «N мая» / «N июня» и т.д.
     r"\d{1,2}\s+(?:января|февраля|марта|апреля|мая|июня|июля|августа|сентября|октября|ноября|декабря)|"
     # Праздники / выходные
-    r"на\s+праздник(?:ах|и)?|на\s+выходн(?:ых|ые)|"
-    # Время суток
-    r"утром|вечером|ночью|днём|днем"
+    r"на\s+праздник(?:ах|и)?|на\s+выходн(?:ых|ые)"
     r")\b",
+    re.IGNORECASE,
+)
+
+# Время суток — слабый сигнал, требует глагола.
+# Без этого «я читал утром» → has_intent=True (ложное срабатывание).
+_TIME_OF_DAY_RE = re.compile(
+    r"\b(?:утром|вечером|ночью|днём|днем)\b",
     re.IGNORECASE,
 )
 
@@ -99,12 +104,12 @@ def detect_reminder_intent(text: str) -> ReminderIntent:
     has_weak_verb = bool(_WEAK_VERB_RE.search(text))
     has_word_date = bool(_DATE_RE.search(text))
     has_numeric_date = bool(_NUMERIC_DATE_RE.search(text))
-    has_date = has_word_date or has_numeric_date
+    has_time_of_day = bool(_TIME_OF_DAY_RE.search(text))
     has_preposition = bool(_PREPOSITION_RE.search(text))
 
     if has_strong_verb:
         return ReminderIntent(has_intent=True)
-    if has_weak_verb and (has_date or has_preposition):
+    if has_weak_verb and (has_word_date or has_numeric_date or has_time_of_day or has_preposition):
         return ReminderIntent(has_intent=True)
     # Word-формы дат («15 мая», «завтра», «в пятницу») — однозначно дата.
     if has_word_date:

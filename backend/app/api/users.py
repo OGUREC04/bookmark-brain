@@ -2,7 +2,6 @@ from datetime import datetime, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, Field
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -17,6 +16,7 @@ from app.database import get_session
 from app.models import User
 from app.schemas import (
     TelegramAuthData,
+    TimezoneUpdate,
     TokenResponse,
     UserCreate,
     UserResponse,
@@ -116,12 +116,6 @@ async def update_settings(
     )
     current_user.settings = merged
     return current_user
-
-
-class TimezoneUpdate(BaseModel):
-    """Body для PATCH /users/me/timezone."""
-
-    timezone: str = Field(min_length=1, max_length=64)
 
 
 @router.patch("/users/me/timezone", response_model=UserResponse)

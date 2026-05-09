@@ -103,6 +103,35 @@ def test_long_text_still_detects() -> None:
     assert result.has_intent is True
 
 
+@pytest.mark.parametrize(
+    "text",
+    [
+        # HIGH-2 regression: «утром / вечером» — слабый сигнал, без глагола не intent
+        "Я читал статью утром",
+        "Гулял вечером",
+        "Был днём в офисе",
+    ],
+)
+def test_time_of_day_alone_is_not_intent(text: str) -> None:
+    """Время суток без глагола намерения — не должно тригериться (HIGH-2)."""
+    result = detect_reminder_intent(text)
+    assert result.has_intent is False, f"Should NOT detect intent in: {text!r}"
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        # Время суток + слабый глагол — это intent
+        "Купить молоко вечером",
+        "Позвонить маме утром",
+    ],
+)
+def test_time_of_day_with_verb_is_intent(text: str) -> None:
+    """Время суток + глагол → intent."""
+    result = detect_reminder_intent(text)
+    assert result.has_intent is True, f"Should detect intent in: {text!r}"
+
+
 def test_no_intent_in_pure_quote() -> None:
     """«надо» в цитате описательно — не должно быть intent.
 
