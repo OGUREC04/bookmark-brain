@@ -66,12 +66,7 @@ MIN_AUTO_SAVE_LENGTH = 15
 
 async def _ensure_user(message_or_callback, api) -> str | None:
     """Получить JWT-токен юзера, создав его при необходимости."""
-    if isinstance(message_or_callback, CallbackQuery):
-        user = message_or_callback.from_user
-        answer = message_or_callback.answer
-    else:
-        user = message_or_callback.from_user
-        answer = message_or_callback.answer
+    user = message_or_callback.from_user
 
     tg_id = user.id
     cached = _user_tokens.get(tg_id)

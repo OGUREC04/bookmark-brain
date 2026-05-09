@@ -437,7 +437,6 @@ async def process_bookmark_task(
             except Exception as e:
                 logger.debug(f"General dedup check failed: {e}")
 
-        is_task_list = False
         if not near_dup_handled and bookmark and bookmark.ai_status in ("completed", "partial"):
             # Task list — специальный рендер с чекбоксами
             if (
@@ -445,7 +444,6 @@ async def process_bookmark_task(
                 and isinstance(bookmark.structured_data, dict)
                 and bookmark.structured_data.get("type") == "task_list"
             ):
-                is_task_list = True
                 from app.services.task_list_renderer import (
                     build_task_list_keyboard,
                     render_task_list_text,
@@ -681,8 +679,6 @@ async def retry_partial_embeddings(ctx: dict) -> None:
             break
 
         try:
-            from app.services.bookmark_processor import _build_embedding_text
-            from app.schemas import AIClassification
 
             # Rebuild embedding text from existing classification data
             text_parts = []
@@ -744,7 +740,6 @@ async def stale_list_nudge(ctx: dict) -> None:
     Ищет task_list'ы старше 24ч с done < total, отправляет nudge в Telegram.
     Не напоминает повторно (Redis nudged:{bookmark_id} TTL 7 дней).
     """
-    from datetime import datetime, timezone
     from sqlalchemy import and_, text
     from app.database import async_session
     from app.models import Bookmark, User
@@ -760,7 +755,7 @@ async def stale_list_nudge(ctx: dict) -> None:
             ).where(
                 and_(
                     Bookmark.ai_status.in_(["completed", "partial"]),
-                    Bookmark.is_archived == False,
+                    Bookmark.is_archived == False,  # noqa: E712 — SQL boolean comparison
                     Bookmark.structured_data.isnot(None),
                     text("bookmarks.structured_data->>'type' = 'task_list'"),
                     Bookmark.created_at < text(

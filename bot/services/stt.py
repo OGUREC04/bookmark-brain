@@ -118,10 +118,10 @@ class WhisperSTTService:
 
         except STTError:
             raise
-        except httpx.TimeoutException:
-            raise STTError("Whisper API timeout (120s)")
+        except httpx.TimeoutException as e:
+            raise STTError("Whisper API timeout (120s)") from e
         except httpx.HTTPError as e:
-            raise STTError(f"HTTP error during transcription: {e}")
+            raise STTError(f"HTTP error during transcription: {e}") from e
 
 
 class YandexSTTService:
@@ -201,11 +201,11 @@ class YandexSTTService:
             raise
         except json.JSONDecodeError as e:
             logger.error("Yandex STT invalid JSON: %s", e)
-            raise STTError("Yandex SpeechKit вернул некорректный ответ")
-        except httpx.TimeoutException:
-            raise STTError("Yandex SpeechKit timeout (120s)")
+            raise STTError("Yandex SpeechKit вернул некорректный ответ") from e
+        except httpx.TimeoutException as e:
+            raise STTError("Yandex SpeechKit timeout (120s)") from e
         except httpx.HTTPError as e:
-            raise STTError(f"HTTP error during transcription: {e}")
+            raise STTError(f"HTTP error during transcription: {e}") from e
 
 
 class YandexAsyncSTTService:
@@ -360,7 +360,7 @@ class YandexAsyncSTTService:
                     raise STTError("Yandex async API не вернул operation id")
                 return operation_id
         except httpx.HTTPError as e:
-            raise STTError(f"HTTP error starting async recognition: {e}")
+            raise STTError(f"HTTP error starting async recognition: {e}") from e
 
     async def _poll_until_done(self, operation_id: str) -> str:
         url = _YANDEX_OPERATION_URL.format(op_id=operation_id)
