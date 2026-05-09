@@ -25,7 +25,7 @@ jobs:
         run: pip install -r backend/requirements.txt
 
       - name: Install test dependencies
-        run: pip install pytest pytest-asyncio ruff mypy
+        run: pip install pytest pytest-asyncio ruff mypy freezegun
 
       - name: Lint (ruff) — bugs only on PR-touched files
         run: |
