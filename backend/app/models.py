@@ -37,6 +37,9 @@ class User(Base):
     telegram_photo_url: Mapped[str | None] = mapped_column(Text)
 
     settings: Mapped[dict] = mapped_column(JSONB, server_default="{}")
+    timezone: Mapped[str] = mapped_column(
+        String(64), server_default="Europe/Moscow", default="Europe/Moscow", nullable=False
+    )
     import_status: Mapped[str] = mapped_column(
         String(20), server_default="none", default="none"
     )
@@ -256,3 +259,53 @@ class BookmarkTag(Base):
         ForeignKey("tags.id", ondelete="CASCADE"),
         primary_key=True,
     )
+
+
+class ScheduledMessage(Base):
+    """Generic scheduler для напоминаний, дайджестов, surfacing.
+
+    Phase 2.5 использует только kind='reminder'.
+    Phase 6 расширит kind='digest', 'surfacing'.
+    """
+
+    __tablename__ = "scheduled_messages"
+    __table_args__ = (
+        # Partial index — cron сканирует только pending
+        Index(
+            "ix_scheduled_messages_pending_fire",
+            "fire_at",
+            postgresql_where="status = 'pending'",
+        ),
+        Index("ix_scheduled_messages_user_status", "user_id", "status"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid()
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    bookmark_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("bookmarks.id", ondelete="CASCADE"),
+        nullable=True,
+    )
+    # ENUM в БД — чтобы добавлять kinds в Phase 6 без миграции схемы (только ALTER TYPE)
+    kind: Mapped[str] = mapped_column(String(32), nullable=False)
+    fire_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    status: Mapped[str] = mapped_column(
+        String(32), nullable=False, server_default="pending", default="pending"
+    )
+    payload: Mapped[dict] = mapped_column(JSONB, server_default="{}", default=dict)
+    retry_count: Mapped[int] = mapped_column(Integer, server_default="0", default=0)
+    message_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
