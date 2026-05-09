@@ -154,11 +154,22 @@ async def maybe_show_tip(
             return False
         tg_id = message.from_user.id
 
+    # Race-protection: проверяем кэш СИНХРОННО до любого await.
+    # Если флаг уже True в кэше — выходим, не дёргая бэк.
+    cached = _flag_cache.get(tg_id)
+    if cached and time.monotonic() < cached.get("_expires_at", 0) and cached.get(key):
+        return False
+
+    # Slow-path: загружаем с бэка (await — окно гонки).
     if await is_flag_set(api, token, tg_id, key):
         return False
 
-    # Оптимистично занимаем флаг в кэше — следующий вызов увидит True и выйдет
+    # После await другой coroutine мог успеть claim'нуть слот — перепроверяем.
     cached = _flag_cache.get(tg_id)
+    if cached and cached.get(key):
+        return False
+
+    # Атомарный claim в кэше — следующий вызов увидит True и выйдет на fast-path
     if cached:
         cached[key] = True
     else:

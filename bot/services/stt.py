@@ -249,23 +249,30 @@ class YandexAsyncSTTService:
         self._s3_access_key = s3_access_key
         self._s3_secret_key = s3_secret_key
 
-        # Lazy-init boto3 client — heavy import, hold until first use
+        # Lazy-init boto3 client — heavy import, hold until first use.
+        # Lock защищает от гонки при параллельных async-транскрипциях
+        # (asyncio.to_thread → 2 потока могут одновременно увидеть None).
+        import threading
         self._s3_client = None
+        self._s3_lock = threading.Lock()
         logger.info(
             "STT provider: yandex async (bucket=%s, endpoint=%s)",
             s3_bucket, s3_endpoint,
         )
 
     def _get_s3(self):
+        # Double-checked locking: 99% случаев — fast path без блокировки
         if self._s3_client is None:
-            import boto3
-            self._s3_client = boto3.client(
-                "s3",
-                endpoint_url=self._s3_endpoint,
-                aws_access_key_id=self._s3_access_key,
-                aws_secret_access_key=self._s3_secret_key,
-                region_name="ru-central1",
-            )
+            with self._s3_lock:
+                if self._s3_client is None:
+                    import boto3
+                    self._s3_client = boto3.client(
+                        "s3",
+                        endpoint_url=self._s3_endpoint,
+                        aws_access_key_id=self._s3_access_key,
+                        aws_secret_access_key=self._s3_secret_key,
+                        region_name="ru-central1",
+                    )
         return self._s3_client
 
     async def transcribe(
@@ -359,46 +366,51 @@ class YandexAsyncSTTService:
         url = _YANDEX_OPERATION_URL.format(op_id=operation_id)
         headers = {"Authorization": f"Api-Key {self._api_key}"}
 
-        try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                for attempt in range(_ASYNC_POLL_MAX_ATTEMPTS):
-                    await asyncio.sleep(_ASYNC_POLL_INTERVAL_SEC)
+        # Новый httpx.AsyncClient на каждый poll — keepalive прокси/балансеров
+        # рвёт idle-соединения через ~75с, а poll-цикл может длиться до 600с.
+        # Overhead копеечный (новый коннект раз в 3 секунды).
+        for attempt in range(_ASYNC_POLL_MAX_ATTEMPTS):
+            await asyncio.sleep(_ASYNC_POLL_INTERVAL_SEC)
+            try:
+                async with httpx.AsyncClient(timeout=30.0) as client:
                     response = await client.get(url, headers=headers)
+            except httpx.HTTPError as e:
+                # Транзиентная ошибка (timeout, reset) — пробуем дальше
+                logger.warning("Yandex async poll %d transient error: %s", attempt, e)
+                continue
 
-                    if response.status_code != 200:
-                        error_text = response.text[:300]
-                        logger.error(
-                            "Yandex async poll %d error %d: %s",
-                            attempt, response.status_code, error_text,
-                        )
-                        raise STTError(
-                            f"Ошибка проверки статуса распознавания ({response.status_code})"
-                        )
-
-                    data = response.json()
-                    if not data.get("done"):
-                        continue
-
-                    if "error" in data:
-                        err = data["error"]
-                        message = err.get("message", "unknown")
-                        logger.error("Yandex async operation failed: %s", err)
-                        raise STTError(f"Yandex async распознавание не удалось: {message}")
-
-                    # Готово — собираем текст из chunks с реальными таймкодами.
-                    # Каждый chunk содержит words[].startTime в формате "12.345s".
-                    # Префиксуем чанк маркером [mm:ss] от первого слова чанка.
-                    chunks = data.get("response", {}).get("chunks", [])
-                    return _format_chunks_with_timestamps(chunks)
-
-                # Превышен лимит попыток
-                logger.error("Yandex async timeout after %d polls", _ASYNC_POLL_MAX_ATTEMPTS)
-                raise STTError(
-                    f"Распознавание заняло слишком много времени "
-                    f"(>{_ASYNC_POLL_INTERVAL_SEC * _ASYNC_POLL_MAX_ATTEMPTS} сек). Попробуй короче."
+            if response.status_code != 200:
+                error_text = response.text[:300]
+                logger.error(
+                    "Yandex async poll %d error %d: %s",
+                    attempt, response.status_code, error_text,
                 )
-        except httpx.HTTPError as e:
-            raise STTError(f"HTTP error polling async operation: {e}")
+                raise STTError(
+                    f"Ошибка проверки статуса распознавания ({response.status_code})"
+                )
+
+            data = response.json()
+            if not data.get("done"):
+                continue
+
+            if "error" in data:
+                err = data["error"]
+                message = err.get("message", "unknown")
+                logger.error("Yandex async operation failed: %s", err)
+                raise STTError(f"Yandex async распознавание не удалось: {message}")
+
+            # Готово — собираем текст из chunks с реальными таймкодами.
+            # Каждый chunk содержит words[].startTime в формате "12.345s".
+            # Префиксуем чанк маркером [mm:ss] от первого слова чанка.
+            chunks = data.get("response", {}).get("chunks", [])
+            return _format_chunks_with_timestamps(chunks)
+
+        # Превышен лимит попыток
+        logger.error("Yandex async timeout after %d polls", _ASYNC_POLL_MAX_ATTEMPTS)
+        raise STTError(
+            f"Распознавание заняло слишком много времени "
+            f"(>{_ASYNC_POLL_INTERVAL_SEC * _ASYNC_POLL_MAX_ATTEMPTS} сек). Попробуй короче."
+        )
 
 
 class YandexHybridSTTService:

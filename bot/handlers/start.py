@@ -32,6 +32,7 @@ _PENDING_TTL = 300  # 5 minutes
 # на каждом медиа в альбоме (Telegram шлёт каждое отдельным update).
 _media_group_warned: dict[str, float] = {}
 _MEDIA_GROUP_WARN_TTL = 60
+_MEDIA_GROUP_MAX_ENTRIES = 10000  # защита от роста при флуде разных альбомов
 
 
 def _media_group_seen_warning(group_id: str) -> bool:
@@ -40,10 +41,17 @@ def _media_group_seen_warning(group_id: str) -> bool:
     регистрирует факт показа.
     """
     now = time.monotonic()
-    # Lazy eviction
+    # Lazy eviction по TTL
     expired = [k for k, v in _media_group_warned.items() if now - v > _MEDIA_GROUP_WARN_TTL]
     for k in expired:
         _media_group_warned.pop(k, None)
+
+    # Hard cap: если кэш вырос (флуд уникальных альбомов) — выбрасываем 20% старейших
+    if len(_media_group_warned) > _MEDIA_GROUP_MAX_ENTRIES:
+        sorted_items = sorted(_media_group_warned.items(), key=lambda kv: kv[1])
+        drop_n = max(1, len(_media_group_warned) // 5)
+        for k, _ in sorted_items[:drop_n]:
+            _media_group_warned.pop(k, None)
 
     if group_id in _media_group_warned:
         return True

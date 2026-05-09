@@ -581,10 +581,12 @@ async def process_bookmark_task(
                 await _set_reaction(chat_id, message_id, "\U0001f44e")
                 # Ошибка должна ОСТАВАТЬСЯ в чате — юзер сам решит когда убрать.
                 # Отправляем обычным сообщением без авто-удаления.
+                # Не показываем bookmark.ai_error юзеру — может содержать
+                # сырые ответы AI / фрагменты промпта / имена моделей.
+                # Полная ошибка — в server-side логах.
                 asyncio.create_task(_send_message(
                     chat_id,
-                    f"⚠️ Не удалось обработать. Попробуй ещё раз или /help\n"
-                    f"<i>{bookmark.ai_error[:200] if bookmark.ai_error else ''}</i>",
+                    "⚠️ Не удалось обработать. Попробуй ещё раз или /help",
                 ))
             else:
                 elapsed = time.monotonic() - start_time
