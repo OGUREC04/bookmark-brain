@@ -22,7 +22,17 @@ from aiogram.types import BotCommand, MenuButtonWebApp, WebAppInfo
 
 from bot.api_client import BackendClient
 from bot.config import get_settings
-from bot.handlers import clean, documents, media, random, search, settings as settings_handler, start, tasks
+from bot.handlers import (
+    clean,
+    documents,
+    media,
+    random,
+    search,
+    settings as settings_handler,
+    start,
+    tasks,
+    timezone as timezone_handler,
+)
 from bot.state_store import StateStore
 
 logging.basicConfig(
@@ -76,6 +86,7 @@ async def main():
     # reply на список ДО того как catch-all в start сделает из этого закладку)
     dp.include_router(tasks.router)
     dp.include_router(settings_handler.router)
+    dp.include_router(timezone_handler.router)
     dp.include_router(clean.router)
     dp.include_router(media.router)   # voice, video_note, audio — до catch-all
     dp.include_router(documents.router)  # PDF/DOCX/TXT/MD — до catch-all в start

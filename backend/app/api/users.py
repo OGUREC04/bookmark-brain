@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select, update
@@ -15,6 +16,7 @@ from app.database import get_session
 from app.models import User
 from app.schemas import (
     TelegramAuthData,
+    TimezoneUpdate,
     TokenResponse,
     UserCreate,
     UserResponse,
@@ -113,4 +115,30 @@ async def update_settings(
         update(User).where(User.id == current_user.id).values(settings=merged)
     )
     current_user.settings = merged
+    return current_user
+
+
+@router.patch("/users/me/timezone", response_model=UserResponse)
+async def update_timezone(
+    body: TimezoneUpdate,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    """Сменить часовой пояс пользователя.
+
+    Принимает IANA-имена: `Europe/Moscow`, `Europe/Kaliningrad`, `Asia/Yekaterinburg`.
+    Невалидное имя → 400.
+    """
+    try:
+        ZoneInfo(body.timezone)
+    except ZoneInfoNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Unknown timezone: {body.timezone!r}. Use IANA names like 'Europe/Moscow'.",
+        ) from exc
+
+    await session.execute(
+        update(User).where(User.id == current_user.id).values(timezone=body.timezone)
+    )
+    current_user.timezone = body.timezone
     return current_user

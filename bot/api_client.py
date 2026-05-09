@@ -54,6 +54,69 @@ class BackendClient:
         response.raise_for_status()
         return response.json()
 
+    async def update_timezone(self, token: str, tz: str) -> dict:
+        """PATCH /api/v1/users/me/timezone — сменить часовой пояс.
+
+        Raises httpx.HTTPStatusError 400 если timezone невалидный.
+        """
+        response = await self.client.patch(
+            "/api/v1/users/me/timezone",
+            headers={"Authorization": f"Bearer {token}"},
+            json={"timezone": tz},
+        )
+        response.raise_for_status()
+        return response.json()
+
+    async def create_reminder(
+        self,
+        token: str,
+        fire_at: str,  # ISO 8601 UTC
+        bookmark_id: str | None = None,
+        payload: dict | None = None,
+    ) -> dict:
+        """POST /api/v1/reminders/ — создать напоминание."""
+        response = await self.client.post(
+            "/api/v1/reminders/",
+            headers={"Authorization": f"Bearer {token}"},
+            json={
+                "fire_at": fire_at,
+                "bookmark_id": bookmark_id,
+                "payload": payload or {},
+            },
+        )
+        response.raise_for_status()
+        return response.json()
+
+    async def update_reminder(
+        self, token: str, reminder_id: str, fire_at: str
+    ) -> dict:
+        """PATCH /api/v1/reminders/{id} — продлить (snooze)."""
+        response = await self.client.patch(
+            f"/api/v1/reminders/{reminder_id}",
+            headers={"Authorization": f"Bearer {token}"},
+            json={"fire_at": fire_at},
+        )
+        response.raise_for_status()
+        return response.json()
+
+    async def cancel_reminder(self, token: str, reminder_id: str) -> None:
+        """DELETE /api/v1/reminders/{id} — отменить."""
+        response = await self.client.delete(
+            f"/api/v1/reminders/{reminder_id}",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        response.raise_for_status()
+
+    async def list_upcoming_reminders(self, token: str, limit: int = 50) -> dict:
+        """GET /api/v1/reminders/upcoming."""
+        response = await self.client.get(
+            "/api/v1/reminders/upcoming",
+            headers={"Authorization": f"Bearer {token}"},
+            params={"limit": limit},
+        )
+        response.raise_for_status()
+        return response.json()
+
     async def create_bookmark(
         self,
         token: str,

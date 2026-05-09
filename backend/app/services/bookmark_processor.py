@@ -9,6 +9,7 @@ from app.models import Bookmark, Tag, BookmarkTag, User
 from app.services.ai_classifier import BaseClassifier, ClassificationError, RetryableError
 from app.services.article_fetcher import fetch_article
 from app.services.embeddings import BaseEmbeddingService, EmbeddingError, RetryableEmbeddingError
+from app.services.reminder_intent import detect_reminder_intent
 from app.services.task_list_detector import build_structured_data, detect as detect_task_list
 
 logger = logging.getLogger(__name__)
@@ -223,6 +224,19 @@ class BookmarkProcessor:
         bookmark.ai_status = "completed"
         bookmark.ai_error = None
         bookmark.ai_processed_at = datetime.now(timezone.utc)
+
+        # Phase 2.5: Reminder intent detection.
+        # Запускаем после успешной классификации — анализируем raw_text + summary.
+        # Флаг всегда переписывается (включая False), чтобы при reprocess'e
+        # старое значение не залипало.
+        intent_text = " ".join(filter(None, [bookmark.raw_text, bookmark.summary]))
+        intent = detect_reminder_intent(intent_text)
+        structured = bookmark.structured_data or {}
+        structured["reminder_intent"] = intent.has_intent
+        bookmark.structured_data = structured
+        if intent.has_intent:
+            logger.info(f"Reminder intent detected for bookmark {bookmark_id}")
+
         await self.session.flush()
 
         # Обновляем счётчик юзера (только при первом процессинге, не при reprocess)
