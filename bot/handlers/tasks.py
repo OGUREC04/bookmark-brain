@@ -52,7 +52,12 @@ def _release_rerender_lock(chat_id: int, bookmark_id: str) -> None:
 
 
 HINT_LINE = "💬 <i>Ответь на это сообщение чтобы изменить список</i>"
-HINT_LINE_SILENT = "↩️ <i>Ответь reply чтобы изменить список</i>"
+# Компактная подсказка — синхронизирована с backend/task_list_renderer.py.
+# Если меняешь — меняй там тоже, оба рендерера обязаны давать одинаковый HTML.
+HINT_LINE_SILENT = (
+    "↩️ <i>Reply: закрыть · добавить · удалить пункт или список</i>\n"
+    "<i>Примеры: «закрой 1, 3» / «добавь хлеб» / «удали 2»</i>"
+)
 
 
 def _render_text(title: str | None, structured_data: dict, silent: bool = False) -> str:
@@ -672,21 +677,37 @@ _DEADLINE_PATTERN = re.compile(
     r"^(\d+)\s*(?:пункт|п|:|-|—)?\s*(?:до|к|дедлайн|срок|deadline)?\s*(.+)$",
     re.IGNORECASE,
 )
-# "готово 3", "3 готово", "✓ 3", "сделал 5", "done 2"
+# Toggle done — широкий список синонимов + один или несколько индексов через "," или "и".
+# Ловит: "закрой 1", "закрой 1, 3", "выполни 2 и 4", "1 готово", "3 пункт сделано", "✅ 1, 2".
+_INDEX_GROUP = r"(\d+(?:\s*(?:[,;]|\bи\b)\s*\d+)*)"
+_DONE_VERBS = r"готово|сделано?|done|✓|✅|закрой|закрыть|закрыт[аоы]?|отметь|отметить|выполни|выполнить|сделай"
 _DONE_PATTERN = re.compile(
-    r"^(?:готово|сделано?|done|✓|✅)\s*(\d+)$|^(\d+)\s*(?:готово|сделано?|done)$",
+    rf"^(?:{_DONE_VERBS})\s*{_INDEX_GROUP}\s*(?:пункт[аы]?|п)?$"
+    rf"|"
+    rf"^{_INDEX_GROUP}\s*(?:пункт[аы]?|п)?\s*(?:{_DONE_VERBS})$",
     re.IGNORECASE,
 )
-# "добавь X", "+ X"
+# "добавь X", "+ X", "запиши X"
 _ADD_PATTERN = re.compile(
-    r"^(?:добавь|добавить|\+)\s+(.+)$",
+    r"^(?:добавь|добавить|запиши|записать|внеси|внести|\+)\s+(.+)$",
     re.IGNORECASE,
 )
-# "удали 3", "- 3", "убери 3"
+# "удали 3", "удали 1, 3", "убери 2 и 4", "- 5"
 _REMOVE_PATTERN = re.compile(
-    r"^(?:удали|удалить|убери|убрать|-)\s*(\d+)$",
+    rf"^(?:удали|удалить|убери|убрать|-)\s*{_INDEX_GROUP}\s*(?:пункт[аы]?|п)?$",
     re.IGNORECASE,
 )
+
+
+def _parse_indices(group_text: str) -> list[int]:
+    """'1, 3', '1 и 4', '2;5' → [0, 2] / [0, 3] / [1, 4] (0-based, отсортировано, без дублей)."""
+    raw = re.split(r"[,;]|\sи\s", group_text)
+    out: set[int] = set()
+    for chunk in raw:
+        chunk = chunk.strip()
+        if chunk.isdigit():
+            out.add(int(chunk) - 1)
+    return sorted(out)
 
 _DAY_NAMES = {
     "понедельник": 0, "пн": 0,
@@ -755,23 +776,32 @@ def _try_fast_edit(user_text: str, structured: dict) -> dict | None:
     if not tasks:
         return None
 
-    # Toggle done: "готово 3", "3 готово"
+    # Toggle done: "закрой 1", "закрой 1, 3", "выполни 2 и 4", "3 готово"
     m = _DONE_PATTERN.match(text)
     if m:
-        idx = int(m.group(1) or m.group(2)) - 1  # 1-based → 0-based
-        if 0 <= idx < len(tasks):
+        group = m.group(1) or m.group(2)
+        indices = _parse_indices(group)
+        if not indices:
+            return None
+        # Все индексы должны быть валидны — иначе откатываем на LLM
+        if any(i < 0 or i >= len(tasks) for i in indices):
+            return None
+        for idx in indices:
             tasks[idx] = {**tasks[idx], "done": not tasks[idx].get("done", False)}
-            return {**structured, "tasks": tasks}
-        return None
+        return {**structured, "tasks": tasks}
 
-    # Remove: "удали 3", "- 3"
+    # Remove: "удали 3", "удали 1, 3", "убери 2 и 4"
     m = _REMOVE_PATTERN.match(text)
     if m:
-        idx = int(m.group(1)) - 1
-        if 0 <= idx < len(tasks):
+        indices = _parse_indices(m.group(1))
+        if not indices:
+            return None
+        if any(i < 0 or i >= len(tasks) for i in indices):
+            return None
+        # Удаляем с конца, чтобы индексы не сдвигались
+        for idx in sorted(indices, reverse=True):
             tasks.pop(idx)
-            return {**structured, "tasks": tasks}
-        return None
+        return {**structured, "tasks": tasks}
 
     # Add: "добавь X", "+ X"
     m = _ADD_PATTERN.match(text)
@@ -892,27 +922,57 @@ async def _handle_general_dedup_reply(
     chat_id = message.chat.id
 
     if intent == "open":
-        # Удаляем новый дубль, показываем оригинал
-        try:
-            await api.delete_bookmark(token, new_bid)
-        except Exception as e:
-            logger.debug(f"delete new bookmark failed: {e}")
-
+        # Показываем оригинал, но НЕ удаляем дубль — юзер сам решит что с ним делать.
+        # State сохраняем (не pop), чтобы reply на превью продолжил флоу.
         try:
             old_bm = await api.get_bookmark(token, old_bid)
             title = old_bm.get("title") or "Без названия"
             summary = old_bm.get("summary") or ""
+            structured = old_bm.get("structured_data") or {}
+            is_task_list = (
+                isinstance(structured, dict)
+                and structured.get("type") == "task_list"
+            )
+
             lines = [f"📖 <b>{title}</b>"]
             if summary:
                 lines.append(summary[:300])
+
+            # Где найти оригинал
+            lines.append("")
+            if is_task_list:
+                lines.append(
+                    "<i>📋 Список уже в чате — прокрути выше до закреплённого "
+                    "сообщения. Или /list — все списки и закладки.</i>"
+                )
+            else:
+                lines.append(
+                    "<i>📚 Все закладки — /list. "
+                    "Поиск по смыслу — /search &lt;запрос&gt;.</i>"
+                )
+
+            # Что делать с дублем
+            lines.append("")
+            lines.append("<b>↩️ Reply что делать с новым дублем:</b>")
+            lines.append("• <b>удали</b> — убрать дубль (старый останется)")
+            lines.append("• <b>замени</b> — обновить старый данными нового")
+            lines.append("• <b>оставь оба</b> — сохранить и старый, и новый")
+
             await replied.edit_text(
                 "\n".join(lines),
                 parse_mode="HTML",
                 disable_web_page_preview=True,
             )
+            # Удаляем reply юзера («открой») — превью на его месте
+            try:
+                await message.delete()
+            except TelegramBadRequest:
+                pass
+            # State НЕ pop — reply на превью продолжит обрабатываться этим же handler.
         except Exception as e:
             logger.debug(f"show original failed: {e}")
-            await _ephemeral(message, "Дубль удалён, оригинал сохранён ✅")
+            await _ephemeral(message, "Не удалось показать оригинал. Попробуй /list")
+        return  # Не идём в общий pop_general_dedup ниже
 
     elif intent == "delete":
         # Удаляем новый дубль, оригинал остаётся
@@ -1302,13 +1362,14 @@ async def msg_nl_edit_on_reply(message: Message, api, store=None):
             await _ephemeral(message, "Не удалось обновить список.", delay=6)
             return
 
-        # Удаляем reply юзера
+        # Удаляем reply юзера + любые хвосты предыдущих неудачных попыток
         try:
             await message.delete()
         except TelegramBadRequest:
             pass
 
         if store:
+            await _cleanup_failed_attempts(message.bot, message.chat.id, replied.message_id, store)
             await store.force_last_seen(message.chat.id, replied.message_id)
 
         await _rerender_at_bottom(
@@ -1350,7 +1411,26 @@ async def msg_nl_edit_on_reply(message: Message, api, store=None):
             )
         except TelegramBadRequest:
             pass
-        await _ephemeral(message, "Не смог разобрать фразу. Попробуй проще.", delay=8)
+        # Видимая обратная связь: реакция 👎 на reply юзера + объяснение
+        from bot.utils import safe_react
+        await safe_react(message, "\U0001f44e")
+        help_msg = await message.reply(
+            "Не понял.\n"
+            "Доступно: закрыть пункт(ы), добавить пункт, удалить пункт, удалить весь список.\n\n"
+            "Примеры:\n"
+            "• «закрой 1, 3»\n"
+            "• «добавь купить хлеб»\n"
+            "• «удали 2»\n"
+            "• «удали список»",
+            parse_mode=None,
+        )
+        # Трекаем «хвосты» — если следующий reply сработает, удалим оба.
+        if store is not None:
+            try:
+                await store.track_cleanup_msg(message.chat.id, replied.message_id, message.message_id)
+                await store.track_cleanup_msg(message.chat.id, replied.message_id, help_msg.message_id)
+            except Exception as e:
+                logger.debug(f"track_cleanup_msg failed: {e}")
         return
 
     # Удаляем reply юзера ДО отправки свежего списка.
@@ -1364,6 +1444,9 @@ async def msg_nl_edit_on_reply(message: Message, api, store=None):
     # fast-path (edit-in-place) и не дёргал delete+send+pin зря.
     if store is not None:
         try:
+            # Подчищаем «хвосты» предыдущих неудачных попыток (failed user
+            # replies + bot help messages) — они трекаются в fail-path.
+            await _cleanup_failed_attempts(message.bot, message.chat.id, replied.message_id, store)
             await store.force_last_seen(message.chat.id, replied.message_id)
         except Exception:
             pass
@@ -1374,6 +1457,29 @@ async def msg_nl_edit_on_reply(message: Message, api, store=None):
     )
 
 
+async def _cleanup_failed_attempts(bot, chat_id: int, list_msg_id: int, store) -> None:
+    """Удалить «хвосты» неудачных reply-попыток на этот task_list.
+
+    Вызывается из success-path (fast-path и LLM-path). Если предыдущий reply
+    был не понят, мы оставили в чате 👎-сообщение юзера + bot's «не понял».
+    После успешной команды эти артефакты больше не нужны.
+
+    Молча игнорирует ошибки — это best-effort cleanup, не критично.
+    """
+    try:
+        msg_ids = await store.pop_cleanup_msgs(chat_id, list_msg_id)
+    except Exception as e:
+        logger.debug(f"pop_cleanup_msgs failed: {e}")
+        return
+    for mid in msg_ids:
+        try:
+            await bot.delete_message(chat_id, mid)
+        except TelegramBadRequest:
+            pass  # сообщение уже удалено или старше 48ч
+        except Exception as e:
+            logger.debug(f"cleanup delete {mid} failed: {e}")
+
+
 # ───────────────────── Ephemeral helpers ─────────────────────
 
 
@@ -1381,8 +1487,13 @@ EPHEMERAL_DELAY = 8.0
 
 
 async def _ephemeral(message: Message, text: str, delay: float = EPHEMERAL_DELAY) -> None:
-    sent = await message.answer(text, parse_mode=None)
-    asyncio.create_task(_delete_after(sent, delay))
+    """Раньше автоудаляло сообщение через `delay` секунд. Теперь — НЕТ.
+
+    Юзеру важно видеть что бот ответил, даже если это «не понял». Предыдущая
+    эфемерность создавала впечатление что бот молчит. Имя и сигнатура
+    сохранены для обратной совместимости со всеми вызовами в tasks.py.
+    """
+    await message.answer(text, parse_mode=None)
 
 
 async def send_and_autodelete(message: Message, text: str, delay: float = EPHEMERAL_DELAY) -> None:
@@ -1411,11 +1522,10 @@ async def cmd_todo(message: Message, api):
 
     text = (message.text or "").split(maxsplit=1)
     if len(text) < 2 or not text[1].strip():
-        asyncio.create_task(_ephemeral(
-            message,
+        await message.answer(
             "Напиши так: /todo купить молоко, позвонить маме, записаться к зубному",
-        ))
-        asyncio.create_task(_delete_after(message, EPHEMERAL_DELAY))
+            parse_mode=None,
+        )
         return
 
     content = text[1].strip()
@@ -1463,34 +1573,5 @@ async def cmd_todo(message: Message, api):
 
 
 # ───────────────────── /help command ─────────────────────
-
-
-HELP_TEXT = (
-    "<b>Команды:</b>\n\n"
-    "✏️ <b>Создание</b>\n"
-    "  Напиши или перешли сообщение — сохраню\n"
-    "  /todo <i>пункты</i> — создать список задач\n\n"
-    "🔎 <b>Просмотр</b>\n"
-    "  /list — все закладки\n"
-    "  /search <i>запрос</i> — поиск\n"
-    "  /random — случайная\n"
-    "  /stats — статистика\n\n"
-    "✏️ <b>Редактирование списка</b>\n"
-    "  Ответь на сообщение со списком фразой:\n"
-    "  — «добавь хлеб, молоко до пятницы»\n"
-    "  — «удали 2»\n"
-    "  — «3 до завтра»\n"
-    "  — «к 1: нужен бездрожжевой»\n\n"
-    "⚙ <b>Прочее</b>\n"
-    "  /silent — тихий/обычный режим\n"
-    "  /reprocess — переобработать старые\n"
-    "  /clean — очистить чат от сообщений бота\n"
-    "  /help — эта справка"
-)
-
-
-@router.message(Command("help"))
-async def cmd_help(message: Message):
-    sent = await message.answer(HELP_TEXT, parse_mode="HTML")
-    asyncio.create_task(_delete_after(message, 1.0))
-    asyncio.create_task(_delete_after(sent, 20.0))
+# Перенесён в bot/handlers/start.py:cmd_help — там полный, без авто-удаления.
+# Старый handler здесь убит чтобы не перехватывать /help раньше нового.

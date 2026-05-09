@@ -31,12 +31,15 @@ class TestCreateSTTService:
         assert isinstance(svc, WhisperSTTService)
 
     def test_creates_yandex(self):
+        # Factory всегда возвращает Hybrid для yandex provider (sync + опциональный async).
+        # Без S3 envs внутри только sync — длинные голосовые рестрикшен в media handler.
+        from bot.services.stt import YandexHybridSTTService
         svc = create_stt_service(
             "yandex",
             yandex_api_key="AQVN-test",
             yandex_folder_id="b1g-test",
         )
-        assert isinstance(svc, YandexSTTService)
+        assert isinstance(svc, YandexHybridSTTService)
 
     def test_yandex_requires_api_key(self):
         with pytest.raises(ValueError, match="YANDEX_CLOUD_API_KEY"):

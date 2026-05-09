@@ -7,6 +7,7 @@ from aiogram.filters import Command, CommandStart
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message, WebAppInfo
 
 from bot.config import get_settings
+from bot import onboarding
 from bot.utils import ephemeral_error, safe_react
 
 _settings = get_settings()
@@ -26,6 +27,38 @@ _pending_saves: dict[int, dict] = {}
 
 _PENDING_TTL = 300  # 5 minutes
 
+# media_group_id -> timestamp последнего показа предупреждения "без подписи"
+# TTL короткий: альбом приходит за <1 секунду; защита от повторного предупреждения
+# на каждом медиа в альбоме (Telegram шлёт каждое отдельным update).
+_media_group_warned: dict[str, float] = {}
+_MEDIA_GROUP_WARN_TTL = 60
+_MEDIA_GROUP_MAX_ENTRIES = 10000  # защита от роста при флуде разных альбомов
+
+
+def _media_group_seen_warning(group_id: str) -> bool:
+    """Возвращает True если для этой группы уже показывали предупреждение
+    (значит, новое показывать НЕ надо). False если впервые — и заодно
+    регистрирует факт показа.
+    """
+    now = time.monotonic()
+    # Lazy eviction по TTL
+    expired = [k for k, v in _media_group_warned.items() if now - v > _MEDIA_GROUP_WARN_TTL]
+    for k in expired:
+        _media_group_warned.pop(k, None)
+
+    # Hard cap: если кэш вырос (флуд уникальных альбомов) — выбрасываем 20% старейших
+    if len(_media_group_warned) > _MEDIA_GROUP_MAX_ENTRIES:
+        sorted_items = sorted(_media_group_warned.items(), key=lambda kv: kv[1])
+        drop_n = max(1, len(_media_group_warned) // 5)
+        for k, _ in sorted_items[:drop_n]:
+            _media_group_warned.pop(k, None)
+
+    if group_id in _media_group_warned:
+        return True
+    _media_group_warned[group_id] = now
+    return False
+
+
 URL_PATTERN = re.compile(r"https?://[^\s<>\"']+")
 
 MIN_AUTO_SAVE_LENGTH = 15
@@ -33,12 +66,7 @@ MIN_AUTO_SAVE_LENGTH = 15
 
 async def _ensure_user(message_or_callback, api) -> str | None:
     """Получить JWT-токен юзера, создав его при необходимости."""
-    if isinstance(message_or_callback, CallbackQuery):
-        user = message_or_callback.from_user
-        answer = message_or_callback.answer
-    else:
-        user = message_or_callback.from_user
-        answer = message_or_callback.answer
+    user = message_or_callback.from_user
 
     tg_id = user.id
     cached = _user_tokens.get(tg_id)
@@ -88,6 +116,50 @@ def _extract_text(message: types.Message) -> str:
 # ─── Команды ───
 
 
+_NEW_USER_WELCOME = (
+    "Привет, {name}! Я BookmarkBrain — твой второй мозг для сохранения и поиска заметок.\n\n"
+    "Что можно делать:\n"
+    "• Пересылать сообщения и ссылки — я разберу AI-ом и сохраню\n"
+    "• Записывать голосовые — распознаю и сохраню текст\n"
+    "• Кидать PDF/DOCX — извлеку текст\n"
+    "• Писать списки задач — распознаю и сделаю интерактивным\n\n"
+    "Попробуй прямо сейчас: перешли мне любое сообщение или скинь ссылку.\n\n"
+    "Команды:\n"
+    "/list — все закладки\n"
+    "/search <запрос> — найти по смыслу\n"
+    "/random — случайная закладка\n"
+    "/silent — тихий режим (реакции вместо текста)\n"
+    "/help — полная справка"
+)
+
+_RETURNING_USER_WELCOME = (
+    "С возвращением, {name}! Я на месте.\n\n"
+    "Перешли мне что-нибудь, или используй /list, /search, /random, /help."
+)
+
+_HELP_TEXT = (
+    "BookmarkBrain — справка\n\n"
+    "📥 Сохранение:\n"
+    "• Перешли любое сообщение → сохраню\n"
+    "• Скинь ссылку → подтяну текст статьи и саммари\n"
+    "• Запиши голосовое → распознаю в текст (тег #voice)\n"
+    "• Прикрепи PDF/DOCX/TXT/MD → извлеку текст\n"
+    "• Короткое сообщение (<15 знаков) → спрошу подтверждение\n\n"
+    "🔍 Поиск и просмотр:\n"
+    "• /list — список закладок (5 на страницу)\n"
+    "• /search <запрос> — семантический поиск\n"
+    "• /random — случайная закладка\n\n"
+    "✅ Списки задач:\n"
+    "• Напиши список через • или 1. 2. 3. — распознаю как task list\n"
+    "• Reply на список: «закрой 1, 3», «добавь ...», «удали 2», «удали список»\n\n"
+    "⚙️ Режимы:\n"
+    "• /silent — переключить тихий режим (реакции 👀→👍)\n"
+    "• /silent on / /silent off — явное переключение\n\n"
+    "🗑 Уборка:\n"
+    "• /clean — удалить мои сообщения за последние 48ч (списки задач сохраняются)"
+)
+
+
 @router.message(CommandStart())
 async def cmd_start(message: types.Message, api):
     token = await _ensure_user(message, api)
@@ -105,18 +177,33 @@ async def cmd_start(message: types.Message, api):
             ]]
         )
 
-    await message.answer(
-        "Привет! Я BookmarkBrain — помогу сохранить и найти всё, что ты присылаешь.\n\n"
-        "Просто перешли мне сообщение или скинь ссылку — я сохраню и обработаю.\n\n"
-        "Команды:\n"
-        "/list — все закладки\n"
-        "/search запрос — найти закладку\n"
-        "/random — случайная закладка\n"
-        "/silent — тихий/обычный режим\n"
-        "/stats — статистика",
-        parse_mode=None,
-        reply_markup=kb,
+    name = (message.from_user.first_name if message.from_user else None) or "друг"
+
+    welcomed = await onboarding.is_flag_set(
+        api, token, message.from_user.id if message.from_user else 0,
+        onboarding.KEY_WELCOMED,
     )
+
+    if welcomed:
+        text = _RETURNING_USER_WELCOME.format(name=name)
+    else:
+        text = _NEW_USER_WELCOME.format(name=name)
+
+    await message.answer(text, parse_mode=None, reply_markup=kb, disable_web_page_preview=True)
+
+    if not welcomed and message.from_user:
+        await onboarding.mark_shown(
+            api, token, message.from_user.id, onboarding.KEY_WELCOMED,
+        )
+
+
+@router.message(Command("help"))
+async def cmd_help(message: types.Message, api):
+    """Полная справка по возможностям бота."""
+    token = await _ensure_user(message, api)
+    if not token:
+        return
+    await message.answer(_HELP_TEXT, parse_mode=None, disable_web_page_preview=True)
 
 
 @router.message(Command("list"))
@@ -375,6 +462,7 @@ async def cb_save_confirm(callback: CallbackQuery, api):
 
     silent = pending.get("silent", False)
 
+    saved_ok = False
     try:
         if silent:
             # Удаляем сообщение-вопрос, ставим 👍 на оригинал
@@ -392,6 +480,7 @@ async def cb_save_confirm(callback: CallbackQuery, api):
                 notify_message_id=orig_msg_id,
                 silent=True,
             )
+            saved_ok = True
         else:
             await callback.message.edit_text("⏳ Сохранено! Обрабатываю...")
             await api.create_bookmark(
@@ -403,12 +492,20 @@ async def cb_save_confirm(callback: CallbackQuery, api):
                 notify_chat_id=callback.message.chat.id,
                 notify_message_id=callback.message.message_id,
             )
+            saved_ok = True
     except Exception as e:
         logger.error(f"Failed to create bookmark: {e}")
         if silent:
             await ephemeral_error(callback.message, "Ошибка при сохранении. Попробуй ещё раз.")
         else:
             await callback.message.edit_text("Ошибка при сохранении.")
+
+    if saved_ok and isinstance(callback.message, Message):
+        await onboarding.maybe_show_tip(
+            api, token, callback.message,
+            onboarding.KEY_FIRST_SAVE, onboarding.TIP_FIRST_SAVE,
+            telegram_id=callback.from_user.id,
+        )
 
     await callback.answer()
 
@@ -438,7 +535,18 @@ async def handle_forward(message: types.Message, api):
 
     text = _extract_text(message)
     if not text:
-        await message.answer("Не могу извлечь текст из этого сообщения.", parse_mode=None)
+        # Forwarded media group: Telegram шлёт каждое фото/видео отдельным апдейтом.
+        # Caption есть только у одного из них — остальные приходят без текста.
+        # Предупреждаем только один раз на альбом.
+        if message.media_group_id:
+            if not _media_group_seen_warning(message.media_group_id):
+                await message.answer(
+                    "Получил альбом, но без подписи. "
+                    "Чтобы сохранить — добавь caption к одному из медиа в альбоме.",
+                    parse_mode=None,
+                )
+        else:
+            await message.answer("Не могу извлечь текст из этого сообщения.", parse_mode=None)
         return
 
     urls = _extract_urls(message)
@@ -446,6 +554,7 @@ async def handle_forward(message: types.Message, api):
     from bot.handlers.settings import is_silent
     silent = await is_silent(api, token, message.from_user.id)
 
+    saved_ok = False
     if silent:
         await safe_react(message, "\U0001f440")
         try:
@@ -459,6 +568,7 @@ async def handle_forward(message: types.Message, api):
                 notify_message_id=message.message_id,
                 silent=True,
             )
+            saved_ok = True
         except Exception as e:
             logger.error(f"Failed to create bookmark: {e}")
             await safe_react(message, "\U0001f44e")
@@ -475,9 +585,16 @@ async def handle_forward(message: types.Message, api):
                 notify_chat_id=status_msg.chat.id,
                 notify_message_id=status_msg.message_id,
             )
+            saved_ok = True
         except Exception as e:
             logger.error(f"Failed to create bookmark: {e}")
             await status_msg.edit_text("Ошибка при сохранении. Попробуй ещё раз.")
+
+    if saved_ok:
+        await onboarding.maybe_show_tip(
+            api, token, message,
+            onboarding.KEY_FIRST_SAVE, onboarding.TIP_FIRST_SAVE,
+        )
 
 
 @router.message(F.text & ~F.text.startswith("/"))
@@ -546,6 +663,7 @@ async def handle_text(message: types.Message, api, store=None):
         await message.answer(f'Сохранить "{text}" как заметку?', reply_markup=kb, parse_mode=None)
         return
 
+    saved_ok = False
     if silent:
         # Silent mode: ставим 👀 и отправляем ID оригинального сообщения
         await safe_react(message, "\U0001f440")
@@ -560,6 +678,7 @@ async def handle_text(message: types.Message, api, store=None):
                 notify_message_id=message.message_id,
                 silent=True,
             )
+            saved_ok = True
         except Exception as e:
             logger.error(f"Failed to create bookmark: {e}")
             await safe_react(message, "\U0001f44e")
@@ -577,9 +696,16 @@ async def handle_text(message: types.Message, api, store=None):
                 notify_chat_id=status_msg.chat.id,
                 notify_message_id=status_msg.message_id,
             )
+            saved_ok = True
         except Exception as e:
             logger.error(f"Failed to create bookmark: {e}")
             await status_msg.edit_text("Ошибка при сохранении. Попробуй ещё раз.")
+
+    if saved_ok:
+        await onboarding.maybe_show_tip(
+            api, token, message,
+            onboarding.KEY_FIRST_SAVE, onboarding.TIP_FIRST_SAVE,
+        )
 
 
 @router.message(F.photo | F.video | F.sticker)
@@ -591,10 +717,21 @@ async def handle_media(message: types.Message, api):
 
     caption = message.caption or ""
     if not caption:
-        await message.answer(
-            "Получил медиа, но без текста. Добавь подпись к сообщению, чтобы я мог сохранить.",
-            parse_mode=None,
-        )
+        # Media group: Telegram шлёт каждое фото/видео отдельным апдейтом, у всех
+        # один media_group_id. Предупреждаем только на первом — иначе спам.
+        # Без media_group_id (одиночное фото без подписи) — обычный ответ.
+        if message.media_group_id:
+            if not _media_group_seen_warning(message.media_group_id):
+                await message.answer(
+                    "Получил медиа, но без текста. "
+                    "Добавь подпись (caption) к одному из медиа в альбоме — сохраню весь альбом.",
+                    parse_mode=None,
+                )
+        else:
+            await message.answer(
+                "Получил медиа, но без текста. Добавь подпись к сообщению, чтобы я мог сохранить.",
+                parse_mode=None,
+            )
         return
 
     urls = []
@@ -608,6 +745,7 @@ async def handle_media(message: types.Message, api):
     from bot.handlers.settings import is_silent
     silent = await is_silent(api, token, message.from_user.id)
 
+    saved_ok = False
     if silent:
         await safe_react(message, "\U0001f440")
         try:
@@ -621,6 +759,7 @@ async def handle_media(message: types.Message, api):
                 notify_message_id=message.message_id,
                 silent=True,
             )
+            saved_ok = True
         except Exception as e:
             logger.error(f"Failed to create bookmark from media: {e}")
             await safe_react(message, "\U0001f44e")
@@ -637,6 +776,13 @@ async def handle_media(message: types.Message, api):
                 notify_chat_id=status_msg.chat.id,
                 notify_message_id=status_msg.message_id,
             )
+            saved_ok = True
         except Exception as e:
             logger.error(f"Failed to create bookmark from media: {e}")
             await status_msg.edit_text("Ошибка при сохранении. Попробуй ещё раз.")
+
+    if saved_ok:
+        await onboarding.maybe_show_tip(
+            api, token, message,
+            onboarding.KEY_FIRST_SAVE, onboarding.TIP_FIRST_SAVE,
+        )

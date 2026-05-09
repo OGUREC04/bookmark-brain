@@ -66,23 +66,25 @@ async def test_short_voice_rejected(mock_message, mock_api, mock_store):
 
     msg = mock_message()
 
-    with patch("bot.handlers.media.ephemeral_error", new_callable=AsyncMock) as mock_err:
-        await _process_audio(
-            message=msg,
-            api=mock_api,
-            store=mock_store,
-            file_id="test_file_id",
-            duration=1,  # <2 seconds
-            file_size=5000,
-            content_type="voice",
-            ext=".ogg",
-        )
+    # Короткое голосовое теперь шлётся через message.reply, не ephemeral_error
+    # (ошибки больше не auto-delete после Phase 2 фидбека).
+    msg.reply = AsyncMock()
+    await _process_audio(
+        message=msg,
+        api=mock_api,
+        store=mock_store,
+        file_id="test_file_id",
+        duration=1,  # <2 seconds
+        file_size=5000,
+        content_type="voice",
+        ext=".ogg",
+    )
 
     # STT should NOT be called
     fake_stt.transcribe.assert_not_called()
-    # Error message should mention "короткое"
-    mock_err.assert_called_once()
-    assert "короткое" in mock_err.call_args[0][1]
+    # Reply should mention "короткое"
+    msg.reply.assert_called_once()
+    assert "короткое" in msg.reply.call_args[0][0]
 
 
 @pytest.mark.asyncio
@@ -404,11 +406,14 @@ async def test_stt_not_configured(mock_message, mock_api, mock_store):
 
     # Ensure STT is None (no key)
     media_mod._stt = None
+    media_mod._stt_checked = False
 
     msg = mock_message()
 
+    # Патчим _get_stt напрямую — поддержка multi-provider (yandex/openai/groq)
+    # делает патч одной ENV-переменной ненадёжным.
     with (
-        patch.object(media_mod._settings, "WHISPER_API_KEY", ""),
+        patch("bot.handlers.media._get_stt", return_value=None),
         patch("bot.handlers.media.ephemeral_error", new_callable=AsyncMock) as mock_err,
     ):
         await _process_audio(

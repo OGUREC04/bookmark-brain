@@ -39,11 +39,42 @@ EXPLICIT_TRIGGERS = (
     "shopping:",
 )
 
-# Маркеры пунктов в начале строки
-BULLET_RE = re.compile(r"^\s*(?:[-•*—−]|\d+[.)])\s+", re.MULTILINE)
+# Маркеры пунктов в начале строки. Включаем ✅/☐/✓/✗ — наш собственный
+# рендер использует их, и юзер может переслать своё же сообщение боту обратно.
+# Без этих маркеров отрендеренный список не распознаётся при copy-paste.
+BULLET_RE = re.compile(
+    r"^\s*(?:✅|☐|✔|✗|☑|☒|[-•*—−]|\d+[.)])\s+",
+    re.MULTILINE,
+)
+
+# Служебные строки нашего рендера — игнорируем при подсчёте preamble и tasks.
+BOT_RENDERED_NOISE_RE = re.compile(
+    r"^\s*(?:📋|↩️|💬|⏰|"
+    r"Выполнено:|Reply:|Примеры:|Ответь reply|Ответь на это сообщение|"
+    r"\[\d{2}:\d{2}\])",
+    re.IGNORECASE,
+)
 
 # Разделители для inline-списков ("молоко, хлеб, сыр")
 INLINE_SPLIT_RE = re.compile(r"[,;]|\s+и\s+")
+
+# Anti-task-list signals: ad/social/contact patterns в пункте.
+# Если такой паттерн встречается в 2+ пунктах — это рекламный/информационный
+# пост, а не список задач.
+AD_PATTERNS = (
+    re.compile(r"#\w+", re.IGNORECASE),                  # хэштеги
+    re.compile(r"https?://|www\.|\.ru\b|\.com\b", re.IGNORECASE),  # ссылки
+    re.compile(r"\+?\d[\d\s\-()]{8,}"),                  # телефоны
+    re.compile(r"\bподпис(?:ат|ыв)|\bканал[ея]|\bзаявк|чат\b|телеграм", re.IGNORECASE),
+    re.compile(r"@[a-z0-9_]{4,}", re.IGNORECASE),        # @mentions
+)
+
+# Длинный пункт = абзац, не задача. Жёсткий лимит на отдельный элемент.
+MAX_TASK_LENGTH = 100
+
+# Прелюдия перед первым маркером: если описательного текста > N слов,
+# это статья с нумерацией, не список задач.
+MAX_PREAMBLE_WORDS = 25
 
 
 @dataclass
@@ -69,11 +100,21 @@ def _strip_trigger(text: str) -> tuple[str, bool]:
 
 
 def _parse_bulleted(text: str) -> list[str]:
-    """Парсит текст с маркерами в начале строк."""
+    """Парсит текст с маркерами в начале строк.
+
+    Также удаляет нумерацию ВНУТРИ пункта после bullet-маркера (например
+    «✅ 1. хуй» → «хуй»), потому что наш рендер использует ✅ + номер.
+    Пропускает служебные строки бот-рендера (📋, Выполнено:, Reply: и т.д.).
+    """
     lines = text.split("\n")
     tasks = []
     for line in lines:
+        # Пропускаем шапку/футер нашего же рендера
+        if BOT_RENDERED_NOISE_RE.match(line):
+            continue
         stripped = BULLET_RE.sub("", line).strip()
+        # После снятия bullet может остаться "1. хуй" — снимаем нумерацию
+        stripped = re.sub(r"^\d+[.):\-]\s*", "", stripped)
         # Пропускаем пустые и слишком длинные (вряд ли пункт)
         if stripped and len(stripped) < 300:
             tasks.append(stripped)
@@ -104,6 +145,68 @@ def _looks_like_inline_list(text: str) -> bool:
     if any("." in p for p in parts):
         return False
     return True
+
+
+def _count_ad_signal_items(tasks: list[str]) -> int:
+    """Сколько пунктов содержат ad/social/contact маркеры.
+
+    2+ таких пункта = информационный пост, не список задач.
+    """
+    count = 0
+    for t in tasks:
+        if any(p.search(t) for p in AD_PATTERNS):
+            count += 1
+    return count
+
+
+def _preamble_word_count(text: str) -> int:
+    """Возвращает число слов до первого маркера (если он есть).
+
+    Пустая строка / нет маркеров → 0 (не штрафуем).
+    """
+    match = BULLET_RE.search(text)
+    if not match:
+        return 0
+    preamble = text[:match.start()].strip()
+    if not preamble:
+        return 0
+    return len(preamble.split())
+
+
+def _looks_like_article_with_numbering(text: str, tasks: list[str]) -> bool:
+    """True, если структура текста явно говорит «это пост/статья,
+    а не список задач»:
+
+    - Длинная описательная прелюдия перед первым пунктом
+    - Хотя бы один пункт длиннее MAX_TASK_LENGTH
+    - В нескольких пунктах есть ad/social/contact маркеры
+    """
+    if not tasks:
+        return False
+
+    # 1a. Длинный пункт в распарсенных tasks = это абзац статьи
+    if any(len(t) > MAX_TASK_LENGTH for t in tasks):
+        return True
+
+    # 1b. Длинная строка между маркерами в исходном тексте — могла быть
+    # отфильтрована в _parse_bulleted (>300 chars), но это всё равно статья.
+    # Без этой проверки очень длинный нумерованный абзац + короткий пункт
+    # обходили article-filter.
+    for line in text.split("\n"):
+        # снимаем bullet-маркер в начале строки
+        stripped = BULLET_RE.sub("", line).strip()
+        if len(stripped) > MAX_TASK_LENGTH:
+            return True
+
+    # 2. 2+ пункта с рекламными/контактными маркерами
+    if _count_ad_signal_items(tasks) >= 2:
+        return True
+
+    # 3. Описательная прелюдия перед маркерами
+    if _preamble_word_count(text) > MAX_PREAMBLE_WORDS:
+        return True
+
+    return False
 
 
 def detect(text: str, ai_item_type: str | None = None) -> TaskListDetection:
@@ -142,9 +245,15 @@ def detect(text: str, ai_item_type: str | None = None) -> TaskListDetection:
         return TaskListDetection(False, forced, [], stripped_text)
 
     # Решение: список или нет
-    # 1. Юзер форсировал → да (если есть хоть что-то парсить)
+    # 1. Юзер форсировал → да (если есть хоть что-то парсить).
+    #    Здесь намеренно не отфильтровываем по article-сигналам — юзер сам сказал.
     if forced and len(tasks) >= 1:
         return TaskListDetection(True, True, tasks, stripped_text)
+
+    # Anti-false-positive фильтр: если структура говорит «это статья/пост»
+    # — не делаем список, даже если AI или маркер-эвристика сказали бы да.
+    if _looks_like_article_with_numbering(content, tasks):
+        return TaskListDetection(False, False, [], stripped_text)
 
     # 2. AI сказал action + ≥2 пункта → да
     if ai_item_type == "action" and len(tasks) >= 2:
@@ -152,7 +261,7 @@ def detect(text: str, ai_item_type: str | None = None) -> TaskListDetection:
 
     # 3. Сильная эвристика: ≥2 маркированных строк → да независимо от AI
     #    НО: если средняя длина пунктов > 80 символов — это не задачи, а длинный
-    #    нумерованный текст (статья, пост, тезисы). Пропускаем.
+    #    нумерованный текст (страховка поверх article-фильтра выше).
     if bullet_count >= 2:
         avg_task_len = sum(len(t) for t in tasks) / len(tasks) if tasks else 0
         if avg_task_len <= 80:

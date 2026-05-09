@@ -5,3 +5,5 @@ python-dotenv==1.0.1
 pydantic-settings==2.6.0
 pypdf==5.1.0
 python-docx==1.1.2
+# S3 client для Yandex Object Storage (async STT > 30 сек)
+boto3==1.43.6

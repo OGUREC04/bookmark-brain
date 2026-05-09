@@ -12,8 +12,15 @@ from pathlib import Path
 
 from aiogram import F, Router, types
 
+from bot import onboarding
 from bot.config import get_settings
-from bot.services.stt import STTError, WhisperSTTService, YandexSTTService, create_stt_service
+from bot.services.stt import (
+    STTError,
+    WhisperSTTService,
+    YandexHybridSTTService,
+    YandexSTTService,
+    create_stt_service,
+)
 from bot.services.timestamps import add_timestamps
 from bot.services.voice_intent import VoiceIntent, detect_intent
 from bot.utils import ephemeral_error, safe_react
@@ -25,17 +32,23 @@ router = Router()
 _settings = get_settings()
 
 # Lazy-init STT service
-_stt: WhisperSTTService | YandexSTTService | None = None
+_stt: WhisperSTTService | YandexSTTService | YandexHybridSTTService | None = None
 _stt_checked = False
 
 # Minimum voice duration to avoid Whisper hallucinations on silence/noise
 _MIN_DURATION_SEC = 2
 
+# Yandex SpeechKit limits:
+# - sync API: 30 сек / 1 MB. Если STT_PROVIDER=yandex без S3 креденшелов
+#   и duration > 30 — возвращаем понятную ошибку.
+# - async API (через Object Storage): до 60 минут (cap из stt.py).
+_YANDEX_SYNC_MAX_DURATION_SEC = 30
+
 # Telegram Bot API file download limit
 _TG_MAX_FILE_SIZE = 20 * 1024 * 1024  # 20 MB
 
 
-def _get_stt() -> WhisperSTTService | YandexSTTService | None:
+def _get_stt() -> WhisperSTTService | YandexSTTService | YandexHybridSTTService | None:
     global _stt, _stt_checked
     if _stt is not None:
         return _stt
@@ -53,7 +66,18 @@ def _get_stt() -> WhisperSTTService | YandexSTTService | None:
             provider,
             yandex_api_key=_settings.YANDEX_CLOUD_API_KEY,
             yandex_folder_id=_settings.YANDEX_CLOUD_FOLDER_ID,
+            yandex_s3_endpoint=_settings.YANDEX_S3_ENDPOINT,
+            yandex_s3_bucket=_settings.YANDEX_S3_BUCKET,
+            yandex_s3_access_key=_settings.YANDEX_S3_ACCESS_KEY,
+            yandex_s3_secret_key=_settings.YANDEX_S3_SECRET_KEY,
         )
+        if not _stt_checked:
+            has_async = bool(_settings.YANDEX_S3_BUCKET and _settings.YANDEX_S3_ACCESS_KEY)
+            logger.info(
+                "Yandex STT initialized: sync only" if not has_async else
+                "Yandex STT initialized: hybrid (sync + async via S3 %s)" % _settings.YANDEX_S3_BUCKET
+            )
+            _stt_checked = True
         return _stt
 
     # OpenAI/Groq need WHISPER_API_KEY
@@ -151,7 +175,23 @@ async def _process_audio(
 
     # Edge case 1: too short — Whisper hallucinates on silence/noise
     if duration is not None and duration < _MIN_DURATION_SEC:
-        await ephemeral_error(message, "Слишком короткое сообщение (менее 2 секунд).")
+        await message.reply("Слишком короткое сообщение (менее 2 секунд).", parse_mode=None)
+        return
+
+    # Edge case 1b: длинные голосовые на Yandex — нужен async API (Object Storage).
+    # Если STT — Hybrid с async, всё ОК (route внутри transcribe). Если только sync
+    # (S3 не настроен) — заранее отвергаем с понятной подсказкой.
+    if (
+        duration is not None
+        and duration > _YANDEX_SYNC_MAX_DURATION_SEC
+        and isinstance(stt, YandexSTTService)
+    ):
+        await message.reply(
+            f"Голосовые длиннее 30 секунд требуют Yandex Object Storage. "
+            f"Запись {duration} сек — попроси админа настроить YANDEX_S3_* "
+            f"(или разбей на части по 30 сек).",
+            parse_mode=None,
+        )
         return
 
     # Edge case 2: too large — Telegram Bot API caps downloads at 20 MB
@@ -204,9 +244,17 @@ async def _process_audio(
             content_type, file_id[:20], duration or 0, tmp_path,
         )
 
-        # Transcribe
-        # language=None → Whisper auto-detects (supports multilingual input)
-        text = await stt.transcribe(tmp_path)
+        # Transcribe.
+        # Hybrid Yandex принимает duration kwarg — внутри роутит между sync и async.
+        # Whisper и одиночный YandexSTTService не принимают duration → передаём только для Hybrid.
+        if isinstance(stt, YandexHybridSTTService):
+            text = await stt.transcribe(
+                tmp_path,
+                duration=float(duration) if duration is not None else None,
+            )
+        else:
+            # language=None → Whisper auto-detects (supports multilingual input)
+            text = await stt.transcribe(tmp_path)
 
     except STTError as e:
         logger.error("STT failed: %s", e)
@@ -259,6 +307,7 @@ async def _process_audio(
     caption = message.caption or ""
     raw_text = f"{caption}\n\n{text}".strip() if caption else text
 
+    saved_ok = False
     try:
         if silent:
             await api.create_bookmark(
@@ -289,6 +338,7 @@ async def _process_audio(
                 media_duration=duration_float,
                 voice_tag=True,
             )
+        saved_ok = True
     except Exception as e:
         # Edge case 3: backend failed AFTER transcription succeeded.
         # The transcription text is already visible in reply_msg — don't lose it.
@@ -297,6 +347,12 @@ async def _process_audio(
             message,
             "Не удалось сохранить как закладку. Текст выше — можешь скопировать и отправить заново.",
             delay=15,
+        )
+
+    if saved_ok:
+        await onboarding.maybe_show_tip(
+            api, token, message,
+            onboarding.KEY_FIRST_VOICE, onboarding.TIP_FIRST_VOICE,
         )
 
 
@@ -358,6 +414,7 @@ async def _handle_voice_todo(
     # Build raw_text with todo prefix so backend task_list_detector picks it up
     raw_text = f"список задач: {cleaned_text}" if cleaned_text else f"список задач: {full_text}"
 
+    saved_ok = False
     try:
         if silent:
             await api.create_bookmark(
@@ -388,10 +445,17 @@ async def _handle_voice_todo(
                 media_duration=duration_float,
                 voice_tag=True,
             )
+        saved_ok = True
     except Exception as e:
         logger.error("Failed to create voice todo: %s", e)
         await ephemeral_error(
             message,
             "Не удалось создать список задач. Текст выше — можешь скопировать.",
             delay=15,
+        )
+
+    if saved_ok:
+        await onboarding.maybe_show_tip(
+            api, token, message,
+            onboarding.KEY_FIRST_VOICE, onboarding.TIP_FIRST_VOICE,
         )

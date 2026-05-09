@@ -1,142 +1,211 @@
 # Архитектура BookmarkBrain
 
-## Стек
-
-### Backend
-- **FastAPI** — основной API-сервер
-- **PostgreSQL + pgvector** — БД + семантический поиск
-- **Redis + arq** — async очередь задач для AI-обработки
-- **aiogram 3.x** — Telegram Bot
-
-### AI (мульти-провайдер)
-- **GigaChat** — классификация, теги, саммари (текущий провайдер)
-- **Claude Sonnet** — альтернативный провайдер (переключается через .env)
-- **Voyage AI** — embeddings (voyage-3, 1024 dims)
-
-### Frontend (в разработке)
-- **Expo (React Native)** — iOS app
-- **Expo Web** — Telegram Mini App (тот же codebase)
-
-### Инфраструктура
-- **Railway** — деплой (FastAPI + Worker + Bot)
-- **Docker Compose** — локальная разработка (PostgreSQL + Redis)
-
----
-
-## Структура проекта
+## Высокоуровневая диаграмма
 
 ```
-/
-├── CLAUDE.md
-├── .env / .env.example
-├── docker-compose.yml
-├── /backend
-│   ├── main.py              — FastAPI app, CORS, routers, /health
-│   ├── run_worker.py         — arq worker launcher (Python 3.14+ compatible)
-│   ├── requirements.txt
-│   ├── alembic.ini
-│   ├── /app
-│   │   ├── config.py         — pydantic-settings, env из корневого .env
-│   │   ├── database.py       — AsyncEngine, async_sessionmaker, get_session()
-│   │   ├── models.py         — User, Bookmark, Tag, BookmarkTag (SQLAlchemy)
-│   │   ├── schemas.py        — 14 Pydantic v2 schemas
-│   │   ├── auth.py           — JWT, Telegram initData HMAC, bot secret
-│   │   ├── worker.py         — arq WorkerSettings, process_bookmark_task
-│   │   ├── /api
-│   │   │   ├── users.py      — auth/telegram, auth/bot, /users/me
-│   │   │   ├── bookmarks.py  — CRUD + reprocess
-│   │   │   └── search.py     — hybrid search + tags
-│   │   └── /services
-│   │       ├── ai_classifier.py     — BaseClassifier → GigaChat / Claude
-│   │       ├── embeddings.py        — BaseEmbedding → Voyage / GigaChat
-│   │       ├── search.py            — SearchService (semantic + full-text)
-│   │       └── bookmark_processor.py — AI pipeline: classify → embed → tag
-│   └── /migrations
-│       └── /versions/001_initial.py
-├── /bot
-│   ├── main.py              — aiogram Bot + Dispatcher, polling mode
-│   ├── config.py            — Bot Settings
-│   ├── api_client.py        — BackendClient (httpx → FastAPI)
-│   ├── state_store.py        — Redis state (task_list_msg, bot_msgs)
-│   └── /handlers
-│       ├── start.py         — /start, forwarded messages, plain text → bookmark
-│       ├── search.py        — /search <query>
-│       └── random.py        — /random, /stats
-└── /frontend (ещё не реализован)
-    └── /app
+┌─────────────┐                              ┌─────────────────────────────┐
+│  Telegram   │ ◀────── polling/webhook ───▶ │  Bot (aiogram 3.x)          │
+│  (юзер)     │                              │  bot/main.py + handlers/    │
+└─────────────┘                              └─────────────┬───────────────┘
+                                                           │ httpx + JWT
+                                                           ▼
+                                             ┌─────────────────────────────┐
+                                             │  Backend API (FastAPI)      │
+                                             │  backend/main.py + /api/v1/ │
+                                             └──┬──────────────────────┬───┘
+                                                │                      │
+                                          enqueue                  read/write
+                                                │                      │
+                                                ▼                      ▼
+                                  ┌─────────────────────┐    ┌──────────────────┐
+                                  │  Redis + arq queue  │    │  PostgreSQL +    │
+                                  │  (job: process_     │    │  pgvector        │
+                                  │   bookmark_task)    │    │                  │
+                                  └──────────┬──────────┘    └──────────────────┘
+                                             │ pop job              ▲
+                                             ▼                      │ write
+                                  ┌──────────────────────────────────────────┐
+                                  │  Worker (arq, run_worker.py)             │
+                                  │  bookmark_processor.py                   │
+                                  └──┬─────────┬─────────┬─────────┬─────────┘
+                                     │         │         │         │
+                                     ▼         ▼         ▼         ▼
+                                ┌────────┐ ┌──────┐ ┌────────┐ ┌─────────┐
+                                │GigaChat│ │Voyage│ │ Yandex │ │ dedup   │
+                                │ classy │ │ embed│ │SpeechKit│ │ checker │
+                                │ /tags  │ │ 1024d│ │  STT   │ │(local)  │
+                                └────────┘ └──────┘ └────────┘ └─────────┘
 ```
 
----
+## Компоненты
 
-## Data Model
+### Bot (`bot/`)
+aiogram 3.x на Python 3.14. В dev — long polling (`@bookmarkbrain_dev_bot`), в prod — long polling в Docker контейнере (`@N0teeBot`). Хэндлеры разбиты по типам:
 
-### users
-`id` UUID PK, `telegram_id` BIGINT UNIQUE, `telegram_username`, `telegram_first_name`, `settings` JSONB, `bookmarks_count` INT, `created_at`, `last_active`
+- `start.py` — `/start`, forwarded messages, plain text → bookmark
+- `media.py` — voice / video_note / audio → STT pipeline
+- `documents.py` — PDF / DOCX / TXT / MD
+- `tasks.py` — task list rendering, reply-команды (NL edit)
+- `search.py` — `/search <query>`
+- `random.py` — `/random`, `/stats`
+- `settings.py` — `/silent`, прочие toggle
+- `clean.py` — `/clean` (но защищает task lists от удаления)
 
-### bookmarks
-`id` UUID PK, `user_id` FK→users CASCADE, `source`, `source_message_id`, `url`, `raw_text` NOT NULL, `title`, `content_type`, `summary` (AI), `category` (AI), `language` (AI), `embedding` vector(1024), `search_vector` TSVECTOR, `ai_status` (pending/processing/completed/failed), `retry_count`, `is_favorite`, `is_archived`, `created_at`, `updated_at`
+Бот не делает AI-вызовов сам — всё через REST API бэкенда (`api_client.py` + `BOT_SECRET` header).
 
-### tags
-`id` UUID PK, `user_id` FK, `name` VARCHAR(100), `color`, `bookmarks_count`, UNIQUE(user_id, name)
+### Backend (`backend/`)
+FastAPI + async SQLAlchemy. Версионирование `/api/v1/`, healthcheck `/health`, CORS.
 
-### bookmark_tags
-`bookmark_id` FK PK, `tag_id` FK PK (M2M)
+- `main.py` — приложение, роутеры, CORS, startup hooks
+- `app/api/` — `users.py`, `bookmarks.py`, `search.py`, `feedback.py`
+- `app/services/` — бизнес-логика (см. ниже)
+- `app/auth.py` — JWT, Telegram initData HMAC, X-Bot-Secret
+- `app/worker.py` — arq WorkerSettings (используется и run_worker.py)
 
-### Индексы
-- HNSW на `embedding` (vector_cosine_ops, m=16, ef_construction=64)
-- GIN на `search_vector`
-- Partial unique на `(user_id, source, source_message_id)` — дедупликация
-- Триггер авто-обновления `search_vector`
+### Worker (`backend/run_worker.py` + `app/worker.py`)
+arq на Redis. Запускается через `asyncio.run()` (CLI arq ломается на Python 3.14 — см. ADR не в этом списке, но в TROUBLESHOOTING). Один воркер процессит все типы задач:
 
----
+- `process_bookmark_task` — основной AI pipeline
+- `embedding_retry_cron` — переобработка `ai_status=failed`
+- `stale_list_nudge` — крон для напоминаний по task lists
+
+### Services
+- `ai_classifier.py` — `BaseClassifier` → GigaChat / Claude (переключается через `AI_PROVIDER`)
+- `embeddings.py` — `BaseEmbeddingService` → Voyage AI / GigaChat (`EMBEDDING_PROVIDER`)
+- `bookmark_processor.py` — оркестратор пайплайна (classify → embed → tag → dedup → save)
+- `dedup_checker.py` — двухуровневая дедупликация (cosine + text overlap)
+- `search.py` — гибридный поиск (semantic + full-text)
+- `search_summary.py` — AI-обзор результатов поиска
+- `task_list_*` — детекция, рендеринг, NL-редактирование списков задач
+- `article_fetcher.py` — fetch+extract по URL для линков
+- `telegram_import.py` — импорт из Saved Messages
+
+## Data flow — основной сценарий «юзер пишет текст»
+
+```
+1. Telegram webhook/polling → bot/handlers/start.py
+2. Bot: ставит реакцию 👀, шлёт POST /api/v1/bookmarks/ (с X-Bot-Secret)
+3. Backend: создаёт Bookmark(ai_status='pending'), enqueue arq job, отвечает 201
+4. Bot: возвращает control юзеру (≤ 2 сек)
+5. Worker pops job → bookmark_processor.process(bookmark_id):
+   a. classify (GigaChat) → category, language, summary
+   b. dedup_checker → ищет похожие через embedding cosine + text overlap
+       → если найден → ai_status='completed', dedup_alert callback в боте
+   c. embed (Voyage AI) → vector(1024)
+   d. tag extraction → upsert в tags + bookmark_tags
+   e. UPDATE bookmarks SET ai_status='completed', updated_at=now()
+6. Bot: callback от воркера через Redis pub/sub → меняет реакцию 👀 → 👍
+```
+
+**Failure mode:** если на шаге 5 что-то падает (GigaChat 402, Voyage timeout) — `ai_status='failed'`, `retry_count++`. Закладка остаётся в БД с `raw_text`, юзер её всё равно видит. `embedding_retry_cron` каждый час пытается переобработать.
+
+## Схема БД (главное)
+
+```
+users
+├── id            UUID PK
+├── telegram_id   BIGINT UNIQUE
+├── settings      JSONB        ← silent_mode, prefs
+├── bookmarks_count INT
+└── created_at, last_active
+
+bookmarks
+├── id            UUID PK
+├── user_id       FK → users CASCADE
+├── source        ENUM (text, voice, document, forward, url)
+├── source_message_id  BIGINT
+├── raw_text      TEXT NOT NULL
+├── title         TEXT
+├── url           TEXT
+├── content_type  VARCHAR
+├── summary       TEXT          ← AI
+├── category      VARCHAR       ← AI
+├── language      VARCHAR       ← AI
+├── embedding     vector(1024)  ← Voyage AI
+├── search_vector TSVECTOR      ← триггер из raw_text+title+summary
+├── ai_status     ENUM (pending, processing, completed, failed)
+├── retry_count   INT
+├── transcription TEXT          ← для voice
+├── media_duration INT
+├── media_file_id  TEXT
+├── document_page_count INT
+├── is_favorite   BOOL
+├── is_archived   BOOL
+└── created_at, updated_at
+
+tags
+├── id            UUID PK
+├── user_id       FK
+├── name          VARCHAR(100)
+├── color         VARCHAR
+├── bookmarks_count INT
+└── UNIQUE(user_id, name)
+
+bookmark_tags  -- M2M
+├── bookmark_id  FK PK
+└── tag_id       FK PK
+
+folders         -- зарезервировано под Smart Blocks (Phase 5)
+```
+
+### Индексы и триггеры
+- HNSW на `bookmarks.embedding` (`vector_cosine_ops`, m=16, ef_construction=64)
+- GIN на `bookmarks.search_vector`
+- Partial unique на `(user_id, source, source_message_id) WHERE source_message_id IS NOT NULL` — дедупликация на уровне БД
+- Триггер обновления `search_vector` (русская конфигурация)
 
 ## Аутентификация
 
 | Клиент | Flow |
 |--------|------|
-| Bot | `message.from_user.id` + X-Bot-Secret header → JWT |
-| Mini App | Telegram initData → HMAC-SHA256 → JWT |
-| iOS App | Через Mini App → JWT |
+| Bot | `from_user.id` + `X-Bot-Secret` header → backend issue JWT |
+| Mini App (план) | Telegram initData → HMAC-SHA256 (BOT_TOKEN secret) → JWT |
+| iOS App (план) | Через Mini App → JWT |
 
----
+JWT короткоживущий (24h). `BOT_SECRET` — shared secret между ботом и backend, никогда не покидает сервер.
 
-## Переменные окружения (.env)
+## Инфраструктура
+
+### Production
+- **VPS:** Beget Cloud (Ubuntu 22.04, 2 CPU, 4GB RAM)
+- **Docker Compose** (`docker-compose.prod.yml`): postgres, redis, backend, worker, bot
+- **Деплой:** `git pull && ./deploy.sh` (см. `docs/DEVELOPMENT-GUIDE.md`)
+- **CI:** GitHub Actions (`.github/workflows/test.yml`) — pytest на push
+- **CD:** настроен, но `VPS_HOST`/`VPS_USER`/`VPS_SSH_KEY` ещё не добавлены в GitHub Secrets
+
+### Локальная разработка
+- `start.bat` / `stop.bat` — Docker (postgres + redis) + venv-процессы (backend, worker, bot)
+- venv в `%LOCALAPPDATA%\bookmark-brain\venv` (вне OneDrive — Python 3.14 ломается на синхронизируемом)
+- Dev-бот `@bookmarkbrain_dev_bot`, отдельный токен в локальном `.env`
+
+## Переменные окружения
+
+См. `.env.production.example`. Главное:
 
 ```bash
-DATABASE_URL=postgresql+asyncpg://user:password@localhost:5432/bookmarkbrain
-REDIS_URL=redis://localhost:6379
-TELEGRAM_BOT_TOKEN=your_bot_token
-BOT_SECRET=shared_secret_for_bot_auth
-MINI_APP_URL=https://your-mini-app.vercel.app
+DATABASE_URL=postgresql+asyncpg://...
+REDIS_URL=redis://redis:6379
+TELEGRAM_BOT_TOKEN=...
+BOT_SECRET=...
+SECRET_KEY=...                # JWT
 
-# AI — переключение провайдера
 AI_PROVIDER=gigachat          # gigachat | claude
 EMBEDDING_PROVIDER=voyage     # voyage | gigachat
-GIGACHAT_AUTH_KEY=your_key
-ANTHROPIC_API_KEY=your_key
-VOYAGE_API_KEY=your_key
+GIGACHAT_AUTH_KEY=...
+VOYAGE_API_KEY=...
+ANTHROPIC_API_KEY=...         # опционально
 
-SECRET_KEY=random_secret_for_jwt
-ENVIRONMENT=development
+STT_PROVIDER=yandex           # yandex | groq | openai
+YANDEX_STT_API_KEY=...
+YANDEX_FOLDER_ID=...
+
+ENVIRONMENT=production
 ```
 
----
+## Связанные документы
 
-## Статус разработки
-
-### Готово (Промпты 1-10)
-- [x] Docker Compose (PostgreSQL + Redis)
-- [x] Models + Alembic migrations
-- [x] Pydantic schemas
-- [x] Auth (JWT + Telegram initData + bot secret)
-- [x] AI Classifier (GigaChat + Claude, абстракция)
-- [x] Embeddings (Voyage AI, 1024 dims)
-- [x] Hybrid Search (semantic + full-text)
-- [x] arq Worker (фоновая AI-обработка)
-- [x] Bookmark API (17 endpoints)
-- [x] Telegram Bot (@N0teeBot — /start, forward, /search, /random, /stats)
-
-### Следующие шаги
-- [ ] Telegram Mini App (Промпт 12) — приоритет
-- [ ] Expo iOS App (Промпт 11)
-- [ ] Deploy на Railway (Промпт 13)
+- `docs/SPEC.md` — что строит этот стек.
+- `docs/decisions/` — почему именно эти технологии.
+- `docs/BOT-UX.md` — детали бот-логики, clean chat, task lists.
+- `docs/TROUBLESHOOTING.md` — известные грабли (GigaChat 402, arq + Python 3.14, и т.д.).
+- `docs/DEVELOPMENT-GUIDE.md` — как запускать и деплоить.

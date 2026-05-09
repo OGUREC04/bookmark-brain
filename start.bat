@@ -37,9 +37,9 @@ if not exist "%PROJECT_DIR%.env" (
     echo ERROR: .env not found
     goto :fail
 )
-"%VENV_PY%" -c "import alembic, uvicorn, arq, aiogram" 1>>"%LOG%" 2>&1
+"%VENV_PY%" -c "import alembic, uvicorn, arq, aiogram, boto3, pypdf, docx" 1>>"%LOG%" 2>&1
 if !errorlevel! neq 0 (
-    echo ERROR: venv missing deps. Re-run install.bat
+    echo ERROR: venv missing deps ^(check log: missing module^). Re-run install.bat
     goto :fail
 )
 echo   OK

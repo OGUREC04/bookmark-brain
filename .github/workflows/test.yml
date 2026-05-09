@@ -21,10 +21,27 @@ jobs:
       - name: Install bot dependencies
         run: pip install -r bot/requirements.txt
 
-      - name: Install test dependencies
-        run: pip install pytest pytest-asyncio
+      - name: Install backend dependencies
+        run: pip install -r backend/requirements.txt
 
-      - name: Run tests
+      - name: Install test dependencies
+        run: pip install pytest pytest-asyncio ruff mypy
+
+      - name: Lint (ruff) — bugs only on PR-touched files
+        run: |
+          python -m ruff check \
+            bot/onboarding.py bot/services/stt.py bot/handlers/start.py \
+            backend/app/worker.py backend/app/services/bookmark_processor.py \
+            backend/app/services/task_list_detector.py \
+            --select=F,B,E711,E712,E721,E722
+
+      - name: Type-check (mypy) — strict on key new modules
+        run: |
+          python -m mypy \
+            bot/onboarding.py bot/services/stt.py \
+            backend/app/services/task_list_detector.py
+
+      - name: Run tests (bot + backend)
         env:
           TELEGRAM_BOT_TOKEN: "fake:token"
           BACKEND_URL: "http://localhost:8000"
@@ -32,4 +49,8 @@ jobs:
           REDIS_URL: "redis://localhost:6379"
           WHISPER_API_KEY: ""
           STT_PROVIDER: "openai"
-        run: python -m pytest tests/ -v
+          DATABASE_URL: "postgresql+asyncpg://test:test@localhost/test"
+          SECRET_KEY: "x_test_secret_key_at_least_32_chars_long"
+          GIGACHAT_AUTH_KEY: "fake"
+          VOYAGE_API_KEY: "fake"
+        run: python -m pytest -v

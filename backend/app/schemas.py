@@ -34,6 +34,7 @@ class UserResponse(BaseModel):
     telegram_first_name: str | None
     bookmarks_count: int
     created_at: datetime
+    settings: dict | None = None  # silent_mode, onboarding_*, language, …
 
 
 # ──────────────────── Tag ────────────────────
