@@ -22,6 +22,7 @@ logger = logging.getLogger(__name__)
 
 _LIST_TTL = 14 * 24 * 3600  # 14 дней
 _CLEAN_TTL = 48 * 3600  # 48ч — Telegram разрешает удалять только до этого возраста
+_CLEANUP_TTL = 5 * 60  # 5 мин — список «временных» сообщений после неудачного reply
 
 
 class StateStore:
@@ -328,3 +329,27 @@ class StateStore:
         """Проверяем был ли nudge для этого списка."""
         r = await self._get()
         return await r.exists(f"nudged:{bookmark_id}") > 0
+
+    # ── cleanup-хвостов: failed replies + bot help messages ─
+    # Когда юзер шлёт reply в формате который мы не поняли, мы реагируем 👎
+    # и шлём подсказку. Если следующий reply сработал — все эти «хвосты»
+    # должны исчезнуть, чтобы чат остался чистым.
+
+    async def track_cleanup_msg(
+        self, chat_id: int, list_msg_id: int, msg_id: int,
+    ) -> None:
+        """Запомнить временное сообщение, привязанное к task_list."""
+        r = await self._get()
+        key = f"tasklist_cleanup:{chat_id}:{list_msg_id}"
+        await r.rpush(key, str(msg_id))
+        await r.expire(key, _CLEANUP_TTL)
+
+    async def pop_cleanup_msgs(
+        self, chat_id: int, list_msg_id: int,
+    ) -> list[int]:
+        """Забрать и очистить все временные сообщения этого task_list."""
+        r = await self._get()
+        key = f"tasklist_cleanup:{chat_id}:{list_msg_id}"
+        raw = await r.lrange(key, 0, -1)
+        await r.delete(key)
+        return [int(x) for x in raw if x.isdigit()]
