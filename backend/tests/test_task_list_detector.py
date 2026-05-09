@@ -156,3 +156,42 @@ def test_max_constants_are_sane():
     """Защита от случайного обнуления порогов."""
     assert MAX_TASK_LENGTH > 50
     assert MAX_PREAMBLE_WORDS > 5
+
+
+def test_bot_rendered_list_recognized_when_copypasted():
+    """Юзер переслал/скопировал отрендеренный нами список — должен опять
+    стать task_list. Иначе copy-paste своего же сообщения создаёт дубль
+    в виде обычной заметки и dedup не срабатывает.
+    """
+    text = (
+        "📋 Список задач\n"
+        "\n"
+        "✅ 1. хуй\n"
+        "☐ 2. пизда\n"
+        "☐ 3. бля\n"
+        "\n"
+        "Выполнено: 1 из 3\n"
+        "\n"
+        "↩️ Reply: закрыть · добавить · удалить пункт или список\n"
+        "Примеры: «закрой 1, 3» / «добавь хлеб» / «удали 2»"
+    )
+    result = detect(text, ai_item_type="content")
+    assert result.is_list is True
+    assert len(result.tasks) == 3
+    # Нумерация и bullet-маркеры должны исчезнуть из текста пунктов
+    assert "хуй" in result.tasks[0]
+    assert "1." not in result.tasks[0]
+    assert "✅" not in result.tasks[0]
+    assert "📋" not in " ".join(result.tasks)
+    assert "Reply:" not in " ".join(result.tasks)
+
+
+def test_bot_rendered_with_voice_timestamps():
+    """Длинный голосовой транскрипт с [mm:ss] не должен детектиться как список."""
+    text = (
+        "[00:00] первое предложение длинное и содержит много слов про разное\n"
+        "[00:30] второе предложение продолжает мысль и тоже довольно длинное\n"
+        "[01:00] третье предложение завершает рассказ"
+    )
+    result = detect(text, ai_item_type="content")
+    assert result.is_list is False

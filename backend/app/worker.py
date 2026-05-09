@@ -372,19 +372,30 @@ async def process_bookmark_task(
         bookmark = result.scalar_one_or_none()
 
         # Phase 5D-lite: general dedup detection (cosine > 0.95)
-        # Если юзер прислал почти то же самое — спрашиваем через reply
+        # Если юзер прислал почти то же самое — спрашиваем через reply.
+        # Запускаем даже при отсутствии embedding (Pass 2 — text overlap),
+        # иначе partial-bookmarks после GigaChat-fail никогда не ловятся.
         near_dup_handled = False
         if (
             bookmark
             and bookmark.ai_status in ("completed", "partial")
-            and bookmark.embedding is not None
             and can_notify
         ):
             try:
                 from app.services.dedup_checker import find_near_duplicate
+                # embedding может быть None если AI упал (partial-rescue ветка).
+                # find_near_duplicate в этом случае пропускает Pass 1 и идёт
+                # в Pass 2 (text overlap) — он работает без embedding.
+                emb = None
+                if bookmark.embedding is not None:
+                    emb = (
+                        bookmark.embedding.tolist()
+                        if hasattr(bookmark.embedding, 'tolist')
+                        else list(bookmark.embedding)
+                    )
                 dup = await find_near_duplicate(
                     session, bookmark.id, bookmark.user_id,
-                    bookmark.embedding.tolist() if hasattr(bookmark.embedding, 'tolist') else list(bookmark.embedding),
+                    emb,
                     raw_text=bookmark.raw_text or "",
                 )
                 if dup:

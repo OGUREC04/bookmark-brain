@@ -23,86 +23,119 @@ LOOKBACK_DAYS = 7
 TEXT_OVERLAP_THRESHOLD = 0.6  # ≥60% строк совпадают → дубль
 
 
+import re as _re
+
+# Служебные строки нашего бот-рендера — игнорируем при сравнении.
+# Только chrome (заголовок 📋, футеры Reply/Примеры/Выполнено/таймкоды),
+# но НЕ ловим ☐/✅/⏰ — это маркеры пунктов, их нужно сохранять.
+_BOT_NOISE_RE = _re.compile(
+    r"^\s*(?:📋|↩️|💬|"
+    r"Выполнено:|Reply:|Примеры:|Ответь reply|Ответь на это сообщение|"
+    r"\[\d{2}:\d{2}\])",
+    _re.IGNORECASE,
+)
+
+
 def _normalize_line(line: str) -> str:
-    """Нормализует строку для сравнения: убирает эмодзи, пунктуацию, нумерацию."""
-    import re
+    """Нормализует строку для сравнения: убирает эмодзи, bullet-маркеры,
+    нумерацию, даты — оставляет только смысловой текст пункта.
+    """
     # Убираем эмодзи и спецсимволы (☐, ✅, ⏰, 📋, ↩️, etc.)
-    line = re.sub(r'[^\w\s,.()\-]', '', line)
+    line = _re.sub(r'[^\w\s,.()\-]', '', line)
+    # Убираем bullet-маркеры в начале строки (-, •, *, —, −)
+    line = _re.sub(r'^\s*[-•*—−]\s*', '', line)
     # Убираем нумерацию в начале (1. 2) 3- и т.д.)
-    line = re.sub(r'^\s*\d+[.):\-]\s*', '', line)
+    line = _re.sub(r'^\s*\d+[.):\-]\s*', '', line)
     # Убираем даты в формате DD.MM
-    line = re.sub(r'\d{2}\.\d{2}', '', line)
+    line = _re.sub(r'\d{2}\.\d{2}', '', line)
     return line.strip().lower()
 
 
-def _text_overlap(new_text: str, existing_text: str) -> float:
-    """Доля строк нового текста, которые содержатся в существующем.
+def _meaningful_lines(text: str) -> set[str]:
+    """Возвращает множество нормализованных смысловых строк.
 
-    Сравнивает нормализованные строки. Пропускает пустые и очень короткие (<3 символа).
+    Отфильтровывает: пустые, короче 3 символов, служебные строки бот-рендера
+    (📋, Reply:, Выполнено:, …) — без них сравнение работает корректно
+    даже когда новый текст это forward-нутый бот-рендер старого.
     """
-    new_lines = {
-        _normalize_line(l) for l in new_text.split('\n')
-        if len(_normalize_line(l)) >= 3
-    }
-    existing_lines = {
-        _normalize_line(l) for l in existing_text.split('\n')
-        if len(_normalize_line(l)) >= 3
-    }
+    out: set[str] = set()
+    for raw_line in text.split("\n"):
+        if _BOT_NOISE_RE.match(raw_line):
+            continue
+        norm = _normalize_line(raw_line)
+        if len(norm) >= 3:
+            out.add(norm)
+    return out
 
-    if not new_lines:
+
+def _text_overlap(new_text: str, existing_text: str) -> float:
+    """Симметричная мера пересечения смысловых строк.
+
+    Возвращает max(matched/|new|, matched/|existing|). Так копия с разной
+    «нагрузкой» вокруг (forward бот-рендера vs голый список) всё равно
+    распознаётся как дубль с одной из сторон.
+    """
+    new_lines = _meaningful_lines(new_text)
+    existing_lines = _meaningful_lines(existing_text)
+    if not new_lines or not existing_lines:
         return 0.0
-
-    matched = sum(1 for nl in new_lines if nl in existing_lines)
-    return matched / len(new_lines)
+    matched = len(new_lines & existing_lines)
+    if matched == 0:
+        return 0.0
+    return max(matched / len(new_lines), matched / len(existing_lines))
 
 
 async def find_near_duplicate(
     session: AsyncSession,
     bookmark_id: UUID,
     user_id: UUID,
-    embedding: list[float],
+    embedding: list[float] | None,
     raw_text: str = "",
 ) -> dict | None:
     """Ищет дубликат: embedding (cosine > 0.85) + text overlap (> 60%).
 
     Два уровня проверки:
-    1. Embedding — ловит семантические дубли (перефразированные)
-    2. Text overlap — ловит копипаст с форматированием (эмодзи, нумерация)
+    1. Embedding — ловит семантические дубли (перефразированные).
+       Пропускается если embedding=None (partial после GigaChat-fail).
+    2. Text overlap — ловит копипаст с форматированием (эмодзи, нумерация).
+       Работает всегда.
 
     Возвращает dict или None.
     """
-    # Уровень 1: embedding similarity
-    query = text("""
-        SELECT
-            b.id,
-            b.title,
-            b.summary,
-            b.item_type,
-            b.structured_data,
-            b.raw_text,
-            b.created_at,
-            1 - (b.embedding <=> CAST(:query_embedding AS vector)) AS similarity
-        FROM bookmarks b
-        WHERE b.user_id = :user_id
-          AND b.id != :current_id
-          AND b.ai_status IN ('completed', 'partial')
-          AND b.embedding IS NOT NULL
-          AND b.is_archived = false
-          AND 1 - (b.embedding <=> CAST(:query_embedding AS vector)) > :threshold
-        ORDER BY similarity DESC
-        LIMIT 3
-    """)
+    rows: list = []
+    # Уровень 1: embedding similarity (только если есть embedding)
+    if embedding is not None:
+        query = text("""
+            SELECT
+                b.id,
+                b.title,
+                b.summary,
+                b.item_type,
+                b.structured_data,
+                b.raw_text,
+                b.created_at,
+                1 - (b.embedding <=> CAST(:query_embedding AS vector)) AS similarity
+            FROM bookmarks b
+            WHERE b.user_id = :user_id
+              AND b.id != :current_id
+              AND b.ai_status IN ('completed', 'partial')
+              AND b.embedding IS NOT NULL
+              AND b.is_archived = false
+              AND 1 - (b.embedding <=> CAST(:query_embedding AS vector)) > :threshold
+            ORDER BY similarity DESC
+            LIMIT 3
+        """)
 
-    result = await session.execute(
-        query,
-        {
-            "user_id": str(user_id),
-            "current_id": str(bookmark_id),
-            "query_embedding": str(embedding),
-            "threshold": NEAR_DUPLICATE_THRESHOLD,
-        },
-    )
-    rows = result.fetchall()
+        result = await session.execute(
+            query,
+            {
+                "user_id": str(user_id),
+                "current_id": str(bookmark_id),
+                "query_embedding": str(embedding),
+                "threshold": NEAR_DUPLICATE_THRESHOLD,
+            },
+        )
+        rows = result.fetchall()
 
     # Pass 1: проверяем embedding-кандидатов на text overlap
     for row in rows:

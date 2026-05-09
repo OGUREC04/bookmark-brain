@@ -39,8 +39,21 @@ EXPLICIT_TRIGGERS = (
     "shopping:",
 )
 
-# Маркеры пунктов в начале строки
-BULLET_RE = re.compile(r"^\s*(?:[-•*—−]|\d+[.)])\s+", re.MULTILINE)
+# Маркеры пунктов в начале строки. Включаем ✅/☐/✓/✗ — наш собственный
+# рендер использует их, и юзер может переслать своё же сообщение боту обратно.
+# Без этих маркеров отрендеренный список не распознаётся при copy-paste.
+BULLET_RE = re.compile(
+    r"^\s*(?:✅|☐|✔|✗|☑|☒|[-•*—−]|\d+[.)])\s+",
+    re.MULTILINE,
+)
+
+# Служебные строки нашего рендера — игнорируем при подсчёте preamble и tasks.
+BOT_RENDERED_NOISE_RE = re.compile(
+    r"^\s*(?:📋|↩️|💬|⏰|"
+    r"Выполнено:|Reply:|Примеры:|Ответь reply|Ответь на это сообщение|"
+    r"\[\d{2}:\d{2}\])",
+    re.IGNORECASE,
+)
 
 # Разделители для inline-списков ("молоко, хлеб, сыр")
 INLINE_SPLIT_RE = re.compile(r"[,;]|\s+и\s+")
@@ -87,11 +100,21 @@ def _strip_trigger(text: str) -> tuple[str, bool]:
 
 
 def _parse_bulleted(text: str) -> list[str]:
-    """Парсит текст с маркерами в начале строк."""
+    """Парсит текст с маркерами в начале строк.
+
+    Также удаляет нумерацию ВНУТРИ пункта после bullet-маркера (например
+    «✅ 1. хуй» → «хуй»), потому что наш рендер использует ✅ + номер.
+    Пропускает служебные строки бот-рендера (📋, Выполнено:, Reply: и т.д.).
+    """
     lines = text.split("\n")
     tasks = []
     for line in lines:
+        # Пропускаем шапку/футер нашего же рендера
+        if BOT_RENDERED_NOISE_RE.match(line):
+            continue
         stripped = BULLET_RE.sub("", line).strip()
+        # После снятия bullet может остаться "1. хуй" — снимаем нумерацию
+        stripped = re.sub(r"^\d+[.):\-]\s*", "", stripped)
         # Пропускаем пустые и слишком длинные (вряд ли пункт)
         if stripped and len(stripped) < 300:
             tasks.append(stripped)
