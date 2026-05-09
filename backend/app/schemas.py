@@ -34,6 +34,7 @@ class UserResponse(BaseModel):
     telegram_first_name: str | None
     bookmarks_count: int
     created_at: datetime
+    timezone: str = "Europe/Moscow"  # IANA timezone, default MSK
     settings: dict | None = None  # silent_mode, onboarding_*, language, …
 
 
@@ -207,3 +208,41 @@ class AIClassification(BaseModel):
     entities: list[str] = Field(default_factory=list)
     open_questions: list[str] = Field(default_factory=list)
     takeaway: str = ""
+
+
+# ──────────────────── Reminders (Phase 2.5) ────────────────────
+
+
+class ReminderCreate(BaseModel):
+    """Тело POST /api/v1/reminders/."""
+
+    bookmark_id: UUID | None = None
+    fire_at: datetime  # UTC ожидается
+    payload: dict = Field(default_factory=dict)
+
+
+class ReminderUpdate(BaseModel):
+    """Тело PATCH /api/v1/reminders/{id}.
+
+    Используется для snooze: меняем fire_at, статус возвращается в pending.
+    """
+
+    fire_at: datetime | None = None
+
+
+class ReminderResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    bookmark_id: UUID | None
+    kind: str  # всегда "reminder" из этого endpoint
+    fire_at: datetime
+    status: str
+    payload: dict
+    created_at: datetime
+    sent_at: datetime | None = None
+
+
+class ReminderListResponse(BaseModel):
+    items: list[ReminderResponse]
+    total: int

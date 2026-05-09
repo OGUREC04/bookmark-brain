@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import get_settings
 from app.api.bookmarks import router as bookmarks_router
 from app.api.folders import router as folders_router
+from app.api.reminders import router as reminders_router
 from app.api.search import router as search_router
 from app.api.users import router as users_router
 
@@ -48,6 +49,7 @@ app.add_middleware(
 app.include_router(users_router)
 app.include_router(bookmarks_router)
 app.include_router(folders_router)
+app.include_router(reminders_router)
 app.include_router(search_router)
 
 
