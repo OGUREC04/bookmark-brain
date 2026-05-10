@@ -15,7 +15,7 @@ from sqlalchemy import (
     UniqueConstraint,
     func,
 )
-from sqlalchemy.dialects.postgresql import JSONB, TSVECTOR, UUID
+from sqlalchemy.dialects.postgresql import ENUM as PG_ENUM, JSONB, TSVECTOR, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -292,13 +292,26 @@ class ScheduledMessage(Base):
         ForeignKey("bookmarks.id", ondelete="CASCADE"),
         nullable=True,
     )
-    # ENUM в БД — чтобы добавлять kinds в Phase 6 без миграции схемы (только ALTER TYPE)
-    kind: Mapped[str] = mapped_column(String(32), nullable=False)
+    # ENUM в БД — чтобы добавлять kinds в Phase 6 без миграции схемы (только ALTER TYPE).
+    # Используем postgresql.ENUM с create_type=False (тип создан миграцией
+    # a7b8c9d0e1f2_add_scheduled_messages.py). String(32) ломает INSERT —
+    # asyncpg шлёт VARCHAR, Postgres ждёт scheduled_kind/scheduled_status ENUM.
+    kind: Mapped[str] = mapped_column(
+        PG_ENUM(
+            "reminder", "digest", "surfacing", "nudge",
+            name="scheduled_kind", create_type=False,
+        ),
+        nullable=False,
+    )
     fire_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False
     )
     status: Mapped[str] = mapped_column(
-        String(32), nullable=False, server_default="pending", default="pending"
+        PG_ENUM(
+            "pending", "sending", "sent", "done", "cancelled", "failed",
+            name="scheduled_status", create_type=False,
+        ),
+        nullable=False, server_default="pending", default="pending",
     )
     payload: Mapped[dict] = mapped_column(JSONB, server_default="{}", default=dict)
     retry_count: Mapped[int] = mapped_column(Integer, server_default="0", default=0)
