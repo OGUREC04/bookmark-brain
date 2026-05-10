@@ -475,6 +475,40 @@ class StateStore:
         r = await self._get()
         return await r.get(f"reminder_snooze:{chat_id}:{msg_id}")
 
+    # T12 v2.1: snapshot ID-list reminders для NL-reply mgmt.
+    # Когда показываем /reminders — фиксируем порядок UUID'ов в Redis.
+    # NL-reply «отмени 2» → берём индекс 2 из snapshot → uuid → cancel by uuid.
+    # Не пересчитываем позиции в момент reply (через 5 минут №2 может стать
+    # другим reminder'ом если первый уже отработал).
+    _REMINDERS_LIST_TTL = 60 * 60   # 1ч на ответ
+
+    async def store_reminders_list_snapshot(
+        self, chat_id: int, msg_id: int, reminder_ids: list[str],
+    ) -> None:
+        import json
+        r = await self._get()
+        await r.set(
+            f"reminders_list:{chat_id}:{msg_id}",
+            json.dumps(reminder_ids),
+            ex=self._REMINDERS_LIST_TTL,
+        )
+
+    async def get_reminders_list_snapshot(
+        self, chat_id: int, msg_id: int,
+    ) -> list[str] | None:
+        import json
+        r = await self._get()
+        raw = await r.get(f"reminders_list:{chat_id}:{msg_id}")
+        if raw is None:
+            return None
+        try:
+            data = json.loads(raw)
+            if isinstance(data, list):
+                return [str(x) for x in data]
+        except (json.JSONDecodeError, TypeError):
+            pass
+        return None
+
     async def delete_reminder_snooze(
         self, chat_id: int, msg_id: int,
     ) -> None:
