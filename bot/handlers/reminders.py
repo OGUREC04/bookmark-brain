@@ -22,6 +22,7 @@ from zoneinfo import ZoneInfo
 
 import httpx
 from aiogram import F, Router
+from aiogram.filters import Command, CommandObject
 from aiogram.types import CallbackQuery, Message
 
 logger = logging.getLogger(__name__)
@@ -73,6 +74,180 @@ def _format_fire_at(fire_at: datetime, tz_name: str) -> str:
         tz = ZoneInfo(DEFAULT_TZ)
     local = fire_at.astimezone(tz)
     return local.strftime("%d.%m %H:%M")
+
+
+# ──────────────────────────────────────────────────
+# /remind — explicit команда (T11 v2.1)
+# ──────────────────────────────────────────────────
+
+
+REMIND_HELP_TEXT = (
+    "❓ <b>Создание напоминания</b>\n\n"
+    "<code>/remind &lt;текст&gt; &lt;когда&gt;</code>\n\n"
+    "<b>Пример:</b>\n"
+    "<code>/remind купить хлеб завтра в 9</code>\n"
+    "<code>/remind позвонить маме в субботу</code>\n"
+    "<code>/remind заплатить за квартиру 15.05</code>\n\n"
+    "💡 <b>Когда:</b> завтра, через час, в субботу, 15.05, в 18:00, "
+    "утром / вечером / ночью\n\n"
+    "📋 <code>/reminders</code> — список активных + история"
+)
+
+
+def _split_remind_text_and_time(args: str) -> tuple[str, str | None]:
+    """Разделяет аргументы /remind на текст напоминания и временную часть.
+
+    Стратегия: пробуем парсить ВСЁ как время — если ParseStatus.OK,
+    значит времени нет (всё - время). Иначе ищем временную фразу с конца:
+    последние 2-5 токенов отдаём парсеру, если OK — это время, остальное
+    — текст. Если ничего не парсится — весь ввод считается текстом без
+    времени.
+
+    Возвращает (text, time_part_or_None).
+    """
+    from backend.app.services.nl_date import ParseStatus, parse
+
+    args = args.strip()
+    if not args:
+        return "", None
+
+    tokens = args.split()
+    n = len(tokens)
+
+    # Эвристика: пробуем БÓЛЬШЕЕ окно с конца (5..1 токенов).
+    # Учитываем OK И IN_PAST как «time match» — иначе «вчера в 9» (3 токена)
+    # пропускается потому что «в 9» (2 токена) парсится в OK раньше.
+    # IN_PAST потом ловится в cmd_remind с осмысленным сообщением юзеру.
+    valid_statuses = (ParseStatus.OK, ParseStatus.IN_PAST)
+    for window in range(min(5, n), 0, -1):
+        time_part = " ".join(tokens[n - window:])
+        text_part = " ".join(tokens[: n - window])
+        result = parse(time_part)
+        if result.status in valid_statuses and text_part:
+            return text_part.strip(), time_part.strip()
+
+    # Время не найдено — весь ввод как текст.
+    return args, None
+
+
+@router.message(Command("remind"))
+async def cmd_remind(message: Message, command: CommandObject, api, store):
+    """T11: explicit команда /remind для создания напоминания без AI/закладки."""
+    from bot.handlers.start import _ensure_user
+    from backend.app.services.nl_date import ParseStatus, parse
+
+    args = (command.args or "").strip()
+
+    # Без аргументов — справка
+    if not args:
+        await message.answer(REMIND_HELP_TEXT, parse_mode="HTML")
+        return
+
+    token = await _ensure_user(message, api)
+    if not token:
+        return
+
+    user_tz_name = await _get_user_tz_name(api, token)
+    text_part, time_part = _split_remind_text_and_time(args)
+
+    if time_part is None:
+        # Текст без времени — спрашиваем reply со временем.
+        prompt = await message.answer(
+            f"Когда напомнить «<b>{text_part or args}</b>»? "
+            f"<b>Reply</b> на это сообщение со временем.\n\n"
+            f"{TIME_EXAMPLES}",
+            parse_mode="HTML",
+        )
+        # Сохраняем pending state — bookmark_id=None т.к. это explicit
+        # /remind без закладки. Используем отдельный ключ из-за специфики:
+        # reminder_pending_explicit:{chat}:{msg} → text (а не bookmark_id).
+        if prompt is not None and getattr(prompt, "message_id", None) is not None:
+            try:
+                # Reuse store_reminder_pending — но bid сохраним в формате
+                # "explicit:<text>" чтобы reply-handler различал.
+                # Альтернатива — отдельный метод, но это +API surface.
+                payload_marker = f"__explicit__|{text_part or args}"
+                # Сохраним через прямой Redis-set чтобы избежать API-расширения.
+                # store.set_reminder_pending пока нет — используем _r напрямую.
+                r = await store._get()
+                await r.set(
+                    f"reminder_pending:{message.chat.id}:{prompt.message_id}",
+                    payload_marker,
+                    ex=3600,
+                )
+            except Exception as e:
+                logger.warning(f"cmd_remind: failed to save pending state: {e}")
+        return
+
+    # Время есть — парсим, создаём reminder сразу
+    parse_result = parse(time_part, user_tz=user_tz_name)
+
+    if parse_result.status == ParseStatus.IN_PAST:
+        await message.answer(
+            "Это в прошлом. Назначь время в будущем.", parse_mode=None,
+        )
+        return
+
+    if parse_result.status == ParseStatus.NEEDS_TIME:
+        await message.answer(
+            "Уточни время (например «в 9»). " + TIME_EXAMPLES,
+            parse_mode="HTML",
+        )
+        return
+
+    if parse_result.status == ParseStatus.UNPARSEABLE or parse_result.dt is None:
+        # Странно — мы же пропустили через _split. Скорее всего dateparser
+        # моргнул. Просим reply со временем.
+        await message.answer(
+            f"Не понял время «{time_part}». " + TIME_EXAMPLES,
+            parse_mode="HTML",
+        )
+        return
+
+    if parse_result.status == ParseStatus.FALLBACK_DEFAULT:
+        # Размытое — confirm flow (F2 паттерн)
+        proposed = _format_fire_at(parse_result.dt, user_tz_name)
+        prompt = await message.answer(
+            f"Не понял точное время. Поставить «<b>{text_part}</b>» на "
+            f"<b>{proposed}</b>?\n<b>Reply «да»</b> или укажи точнее.",
+            parse_mode="HTML",
+        )
+        if prompt is not None and getattr(prompt, "message_id", None) is not None:
+            try:
+                # Для explicit /remind в fallback используем kind="explicit_create"
+                # чтобы _apply_reminder_action знал что bookmark_id=None и брал
+                # text из target_id.
+                await store.store_reminder_fallback(
+                    message.chat.id, prompt.message_id,
+                    kind="explicit_create",
+                    target_id=text_part,
+                    proposed_dt_iso=parse_result.dt.isoformat(),
+                )
+            except Exception as e:
+                logger.warning(f"store_reminder_fallback failed: {e}")
+        return
+
+    # ParseStatus.OK — создаём reminder сразу
+    try:
+        await api.create_reminder(
+            token,
+            parse_result.dt.isoformat(),
+            bookmark_id=None,
+            payload={"text": text_part, "source": "explicit_remind"},
+        )
+    except Exception as e:
+        logger.warning(f"cmd_remind create failed: {e}")
+        await message.answer(
+            "Не получилось создать напоминание. Попробуй ещё раз.",
+            parse_mode=None,
+        )
+        return
+
+    when = _format_fire_at(parse_result.dt, user_tz_name)
+    await message.answer(
+        f"🔔 Напомню <b>{when}</b> — «{text_part}»",
+        parse_mode="HTML",
+    )
 
 
 # ──────────────────────────────────────────────────
@@ -369,13 +544,26 @@ async def handle_reminder_reply(message: Message, api, store) -> bool:
         )
         return True
 
-    # pending_bid — создание нового reminder
+    # pending_bid — создание нового reminder.
+    # Если bid начинается с "__explicit__|" — это /remind без времени,
+    # bid в действительности содержит текст напоминания. bookmark_id=None.
+    explicit_text = None
+    actual_bid = pending_bid
+    if isinstance(pending_bid, str) and pending_bid.startswith("__explicit__|"):
+        explicit_text = pending_bid[len("__explicit__|"):]
+        actual_bid = None  # explicit /remind не привязан к bookmark
+
+    payload = {
+        "text": explicit_text if explicit_text else text,
+        "source": "explicit_remind" if explicit_text else "implicit_weak",
+    }
+
     try:
         await api.create_reminder(
             token,
             fire_at_iso,
-            bookmark_id=pending_bid,
-            payload={"text": text},
+            bookmark_id=actual_bid,
+            payload=payload,
         )
     except Exception as e:
         logger.warning(f"create_reminder failed: {e}")
@@ -433,7 +621,7 @@ async def _handle_fallback_confirm_reply(
     target_id = fallback_state.get("target_id")
     dt_iso = fallback_state.get("dt_iso")
 
-    if not target_id or not dt_iso or kind not in ("create", "snooze"):
+    if not target_id or not dt_iso or kind not in ("create", "snooze", "explicit_create"):
         # Битый state — лучше выйти.
         try:
             await store.pop_reminder_fallback(chat_id, reply_to_id)
@@ -519,7 +707,14 @@ async def _apply_reminder_action(
     try:
         if kind == "snooze":
             await api.update_reminder(token, target_id, fire_at_iso)
-        else:  # create
+        elif kind == "explicit_create":
+            # explicit /remind: target_id содержит ТЕКСТ (не bookmark_id)
+            await api.create_reminder(
+                token, fire_at_iso,
+                bookmark_id=None,
+                payload={"text": target_id, "source": "explicit_remind"},
+            )
+        else:  # create (implicit_weak fallback confirm)
             await api.create_reminder(
                 token, fire_at_iso,
                 bookmark_id=target_id,
