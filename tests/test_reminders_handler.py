@@ -46,6 +46,8 @@ def store():
     s.delete_reminder_id = AsyncMock()
     s.store_reminder_snooze = AsyncMock()
     s.pop_reminder_snooze = AsyncMock(return_value=None)
+    s.get_reminder_snooze = AsyncMock(return_value=None)
+    s.delete_reminder_snooze = AsyncMock()
     return s
 
 
@@ -129,8 +131,9 @@ class TestCallbackRdone:
         # Чистим Redis state
         store.delete_reminder_id.assert_called_once_with(100, 42)
 
-    async def test_404_does_not_crash(self, api, store):
-        """API вернул 404 (уже cancelled / не существует) — не падаем."""
+    async def test_404_treated_as_success(self, api, store):
+        """API вернул 404 (уже cancelled / auto_done / second click) —
+        считаем успехом, edit + cleanup."""
         from bot.handlers.reminders import cb_done_reminder
 
         request = httpx.Request("DELETE", "http://test/r")
@@ -141,9 +144,33 @@ class TestCallbackRdone:
 
         sm_id = str(uuid4())
         cb = _make_callback(f"rdone:{sm_id}")
-        await cb_done_reminder(cb, api, store)  # не должен бросить
-        # Сообщение всё равно отредактировано
+        await cb_done_reminder(cb, api, store)
         cb.message.edit_text.assert_called_once()
+        store.delete_reminder_id.assert_called_once_with(100, 42)
+
+    async def test_5xx_keeps_message_intact(self, api, store):
+        """API 500 → НЕ говорим «Выполнено», не чистим state — юзер может
+        повторить клик."""
+        from bot.handlers.reminders import cb_done_reminder
+
+        request = httpx.Request("DELETE", "http://test/r")
+        response = httpx.Response(500, request=request)
+        api.cancel_reminder.side_effect = httpx.HTTPStatusError(
+            "server", request=request, response=response
+        )
+
+        sm_id = str(uuid4())
+        cb = _make_callback(f"rdone:{sm_id}")
+        await cb_done_reminder(cb, api, store)
+
+        # Сообщение НЕ редактировано
+        cb.message.edit_text.assert_not_called()
+        # state НЕ очищен
+        store.delete_reminder_id.assert_not_called()
+        # popup юзеру с просьбой повторить
+        cb.answer.assert_called()
+        text = cb.answer.call_args.args[0]
+        assert "ещё раз" in text.lower() or "попробуй" in text.lower()
 
 
 # ──────────────────────────────────────────────────
@@ -193,8 +220,8 @@ class TestReplyHandlerCreate:
         from bot.handlers.reminders import handle_reminder_reply
 
         bid = str(uuid4())
-        store.pop_reminder_pending = AsyncMock(return_value=bid)
-        store.pop_reminder_snooze = AsyncMock(return_value=None)
+        store.get_reminder_pending = AsyncMock(return_value=bid)
+        store.get_reminder_snooze = AsyncMock(return_value=None)
 
         msg = _make_reply_message("через час")
         handled = await handle_reminder_reply(msg, api, store)
@@ -208,15 +235,15 @@ class TestReplyHandlerCreate:
         assert bid in all_args or kwargs.get("bookmark_id") == bid
         # Подтверждение отправлено
         msg.answer.assert_called()
-        # state очищен (pop'нули)
-        store.pop_reminder_pending.assert_called_once_with(100, 42)
+        # state удалён ПОСЛЕ успеха API (read-then-delete-on-success)
+        store.delete_reminder_pending.assert_called_once_with(100, 42)
 
     async def test_unparseable_text_shows_help_no_create(self, api, store):
         from bot.handlers.reminders import handle_reminder_reply
 
         bid = str(uuid4())
-        store.pop_reminder_pending = AsyncMock(return_value=bid)
-        store.pop_reminder_snooze = AsyncMock(return_value=None)
+        store.get_reminder_pending = AsyncMock(return_value=bid)
+        store.get_reminder_snooze = AsyncMock(return_value=None)
 
         msg = _make_reply_message("какая-то дичь")
         handled = await handle_reminder_reply(msg, api, store)
@@ -233,8 +260,8 @@ class TestReplyHandlerCreate:
         from bot.handlers.reminders import handle_reminder_reply
 
         bid = str(uuid4())
-        store.pop_reminder_pending = AsyncMock(return_value=bid)
-        store.pop_reminder_snooze = AsyncMock(return_value=None)
+        store.get_reminder_pending = AsyncMock(return_value=bid)
+        store.get_reminder_snooze = AsyncMock(return_value=None)
 
         msg = _make_reply_message("вчера в 18")
         handled = await handle_reminder_reply(msg, api, store)
@@ -248,8 +275,8 @@ class TestReplyHandlerCreate:
         """Reply на сообщение без reminder state — handler возвращает False (не наш)."""
         from bot.handlers.reminders import handle_reminder_reply
 
-        store.pop_reminder_pending = AsyncMock(return_value=None)
-        store.pop_reminder_snooze = AsyncMock(return_value=None)
+        store.get_reminder_pending = AsyncMock(return_value=None)
+        store.get_reminder_snooze = AsyncMock(return_value=None)
 
         msg = _make_reply_message("через час")
         handled = await handle_reminder_reply(msg, api, store)
@@ -276,39 +303,61 @@ class TestReplyHandlerSnooze:
         from bot.handlers.reminders import handle_reminder_reply
 
         sm_id = str(uuid4())
-        store.pop_reminder_pending = AsyncMock(return_value=None)
-        store.pop_reminder_snooze = AsyncMock(return_value=sm_id)
+        store.get_reminder_pending = AsyncMock(return_value=None)
+        store.get_reminder_snooze = AsyncMock(return_value=sm_id)
 
         msg = _make_reply_message("через 2 часа")
         handled = await handle_reminder_reply(msg, api, store)
 
         assert handled is True
         api.update_reminder.assert_called_once()
-        # Первый позиционный — token, второй — sm_id
         args = api.update_reminder.call_args.args
         kwargs = api.update_reminder.call_args.kwargs
         assert sm_id in list(args) + list(kwargs.values())
+        # state удалён только после успеха
+        store.delete_reminder_snooze.assert_called_once_with(100, 42)
         msg.answer.assert_called()
 
     async def test_snooze_takes_priority_over_pending(self, api, store):
-        """Если каким-то чудом и pending и snooze есть на одном msg_id —
-        snooze в приоритете (это активный reminder, не offer)."""
+        """И pending и snooze есть на одном msg_id — snooze в приоритете."""
         from bot.handlers.reminders import handle_reminder_reply
 
         bid = str(uuid4())
         sm_id = str(uuid4())
-        store.pop_reminder_pending = AsyncMock(return_value=bid)
-        store.pop_reminder_snooze = AsyncMock(return_value=sm_id)
+        store.get_reminder_pending = AsyncMock(return_value=bid)
+        store.get_reminder_snooze = AsyncMock(return_value=sm_id)
 
         msg = _make_reply_message("через час")
         handled = await handle_reminder_reply(msg, api, store)
 
         assert handled is True
-        # Хотя бы один из них вызвался — обе ветки валидны для UX,
-        # главное что мы не молча проглотили reply.
-        assert (
-            api.create_reminder.called or api.update_reminder.called
+        # Snooze выигрывает: update_reminder вызван, create — НЕТ.
+        api.update_reminder.assert_called_once()
+        api.create_reminder.assert_not_called()
+
+    async def test_state_preserved_on_api_failure(self, api, store):
+        """API упал → state не удалён (юзер может повторить reply)."""
+        from bot.handlers.reminders import handle_reminder_reply
+
+        bid = str(uuid4())
+        store.get_reminder_pending = AsyncMock(return_value=bid)
+        store.get_reminder_snooze = AsyncMock(return_value=None)
+        api.create_reminder = AsyncMock(
+            side_effect=httpx.HTTPStatusError(
+                "500",
+                request=httpx.Request("POST", "http://t/r"),
+                response=httpx.Response(500, request=httpx.Request("POST", "http://t/r")),
+            )
         )
+
+        msg = _make_reply_message("через час")
+        await handle_reminder_reply(msg, api, store)
+
+        # State НЕ удалён — retry-friendly
+        store.delete_reminder_pending.assert_not_called()
+        # Юзеру сказали попробовать ещё раз
+        sent = msg.answer.call_args.args[0]
+        assert "ещё раз" in sent.lower() or "попробуй" in sent.lower()
 
 
 # ──────────────────────────────────────────────────

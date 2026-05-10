@@ -144,20 +144,33 @@ async def cb_done_reminder(callback: CallbackQuery, api, store):
     if not token:
         return
 
+    cancelled_ok = False
     try:
         await api.cancel_reminder(token, reminder_id)
+        cancelled_ok = True
     except httpx.HTTPStatusError as e:
-        # 404 — уже удалён (например auto_done или второй клик). Не палимся.
-        if e.response.status_code != 404:
-            logger.warning(f"cb_done_reminder: cancel failed: {e}")
+        if e.response.status_code == 404:
+            # Уже cancelled / auto_done / second click — считаем успехом.
+            cancelled_ok = True
+        else:
+            logger.warning(f"cb_done_reminder: cancel 5xx: {e}")
     except Exception as e:
         logger.warning(f"cb_done_reminder: cancel failed: {e}")
 
+    if not cancelled_ok:
+        # Не редактируем сообщение и не чистим state — юзер сможет
+        # повторить клик. Показываем popup.
+        try:
+            await callback.answer(
+                "Не получилось отметить — попробуй ещё раз",
+                show_alert=False,
+            )
+        except Exception:
+            pass
+        return
+
     try:
-        await callback.message.edit_text(
-            "✅ Выполнено",
-            parse_mode=None,
-        )
+        await callback.message.edit_text("✅ Выполнено", parse_mode=None)
     except Exception as e:
         logger.debug(f"cb_done_reminder: edit_text failed: {e}")
     try:
@@ -217,19 +230,23 @@ async def handle_reminder_reply(message: Message, api, store) -> bool:
     chat_id = message.chat.id
     reply_to_id = rt.message_id
 
-    # Snooze в приоритете: это активный reminder с уже сохранённым reminder_id.
+    # Read-only: state удалим ТОЛЬКО после успеха API. Иначе на 5xx
+    # юзеру говорим «попробуй ещё раз», но retry'нуть нечем — state уже
+    # consumed. Read+delete-on-success жертвует GETDEL-атомарностью, но
+    # double-reply защищён tем что после delete второй reply пойдёт по
+    # пути «state нет» → SkipHandler → tasks-fallback (не страшно).
     snooze_rid = None
     try:
-        snooze_rid = await store.pop_reminder_snooze(chat_id, reply_to_id)
+        snooze_rid = await store.get_reminder_snooze(chat_id, reply_to_id)
     except Exception as e:
-        logger.debug(f"handle_reminder_reply: pop_snooze failed: {e}")
+        logger.debug(f"handle_reminder_reply: get_snooze failed: {e}")
 
     pending_bid = None
     if not snooze_rid:
         try:
-            pending_bid = await store.pop_reminder_pending(chat_id, reply_to_id)
+            pending_bid = await store.get_reminder_pending(chat_id, reply_to_id)
         except Exception as e:
-            logger.debug(f"handle_reminder_reply: pop_pending failed: {e}")
+            logger.debug(f"handle_reminder_reply: get_pending failed: {e}")
 
     if not snooze_rid and not pending_bid:
         return False  # reply не наш
@@ -284,17 +301,20 @@ async def handle_reminder_reply(message: Message, api, store) -> bool:
     if snooze_rid:
         try:
             await api.update_reminder(token, snooze_rid, fire_at_iso)
-        except httpx.HTTPStatusError as e:
+        except Exception as e:
             logger.warning(f"update_reminder failed: {e}")
+            # State не трогаем — юзер сможет повторить reply.
             await message.answer(
                 "Не получилось продлить — попробуй ещё раз.",
                 parse_mode=None,
             )
             return True
+
+        # Успех — теперь чистим state (защита от double-reply).
+        try:
+            await store.delete_reminder_snooze(chat_id, reply_to_id)
         except Exception as e:
-            logger.warning(f"update_reminder failed: {e}")
-            await message.answer("Не получилось продлить.", parse_mode=None)
-            return True
+            logger.debug(f"delete_reminder_snooze failed: {e}")
 
         await message.answer(
             f"💤 Продлено до <b>{_format_fire_at(result.dt, user_tz_name)}</b>",
@@ -310,17 +330,20 @@ async def handle_reminder_reply(message: Message, api, store) -> bool:
             bookmark_id=pending_bid,
             payload={"text": text},
         )
-    except httpx.HTTPStatusError as e:
+    except Exception as e:
         logger.warning(f"create_reminder failed: {e}")
+        # State не трогаем — юзер может повторить.
         await message.answer(
             "Не получилось создать напоминание — попробуй ещё раз.",
             parse_mode=None,
         )
         return True
+
+    # Успех — чистим pending state.
+    try:
+        await store.delete_reminder_pending(chat_id, reply_to_id)
     except Exception as e:
-        logger.warning(f"create_reminder failed: {e}")
-        await message.answer("Не получилось создать напоминание.", parse_mode=None)
-        return True
+        logger.debug(f"delete_reminder_pending failed: {e}")
 
     await message.answer(
         f"🔔 Напомню <b>{_format_fire_at(result.dt, user_tz_name)}</b>",

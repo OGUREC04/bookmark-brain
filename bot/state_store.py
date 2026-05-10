@@ -418,3 +418,15 @@ class StateStore:
     ) -> str | None:
         r = await self._get()
         return await r.getdel(f"reminder_snooze:{chat_id}:{msg_id}")
+
+    async def get_reminder_snooze(
+        self, chat_id: int, msg_id: int,
+    ) -> str | None:
+        r = await self._get()
+        return await r.get(f"reminder_snooze:{chat_id}:{msg_id}")
+
+    async def delete_reminder_snooze(
+        self, chat_id: int, msg_id: int,
+    ) -> None:
+        r = await self._get()
+        await r.delete(f"reminder_snooze:{chat_id}:{msg_id}")
