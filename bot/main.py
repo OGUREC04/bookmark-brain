@@ -27,6 +27,7 @@ from bot.handlers import (
     documents,
     media,
     random,
+    reminders as reminders_handler,
     search,
     settings as settings_handler,
     start,
@@ -82,8 +83,11 @@ async def main():
     )
     store = StateStore(settings.REDIS_URL)
 
-    # Порядок роутеров важен: tasks первым (reply-handler должен перехватить
-    # reply на список ДО того как catch-all в start сделает из этого закладку)
+    # Порядок роутеров важен:
+    # 1. reminders первым — его reply-handler перехватывает rsk:/rsnz:
+    #    state ДО tasks (иначе tasks "Не нашёл этот список" съест reply).
+    # 2. tasks — reply на task_list ДО catch-all в start.
+    dp.include_router(reminders_handler.router)
     dp.include_router(tasks.router)
     dp.include_router(settings_handler.router)
     dp.include_router(timezone_handler.router)
