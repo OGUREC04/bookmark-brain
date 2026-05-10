@@ -32,7 +32,7 @@
 └─ Phase R2   Documentation          ✅ (API docs остались)
 
 В РАБОТЕ:
-└─ Phase 2.5  Reminders MVP          ◐ 7/10 done (T6+T9+T10 left)
+└─ Phase 2.5  Reminders MVP          ◐ 8/10 done (T9+T10 left)
 
 ОЧЕРЕДЬ (новый порядок):
 ├─ Phase 5    Smart Blocks           ← следующее (2-3 дня)
@@ -117,11 +117,11 @@ VPS Beget Cloud, Docker Compose prod, CI test.yml. Yandex SpeechKit sync на п
 | `kky` | T7: Bot command `/tz` | ✅ closed (PR #6) |
 | `4bu` | T5: Worker `scheduled_dispatcher` + cron | ✅ closed (PR #7) |
 | `jps` | T8: Bot patch — кнопка после save (silent-aware) | ✅ closed (PR #7) |
-| `cnu` | T6: Bot handlers `reminders.py` (callbacks + reply) | open (ready) |
-| `rj1` | T9: Onboarding tips + docs + ADR 0006/0007 | blocked by T6 |
+| `cnu` | T6: Bot handlers `reminders.py` (callbacks + reply) | ✅ closed (PR #8) |
+| `rj1` | T9: Onboarding tips + docs + ADR 0006/0007 | open (ready) |
 | `y2i` | T10: E2E + code-reviewer + security-reviewer | blocked by T9 |
 
-**Прогресс: 7/10.** Остались T6 (callbacks `rsk:`/`rsn:`/`rdone:`/`rsnz:` + reply-handler для парсинга времени) → T9 (docs/ADR) → T10 (e2e + security).
+**Прогресс: 8/10.** Основной flow готов: save → offer → reply со временем → reminder с кнопками Done/Snooze. Остались T9 (docs/ADR) и T10 (e2e + security-reviewer).
 
 **Что делает:** бот замечает intent «нужно сделать к X» → предлагает inline-кнопку «🔔 Напомнить». В назначенное время — сообщение с кнопками `✅ Выполнено / 💤 Отложить`.
 
