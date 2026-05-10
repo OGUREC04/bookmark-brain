@@ -353,3 +353,68 @@ class StateStore:
         raw = await r.lrange(key, 0, -1)
         await r.delete(key)
         return [int(x) for x in raw if x.isdigit()]
+
+    # ── reminders (Phase 2.5) ──────────────────────────────
+    # Три ключа:
+    #   reminder_pending:{chat_id}:{msg_id} → bookmark_id  (TTL 1ч)
+    #     Ставит worker._maybe_offer_reminder при показе кнопки «Создать?».
+    #     Читает reply-handler когда юзер отвечает временем.
+    #   reminder:{chat_id}:{msg_id}         → scheduled_message_id (TTL 25ч)
+    #     Ставит worker.scheduled_dispatcher при отправке reminder'а.
+    #     Читают callbacks rdone:/rsnz: для маппинга msg_id → reminder_id.
+    #   reminder_snooze:{chat_id}:{msg_id}  → scheduled_message_id (TTL 1ч)
+    #     Ставит callback rsnz: когда юзер нажал «Продлить».
+    #     Читает reply-handler когда юзер отвечает новым временем.
+
+    _REMINDER_PENDING_TTL = 3600
+    _REMINDER_SNOOZE_TTL = 3600
+
+    async def get_reminder_pending(
+        self, chat_id: int, msg_id: int,
+    ) -> str | None:
+        """bookmark_id для msg_id с offer-кнопкой, или None."""
+        r = await self._get()
+        return await r.get(f"reminder_pending:{chat_id}:{msg_id}")
+
+    async def pop_reminder_pending(
+        self, chat_id: int, msg_id: int,
+    ) -> str | None:
+        """Атомарно читаем + удаляем — защита от double-reply."""
+        r = await self._get()
+        return await r.getdel(f"reminder_pending:{chat_id}:{msg_id}")
+
+    async def delete_reminder_pending(
+        self, chat_id: int, msg_id: int,
+    ) -> None:
+        r = await self._get()
+        await r.delete(f"reminder_pending:{chat_id}:{msg_id}")
+
+    async def get_reminder_id(
+        self, chat_id: int, msg_id: int,
+    ) -> str | None:
+        """scheduled_message_id для отправленного reminder, или None."""
+        r = await self._get()
+        return await r.get(f"reminder:{chat_id}:{msg_id}")
+
+    async def delete_reminder_id(
+        self, chat_id: int, msg_id: int,
+    ) -> None:
+        r = await self._get()
+        await r.delete(f"reminder:{chat_id}:{msg_id}")
+
+    async def store_reminder_snooze(
+        self, chat_id: int, msg_id: int, reminder_id: str,
+    ) -> None:
+        """Юзер нажал «Продлить» — ждём новое время через reply."""
+        r = await self._get()
+        await r.set(
+            f"reminder_snooze:{chat_id}:{msg_id}",
+            reminder_id,
+            ex=self._REMINDER_SNOOZE_TTL,
+        )
+
+    async def pop_reminder_snooze(
+        self, chat_id: int, msg_id: int,
+    ) -> str | None:
+        r = await self._get()
+        return await r.getdel(f"reminder_snooze:{chat_id}:{msg_id}")
