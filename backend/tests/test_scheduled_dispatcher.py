@@ -80,13 +80,36 @@ class TestScheduledDispatcher:
         """Пустая выборка — выходим без send."""
         from app.worker import scheduled_dispatcher
 
-        mock_session.execute = AsyncMock(return_value=_ExecResult(all_rows=[]))
+        # 1й execute — recovery stuck (rowcount=0), 2й — SELECT due (empty)
+        mock_session.execute = AsyncMock(side_effect=[
+            _ExecResult(rowcount=0),
+            _ExecResult(all_rows=[]),
+        ])
 
         with patch("app.worker.async_session") as mk_sess, \
              patch("app.worker._send_message", AsyncMock()) as send:
             mk_sess.return_value.__aenter__.return_value = mock_session
             await scheduled_dispatcher({})
             send.assert_not_called()
+
+    async def test_recovery_resets_stuck_sending(self, mock_session):
+        """Если есть stuck sending → reset в pending (rowcount > 0), warning лог."""
+        from app.worker import scheduled_dispatcher
+
+        mock_session.execute = AsyncMock(side_effect=[
+            _ExecResult(rowcount=2),     # recovery — нашли 2 stuck
+            _ExecResult(all_rows=[]),    # SELECT due после recovery
+        ])
+
+        with patch("app.worker.async_session") as mk_sess, \
+             patch("app.worker._send_message", AsyncMock()):
+            mk_sess.return_value.__aenter__.return_value = mock_session
+            await scheduled_dispatcher({})  # не должен бросить
+
+        # Recovery + SELECT — два execute
+        assert mock_session.execute.call_count == 2
+        # Recovery commit вызван
+        assert mock_session.commit.called
 
     async def test_sends_due_reminder_and_marks_sent(self, mock_session, mock_redis):
         """Reminder due → CAS-lock → send → status=sent, message_id сохранён."""
@@ -95,12 +118,12 @@ class TestScheduledDispatcher:
         row = _make_due_row(payload={"text": "купить хлеб"})
         sm_id = row[0]
 
-        # Первый execute — SELECT due
-        # Далее на каждый id: CAS UPDATE → status='sending' → returns row,
-        # затем UPDATE status='sent'.
+        # 1й execute — recovery (no stuck), 2й — SELECT due,
+        # далее на каждый id: CAS UPDATE → 'sending' → returns row, UPDATE → 'sent'.
         cas_locked = MagicMock(id=sm_id, user_id=row[1], bookmark_id=None, payload=row[6], retry_count=0)
         mock_session.execute = AsyncMock(side_effect=[
-            _ExecResult(all_rows=[row]),                # SELECT due
+            _ExecResult(rowcount=0),                     # recovery
+            _ExecResult(all_rows=[row]),                 # SELECT due
             _ExecResult(scalar=cas_locked),              # CAS UPDATE → sending
             _ExecResult(rowcount=1),                     # UPDATE → sent
         ])
@@ -133,6 +156,7 @@ class TestScheduledDispatcher:
 
         row = _make_due_row()
         mock_session.execute = AsyncMock(side_effect=[
+            _ExecResult(rowcount=0),               # recovery
             _ExecResult(all_rows=[row]),
             _ExecResult(scalar=None),  # CAS промазал — другой воркер захватил
         ])
@@ -150,6 +174,7 @@ class TestScheduledDispatcher:
         row = _make_due_row(retry_count=0)
         cas_locked = MagicMock(id=row[0], user_id=row[1], bookmark_id=None, payload={}, retry_count=0)
         mock_session.execute = AsyncMock(side_effect=[
+            _ExecResult(rowcount=0),  # recovery
             _ExecResult(all_rows=[row]),
             _ExecResult(scalar=cas_locked),
             _ExecResult(rowcount=1),  # reschedule UPDATE
@@ -163,8 +188,8 @@ class TestScheduledDispatcher:
             mk_sess.return_value.__aenter__.return_value = mock_session
             await scheduled_dispatcher({})
 
-        # Проверяем что был вызван UPDATE для reschedule (3й execute)
-        assert mock_session.execute.call_count == 3
+        # Recovery + SELECT + CAS + reschedule = 4 execute
+        assert mock_session.execute.call_count == 4
 
     async def test_send_failure_max_retries_marks_failed(self, mock_session, mock_redis):
         """retry_count >= MAX_RETRIES → status='failed', не reschedule."""
@@ -176,6 +201,7 @@ class TestScheduledDispatcher:
             payload={}, retry_count=MAX_REMINDER_RETRIES,
         )
         mock_session.execute = AsyncMock(side_effect=[
+            _ExecResult(rowcount=0),  # recovery
             _ExecResult(all_rows=[row]),
             _ExecResult(scalar=cas_locked),
             _ExecResult(rowcount=1),  # status='failed' UPDATE
@@ -189,7 +215,8 @@ class TestScheduledDispatcher:
             mk_sess.return_value.__aenter__.return_value = mock_session
             await scheduled_dispatcher({})
 
-        assert mock_session.execute.call_count == 3
+        # Recovery + SELECT + CAS + failed-UPDATE = 4
+        assert mock_session.execute.call_count == 4
 
     async def test_multiple_due_processed_in_order(self, mock_session, mock_redis):
         """Несколько due reminder'ов — все обрабатываются."""
@@ -201,6 +228,7 @@ class TestScheduledDispatcher:
         cas2 = MagicMock(id=row2[0], user_id=row2[1], bookmark_id=None, payload=row2[6], retry_count=0)
 
         mock_session.execute = AsyncMock(side_effect=[
+            _ExecResult(rowcount=0),                  # recovery
             _ExecResult(all_rows=[row1, row2]),
             _ExecResult(scalar=cas1),  # CAS row1
             _ExecResult(rowcount=1),    # mark sent row1
@@ -225,6 +253,7 @@ class TestScheduledDispatcher:
         row = _make_due_row(payload={})  # пустой payload
         cas = MagicMock(id=row[0], user_id=row[1], bookmark_id=None, payload={}, retry_count=0)
         mock_session.execute = AsyncMock(side_effect=[
+            _ExecResult(rowcount=0),   # recovery
             _ExecResult(all_rows=[row]),
             _ExecResult(scalar=cas),
             _ExecResult(rowcount=1),

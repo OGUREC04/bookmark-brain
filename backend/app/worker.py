@@ -33,6 +33,10 @@ AUTO_DONE_HOURS = 24
 REMINDER_REDIS_TTL_SEC = 25 * 3600
 # Сколько reminder'ов подбираем за один тик cron
 DISPATCH_BATCH_SIZE = 50
+# Окно «застрявшего» status='sending' — больше job_timeout (120s).
+# Если row висит дольше — worker умер между CAS-lock и mark-sent, возвращаем
+# в 'pending' для retry.
+STUCK_SENDING_THRESHOLD_MIN = 5
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -725,12 +729,15 @@ async def _maybe_offer_reminder(
     text = _reminder_offer_text()
     buttons = _reminder_offer_buttons(bookmark_id)
 
+    sent = None
     try:
         sent = await _send_message(chat_id, text, buttons)
         if not sent or not sent.get("message_id"):
             return
         msg_id = sent["message_id"]
-        # Redis state — bot reply-handler читает по этому ключу
+        # Redis state — bot reply-handler читает по этому ключу.
+        # Если Redis недоступен — кнопка в чате висит, но клик не сработает
+        # (UX broken), поэтому warning, не debug.
         r = aioredis_from_url(settings.REDIS_URL)
         try:
             await r.set(
@@ -741,7 +748,13 @@ async def _maybe_offer_reminder(
         finally:
             await r.aclose()
     except Exception as e:
-        logger.debug(f"_maybe_offer_reminder failed for {bookmark.id}: {e}")
+        if sent and sent.get("message_id"):
+            logger.warning(
+                f"_maybe_offer_reminder: message sent but Redis state failed for "
+                f"{bookmark.id} (button will appear broken): {e}"
+            )
+        else:
+            logger.debug(f"_maybe_offer_reminder failed for {bookmark.id}: {e}")
 
 
 # ──────────────────────────────────────────────────
@@ -806,6 +819,26 @@ async def scheduled_dispatcher(ctx: dict) -> None:
     from sqlalchemy import text as sa_text
 
     async with async_session() as session:
+        # Recovery: возвращаем застрявшие в 'sending' (worker упал между
+        # CAS-lock и mark-sent). fire_at не меняется при CAS, так что rows
+        # с fire_at < NOW() - threshold действительно «зависли». Threshold
+        # больше job_timeout (120s), чтобы не перехватывать активные jobs.
+        stuck_result = await session.execute(sa_text(
+            """
+            UPDATE scheduled_messages
+            SET status = 'pending'
+            WHERE status = 'sending'
+              AND kind = 'reminder'
+              AND fire_at < NOW() - (:threshold || ' minutes')::interval
+            """
+        ).bindparams(threshold=str(STUCK_SENDING_THRESHOLD_MIN)))
+        stuck_count = getattr(stuck_result, "rowcount", 0) or 0
+        if stuck_count:
+            logger.warning(
+                f"scheduled_dispatcher: recovered {stuck_count} stuck 'sending' row(s)"
+            )
+            await session.commit()
+
         # JOIN с users — нужен telegram_id для отправки
         due_result = await session.execute(sa_text(
             """
@@ -830,11 +863,11 @@ async def scheduled_dispatcher(ctx: dict) -> None:
         for row in rows:
             sm_id = row[0]
             telegram_id = row[2]
-            payload = row[6] or {}
 
             # CAS lock — только один worker берёт reminder.
-            # Возвращаем актуальные поля (retry_count может отличаться от
-            # snapshot в SELECT выше).
+            # Возвращаем актуальные поля (retry_count и payload могут
+            # отличаться от snapshot в SELECT выше — например, snooze
+            # обновил payload между SELECT и CAS).
             cas_result = await session.execute(sa_text(
                 """
                 UPDATE scheduled_messages
@@ -848,7 +881,9 @@ async def scheduled_dispatcher(ctx: dict) -> None:
                 # Другой worker уже захватил — пропускаем
                 continue
 
-            text_msg = _format_reminder_text(payload)
+            # Берём свежий payload из CAS-результата, не из SELECT-snapshot
+            actual_payload = getattr(locked, "payload", None) or (row[6] or {})
+            text_msg = _format_reminder_text(actual_payload)
             buttons = _reminder_buttons(str(sm_id))
 
             send_result = await _send_message(telegram_id, text_msg, buttons)
@@ -908,11 +943,16 @@ async def scheduled_dispatcher(ctx: dict) -> None:
 
 
 async def auto_done_reminders(ctx: dict) -> None:
-    """Cron (раз в час): помечаем sent reminder'ы старше 24h как auto_done.
+    """Cron (раз в час): помечаем sent reminder'ы старше 24h как done.
 
     Если юзер не нажал «Выполнено» / «Продлить» в течение суток — значит
-    задача либо сделана и забыта, либо неактуальна. Дальше реминдер не
-    висит в активных.
+    задача либо сделана и забыта, либо неактуальна. Reminder уходит из
+    активных. В payload пишем `auto_done=true` для аудита (отличить от
+    юзер-нажал-«Выполнено»: тот пишет в payload `done_by_user=true`).
+
+    Status='done' — единственное завершённое состояние в ENUM
+    `scheduled_status`. Различаем юзер vs auto через payload-флаг, не
+    через статус (иначе пришлось бы расширять ENUM миграцией).
     """
     from sqlalchemy import text as sa_text
 
@@ -920,7 +960,9 @@ async def auto_done_reminders(ctx: dict) -> None:
         result = await session.execute(sa_text(
             """
             UPDATE scheduled_messages
-            SET status = 'auto_done'
+            SET status = 'done',
+                payload = COALESCE(payload, '{}'::jsonb)
+                          || jsonb_build_object('auto_done', true)
             WHERE kind = 'reminder'
               AND status = 'sent'
               AND sent_at < NOW() - (:hours || ' hours')::interval
@@ -929,7 +971,7 @@ async def auto_done_reminders(ctx: dict) -> None:
         await session.commit()
         rowcount = getattr(result, "rowcount", 0) or 0
         if rowcount:
-            logger.info(f"auto_done_reminders: marked {rowcount} reminder(s) as auto_done")
+            logger.info(f"auto_done_reminders: marked {rowcount} reminder(s) as done (auto)")
         else:
             logger.debug("auto_done_reminders: nothing to mark")
 
