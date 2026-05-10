@@ -98,7 +98,8 @@
       "mcp__brain__read_text_file",
       "mcp__brain__edit_file",
       "Bash(TELEGRAM_BOT_TOKEN=t BOT_SECRET=s python -c \"from bot import main; from bot.handlers import documents, start; from bot.services import extractor; print\\('all imports OK'\\)\")",
-      "Bash(bd create *)"
+      "Bash(bd create *)",
+      "WebFetch(domain:core.telegram.org)"
     ]
   }
 }
