@@ -32,7 +32,7 @@
 └─ Phase R2   Documentation          ✅ (API docs остались)
 
 В РАБОТЕ:
-└─ Phase 2.5  Reminders MVP          ◐ другой чат, T2 in_progress
+└─ Phase 2.5  Reminders MVP          ◐ 7/10 done (T6+T9+T10 left)
 
 ОЧЕРЕДЬ (новый порядок):
 ├─ Phase 5    Smart Blocks           ← следующее (2-3 дня)
@@ -110,18 +110,18 @@ VPS Beget Cloud, Docker Compose prod, CI test.yml. Yandex SpeechKit sync на п
 
 | Bead | Задача | Статус |
 |---|---|---|
-| `09n` | T1: Migration `users.timezone` + `scheduled_messages` | ✅ closed |
-| `gv6` | T2: `nl_date.parse()` + tests TDD | ✅ closed |
-| `bts` | T3: `ReminderIntentDetector` + integration | open (ready) |
-| `6xo` | T4: CRUD API `reminders.py` + tests | open (ready) |
-| `4bu` | T5: Worker `scheduled_dispatcher` + cron | blocked by T4 |
-| `cnu` | T6: Bot handlers `reminders.py` (callbacks + reply) | blocked by T4, T5 |
-| `kky` | T7: Bot command `/tz` | open (ready) |
-| `jps` | T8: Bot patch — кнопка после save (silent-aware) | blocked by T3 |
-| `rj1` | T9: Onboarding tips + docs + ADR 0006/0007 | blocked by T6, T7, T8 |
+| `09n` | T1: Migration `users.timezone` + `scheduled_messages` | ✅ closed (PR #5) |
+| `gv6` | T2: `nl_date.parse()` + tests TDD | ✅ closed (PR #5) |
+| `bts` | T3: `ReminderIntentDetector` + integration | ✅ closed (PR #6) |
+| `6xo` | T4: CRUD API `reminders.py` + tests | ✅ closed (PR #6) |
+| `kky` | T7: Bot command `/tz` | ✅ closed (PR #6) |
+| `4bu` | T5: Worker `scheduled_dispatcher` + cron | ✅ closed (PR #7) |
+| `jps` | T8: Bot patch — кнопка после save (silent-aware) | ✅ closed (PR #7) |
+| `cnu` | T6: Bot handlers `reminders.py` (callbacks + reply) | open (ready) |
+| `rj1` | T9: Onboarding tips + docs + ADR 0006/0007 | blocked by T6 |
 | `y2i` | T10: E2E + code-reviewer + security-reviewer | blocked by T9 |
 
-**PR #5** (foundation = T1+T2) ожидает мерджа в `main`.
+**Прогресс: 7/10.** Остались T6 (callbacks `rsk:`/`rsn:`/`rdone:`/`rsnz:` + reply-handler для парсинга времени) → T9 (docs/ADR) → T10 (e2e + security).
 
 **Что делает:** бот замечает intent «нужно сделать к X» → предлагает inline-кнопку «🔔 Напомнить». В назначенное время — сообщение с кнопками `✅ Выполнено / 💤 Отложить`.
 
