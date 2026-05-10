@@ -934,13 +934,16 @@ async def scheduled_dispatcher(ctx: dict) -> None:
                 RETURNING id, user_id, bookmark_id, payload, retry_count
                 """
             ).bindparams(id=sm_id))
-            locked = cas_result.scalar_one_or_none()
+            # CAS RETURNING — берём по имени колонки через .mappings().
+            # scalar_one_or_none() вернул бы только первый столбец (id) —
+            # никаких payload/retry_count не достать.
+            locked = cas_result.mappings().one_or_none()
             if locked is None:
                 # Другой worker уже захватил — пропускаем
                 continue
 
             # Берём свежий payload из CAS-результата, не из SELECT-snapshot
-            actual_payload = getattr(locked, "payload", None) or (row[6] or {})
+            actual_payload = locked["payload"] or (row[6] or {})
             text_msg = _format_reminder_text(actual_payload)
             buttons = _reminder_buttons(str(sm_id))
 
@@ -968,7 +971,7 @@ async def scheduled_dispatcher(ctx: dict) -> None:
             else:
                 # Send failed — retry или failed
                 # Текущий retry_count — из CAS-lock результата (актуальный).
-                current_retry = getattr(locked, "retry_count", 0) or 0
+                current_retry = locked["retry_count"] or 0
                 if current_retry >= MAX_REMINDER_RETRIES:
                     await session.execute(sa_text(
                         """

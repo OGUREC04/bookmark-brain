@@ -16,8 +16,12 @@
 """
 from __future__ import annotations
 
+import html
+import json
 import logging
+import re
 from datetime import datetime, timedelta, timezone
+from uuid import UUID
 from zoneinfo import ZoneInfo
 
 import httpx
@@ -32,6 +36,77 @@ router = Router()
 # Часовой пояс по умолчанию — если у юзера в users.timezone пусто или
 # зона не распарсилась.
 DEFAULT_TZ = "Europe/Moscow"
+
+# Безопасные лимиты на пользовательский текст перед записью в Redis.
+# Защита от DoS-наполнения памяти Redis (H2 из security review).
+MAX_REMINDER_TEXT_LEN = 500
+# Максимальная длина reply-текста перед передачей в dateparser (M2 защитный).
+MAX_PARSE_INPUT_LEN = 200
+
+
+def _safe(s: str | None) -> str:
+    """HTML-escape для встраивания юзерского текста в parse_mode=HTML.
+
+    Telegram HTML mode допускает `<a>`, `<b>`, `<i>`, `<code>`, `<pre>` —
+    без экранирования юзер может вставить `<a href="tg://...">` (C-sec).
+    """
+    return html.escape(s or "", quote=False)
+
+
+def _cap_text(s: str | None, limit: int = MAX_REMINDER_TEXT_LEN) -> str:
+    """Обрезаем пользовательский текст до безопасного лимита."""
+    if not s:
+        return ""
+    if len(s) <= limit:
+        return s
+    return s[: limit - 3] + "..."
+
+
+def _is_valid_uuid(s: str | None) -> bool:
+    """Проверка что строка из callback_data — валидный UUID.
+
+    Защита от подделанного callback_data (H1): без валидации значение
+    напрямую улетает в API URL.
+    """
+    if not s:
+        return False
+    try:
+        UUID(s)
+        return True
+    except (ValueError, TypeError, AttributeError):
+        return False
+
+
+async def _send_reminder_confirmation_with_chip(
+    message: Message, fire_at: datetime, reminder_text: str, tz_name: str,
+) -> None:
+    """Подтверждение reminder с полным форматом даты для авто-детекции
+    клиентом Telegram.
+
+    Bot API 9.5 разрешает date_time MessageEntity только в checklist /
+    quote / gift, причём checklist требует business_connection_id —
+    обычные боты её слать не могут. Поэтому полагаемся на client-side
+    NSDataDetector / TextClassifier: полный формат «12.05.2026 09:00»
+    распознаётся iOS/Android клиентами как дата с long-press меню
+    «добавить в календарь». Работает не на всех клиентах, но это
+    лучшее что доступно без business-режима.
+    """
+    short_text = (reminder_text or "").strip() or "напоминание"
+    if len(short_text) > 60:
+        short_text = short_text[:57] + "..."
+
+    # Полный формат даты ДД.ММ.ГГГГ ЧЧ:ММ — авто-детект на стороне клиента.
+    try:
+        tz = ZoneInfo(tz_name)
+    except Exception:
+        tz = ZoneInfo(DEFAULT_TZ)
+    local = fire_at.astimezone(tz)
+    formatted_full = local.strftime("%d.%m.%Y %H:%M")
+
+    await message.answer(
+        f"🔔 Напомню <b>{_safe(formatted_full)}</b> — «{_safe(short_text)}»",
+        parse_mode="HTML",
+    )
 
 
 def extract_first_datetime_entity(message: Message) -> datetime | None:
@@ -103,8 +178,6 @@ def _format_fire_at(fire_at: datetime, tz_name: str) -> str:
 # T13: Pre-AI strong intent detector (отдельный router)
 # ──────────────────────────────────────────────────
 
-import re
-
 # Регекс strong-маркеров — только в начале сообщения (50 первых символов).
 # Высокая точность, низкий recall: лучше пропустить strong как weak (попадёт в
 # обычный flow с offer'ом), чем спросить «напоминание или заметка?» где
@@ -141,7 +214,10 @@ _STRONG_HANDLED_TTL = 5 * 60  # 5 мин для anti-double-offer flag
 
 
 @strong_router.message(
-    F.text & ~F.text.startswith("/") & ~F.reply_to_message
+    F.text
+    & ~F.text.startswith("/")
+    & ~F.reply_to_message
+    & (F.chat.type == "private")  # защитный — на случай добавления в группы
 )
 async def handle_strong_intent_message(message: Message, api, store):
     """T13: ловим сообщения с strong intent ДО AI/закладки.
@@ -208,7 +284,7 @@ async def handle_strong_intent_message(message: Message, api, store):
                 # как полную фразу в reminder.
             else:
                 from backend.app.services.nl_date import ParseStatus, parse
-                split_text, split_time = _split_remind_text_and_time(text)
+                split_text, split_time = _split_remind_text_and_time(text, user_tz_name)
                 if split_time:
                     pr = parse(split_time, user_tz=user_tz_name)
                     if pr.status == ParseStatus.OK and pr.dt is not None:
@@ -217,10 +293,9 @@ async def handle_strong_intent_message(message: Message, api, store):
     except Exception as e:
         logger.debug(f"strong_intent: pre-parse failed: {e}")
 
-    # Сохраняем state в Redis
-    import json
+    # Сохраняем state в Redis (с capped text — H2 защита от DoS)
     state = {
-        "text": text,
+        "text": _cap_text(text),
         "source_msg_id": message.message_id,
         "parsed_dt_iso": parsed_dt_iso,
     }
@@ -255,7 +330,6 @@ def _strong_callback_data_kind(data: str) -> str | None:
 @strong_router.callback_query(F.data.startswith("rstrong_"))
 async def cb_strong_choice(callback: CallbackQuery, api, store):
     """3 callback'а strong-flow: 🔔 / 📝 / ✕."""
-    import json
     from bot.handlers.start import _ensure_user
 
     kind = _strong_callback_data_kind(callback.data or "")
@@ -398,7 +472,7 @@ async def cb_strong_choice(callback: CallbackQuery, api, store):
             when = parsed_dt_iso
         try:
             await callback.message.edit_text(
-                f"🔔 Напомню <b>{when}</b> — «{text}»", parse_mode="HTML",
+                f"🔔 Напомню <b>{_safe(when)}</b> — «{_safe(text)}»", parse_mode="HTML",
             )
         except Exception:
             pass
@@ -411,7 +485,7 @@ async def cb_strong_choice(callback: CallbackQuery, api, store):
     # Времени нет → просим reply со временем (используя explicit-marker)
     try:
         new_prompt = await callback.message.edit_text(
-            f"Когда напомнить «<b>{text}</b>»? <b>Reply</b> со временем.\n\n"
+            f"Когда напомнить «<b>{_safe(text)}</b>»? <b>Reply</b> со временем.\n\n"
             f"{TIME_EXAMPLES}",
             parse_mode="HTML",
         )
@@ -426,7 +500,7 @@ async def cb_strong_choice(callback: CallbackQuery, api, store):
         r = await store._get()
         await r.set(
             f"reminder_pending:{chat_id}:{target_msg_id}",
-            f"__explicit__|{text}",
+            f"__explicit__|{_cap_text(text)}",
             ex=3600,
         )
     except Exception as e:
@@ -456,7 +530,9 @@ REMIND_HELP_TEXT = (
 )
 
 
-def _split_remind_text_and_time(args: str) -> tuple[str, str | None]:
+def _split_remind_text_and_time(
+    args: str, user_tz: str = DEFAULT_TZ,
+) -> tuple[str, str | None]:
     """Разделяет аргументы /remind на текст напоминания и временную часть.
 
     Стратегия: пробуем парсить ВСЁ как время — если ParseStatus.OK,
@@ -484,7 +560,7 @@ def _split_remind_text_and_time(args: str) -> tuple[str, str | None]:
     for window in range(min(5, n), 0, -1):
         time_part = " ".join(tokens[n - window:])
         text_part = " ".join(tokens[: n - window])
-        result = parse(time_part)
+        result = parse(time_part, user_tz=user_tz)
         if result.status in valid_statuses and text_part:
             return text_part.strip(), time_part.strip()
 
@@ -510,12 +586,13 @@ async def cmd_remind(message: Message, command: CommandObject, api, store):
         return
 
     user_tz_name = await _get_user_tz_name(api, token)
-    text_part, time_part = _split_remind_text_and_time(args)
+    text_part, time_part = _split_remind_text_and_time(args, user_tz_name)
 
     if time_part is None:
         # Текст без времени — спрашиваем reply со временем.
+        display_text = _cap_text(text_part or args, limit=200)
         prompt = await message.answer(
-            f"Когда напомнить «<b>{text_part or args}</b>»? "
+            f"Когда напомнить «<b>{_safe(display_text)}</b>»? "
             f"<b>Reply</b> на это сообщение со временем.\n\n"
             f"{TIME_EXAMPLES}",
             parse_mode="HTML",
@@ -528,7 +605,7 @@ async def cmd_remind(message: Message, command: CommandObject, api, store):
                 # Reuse store_reminder_pending — но bid сохраним в формате
                 # "explicit:<text>" чтобы reply-handler различал.
                 # Альтернатива — отдельный метод, но это +API surface.
-                payload_marker = f"__explicit__|{text_part or args}"
+                payload_marker = f"__explicit__|{_cap_text(text_part or args)}"
                 # Сохраним через прямой Redis-set чтобы избежать API-расширения.
                 # store.set_reminder_pending пока нет — используем _r напрямую.
                 r = await store._get()
@@ -565,9 +642,9 @@ async def cmd_remind(message: Message, command: CommandObject, api, store):
                 parse_mode=None,
             )
             return
-        await message.answer(
-            f"🔔 Напомню <b>{_format_fire_at(entity_dt, user_tz_name)}</b> — «{text_part}»",
-            parse_mode="HTML",
+        # Эксперимент: confirmation через sendChecklist с date_time chip
+        await _send_reminder_confirmation_with_chip(
+            message, entity_dt, text_part, user_tz_name,
         )
         return
 
@@ -591,7 +668,7 @@ async def cmd_remind(message: Message, command: CommandObject, api, store):
         # Странно — мы же пропустили через _split. Скорее всего dateparser
         # моргнул. Просим reply со временем.
         await message.answer(
-            f"Не понял время «{time_part}». " + TIME_EXAMPLES,
+            f"Не понял время «{_safe(time_part)}». " + TIME_EXAMPLES,
             parse_mode="HTML",
         )
         return
@@ -600,8 +677,8 @@ async def cmd_remind(message: Message, command: CommandObject, api, store):
         # Размытое — confirm flow (F2 паттерн)
         proposed = _format_fire_at(parse_result.dt, user_tz_name)
         prompt = await message.answer(
-            f"Не понял точное время. Поставить «<b>{text_part}</b>» на "
-            f"<b>{proposed}</b>?\n<b>Reply «да»</b> или укажи точнее.",
+            f"Не понял точное время. Поставить «<b>{_safe(text_part)}</b>» на "
+            f"<b>{_safe(proposed)}</b>?\n<b>Reply «да»</b> или укажи точнее.",
             parse_mode="HTML",
         )
         if prompt is not None and getattr(prompt, "message_id", None) is not None:
@@ -612,7 +689,7 @@ async def cmd_remind(message: Message, command: CommandObject, api, store):
                 await store.store_reminder_fallback(
                     message.chat.id, prompt.message_id,
                     kind="explicit_create",
-                    target_id=text_part,
+                    target_id=_cap_text(text_part),
                     proposed_dt_iso=parse_result.dt.isoformat(),
                 )
             except Exception as e:
@@ -635,10 +712,9 @@ async def cmd_remind(message: Message, command: CommandObject, api, store):
         )
         return
 
-    when = _format_fire_at(parse_result.dt, user_tz_name)
-    await message.answer(
-        f"🔔 Напомню <b>{when}</b> — «{text_part}»",
-        parse_mode="HTML",
+    # Эксперимент: confirmation через sendChecklist с date_time chip
+    await _send_reminder_confirmation_with_chip(
+        message, parse_result.dt, text_part, user_tz_name,
     )
 
 
@@ -648,7 +724,11 @@ async def cmd_remind(message: Message, command: CommandObject, api, store):
 
 
 def _format_reminder_short(rem: dict, tz_name: str) -> str:
-    """Одна строка для /reminders: «купить хлеб — 11.05 09:00»."""
+    """Одна строка для /reminders: «купить хлеб — 11.05 09:00».
+
+    Возвращает HTML-safe строку — текст напоминания экранирован
+    (он может прийти из юзерского ввода и попасть в parse_mode=HTML).
+    """
     payload = rem.get("payload") or {}
     text = (payload.get("text") or "").strip() or "(без текста)"
     if len(text) > 60:
@@ -660,7 +740,7 @@ def _format_reminder_short(rem: dict, tz_name: str) -> str:
         when = _format_fire_at(dt, tz_name)
     except Exception:
         when = fire_at_iso
-    return f"{text} — {when}"
+    return f"{_safe(text)} — {_safe(when)}"
 
 
 @router.message(Command("reminders"))
@@ -775,6 +855,10 @@ async def handle_reminders_list_reply(
         return False  # не наш reply
 
     text = (message.text or "").strip()
+    if len(text) > MAX_PARSE_INPUT_LEN:
+        # Слишком длинный reply — точно не «отмени 1» / «перенеси 2 на ...».
+        # Защита от M2 (длинный ввод в dateparser).
+        return False
 
     # «история» — переключиться на историю
     if _REMINDERS_HISTORY_RE.match(text):
@@ -819,7 +903,7 @@ async def handle_reminders_list_reply(
     m = _REMINDERS_RESCHEDULE_RE.match(text)
     if m:
         idx = int(m.group(1)) - 1
-        time_part = m.group(2).strip()
+        time_part = m.group(2).strip()[:MAX_PARSE_INPUT_LEN]  # M2 защита
         if idx < 0 or idx >= len(snapshot):
             await message.answer(
                 f"Нет пункта {idx + 1} в списке.", parse_mode=None,
@@ -838,7 +922,7 @@ async def handle_reminders_list_reply(
             return True
         if result.status not in (ParseStatus.OK, ParseStatus.FALLBACK_DEFAULT) or result.dt is None:
             await message.answer(
-                f"Не понял время «{time_part}». " + TIME_EXAMPLES,
+                f"Не понял время «{_safe(time_part)}». " + TIME_EXAMPLES,
                 parse_mode="HTML",
             )
             return True
@@ -849,7 +933,7 @@ async def handle_reminders_list_reply(
             return True
         when = _format_fire_at(result.dt, user_tz_name)
         await message.answer(
-            f"💤 Перенесено на <b>{when}</b>",
+            f"💤 Перенесено на <b>{_safe(when)}</b>",
             parse_mode="HTML",
         )
         return True
@@ -927,6 +1011,14 @@ async def cb_done_reminder(callback: CallbackQuery, api, store):
     msg_id = callback.message.message_id
     reminder_id = (callback.data or "").split(":", 1)[1] if ":" in (callback.data or "") else ""
 
+    # H1: callback_data — attacker-controlled. Валидируем как UUID до API.
+    if not _is_valid_uuid(reminder_id):
+        try:
+            await callback.answer("Сообщение устарело")
+        except Exception:
+            pass
+        return
+
     token = await _ensure_user(callback, api)
     if not token:
         return
@@ -978,6 +1070,14 @@ async def cb_snooze_reminder(callback: CallbackQuery, api, store):
     msg_id = callback.message.message_id
     reminder_id = (callback.data or "").split(":", 1)[1] if ":" in (callback.data or "") else ""
 
+    # H1: validate UUID — иначе храним мусор в Redis и потом отдаём в API.
+    if not _is_valid_uuid(reminder_id):
+        try:
+            await callback.answer("Сообщение устарело")
+        except Exception:
+            pass
+        return
+
     # F4: invert order — edit_text first, store_snooze only on success.
     # Иначе: если edit упадёт, в Redis висит orphan reminder_snooze key
     # (TTL 1ч), и любой reply на этот msg_id будет ошибочно ловиться как
@@ -996,11 +1096,10 @@ async def cb_snooze_reminder(callback: CallbackQuery, api, store):
             pass
         return
 
-    if reminder_id:
-        try:
-            await store.store_reminder_snooze(chat_id, msg_id, reminder_id)
-        except Exception as e:
-            logger.warning(f"cb_snooze_reminder: store_snooze failed: {e}")
+    try:
+        await store.store_reminder_snooze(chat_id, msg_id, reminder_id)
+    except Exception as e:
+        logger.warning(f"cb_snooze_reminder: store_snooze failed: {e}")
 
     try:
         await callback.answer()
@@ -1027,11 +1126,10 @@ async def handle_reminder_reply(message: Message, api, store) -> bool:
     chat_id = message.chat.id
     reply_to_id = rt.message_id
 
-    # Read-only: state удалим ТОЛЬКО после успеха API. Иначе на 5xx
-    # юзеру говорим «попробуй ещё раз», но retry'нуть нечем — state уже
-    # consumed. Read+delete-on-success жертвует GETDEL-атомарностью, но
-    # double-reply защищён tем что после delete второй reply пойдёт по
-    # пути «state нет» → SkipHandler → tasks-fallback (не страшно).
+    # Атомарный pop (GETDEL) — защита от double-reply / race.
+    # Цена: на 5xx state уже consumed, юзеру даём «попробуй ещё раз»
+    # с одним хвостом — пусть пошлёт reply ещё раз руками, чем оставлять
+    # окно для двойного create при быстром double-tap.
 
     # F2: confirm-state имеет приоритет над snooze/pending. Если бот ждёт
     # «да/уточни» по предложенному fallback-времени — обрабатываем здесь.
@@ -1048,16 +1146,16 @@ async def handle_reminder_reply(message: Message, api, store) -> bool:
 
     snooze_rid = None
     try:
-        snooze_rid = await store.get_reminder_snooze(chat_id, reply_to_id)
+        snooze_rid = await store.pop_reminder_snooze(chat_id, reply_to_id)
     except Exception as e:
-        logger.debug(f"handle_reminder_reply: get_snooze failed: {e}")
+        logger.debug(f"handle_reminder_reply: pop_snooze failed: {e}")
 
     pending_bid = None
     if not snooze_rid:
         try:
-            pending_bid = await store.get_reminder_pending(chat_id, reply_to_id)
+            pending_bid = await store.pop_reminder_pending(chat_id, reply_to_id)
         except Exception as e:
-            logger.debug(f"handle_reminder_reply: get_pending failed: {e}")
+            logger.debug(f"handle_reminder_reply: pop_pending failed: {e}")
 
     if not snooze_rid and not pending_bid:
         return False  # reply не наш
@@ -1135,7 +1233,7 @@ async def handle_reminder_reply(message: Message, api, store) -> bool:
         target_id = snooze_rid or pending_bid
         proposed = _format_fire_at(result.dt, user_tz_name)
         prompt = await message.answer(
-            f"Не понял точное время. Поставить на <b>{proposed}</b>?\n"
+            f"Не понял точное время. Поставить на <b>{_safe(proposed)}</b>?\n"
             f"<b>Reply «да»</b> — подтверждаю, или укажи время точнее "
             f"(например «через час», «завтра в 9»).",
             parse_mode="HTML",
@@ -1166,21 +1264,16 @@ async def handle_reminder_reply(message: Message, api, store) -> bool:
             await api.update_reminder(token, snooze_rid, fire_at_iso)
         except Exception as e:
             logger.warning(f"update_reminder failed: {e}")
-            # State не трогаем — юзер сможет повторить reply.
+            # State уже consumed (атомарный pop) — юзеру предлагаем
+            # пройти заново через «💤 Продлить» на оригинальном напоминании.
             await message.answer(
-                "Не получилось продлить — попробуй ещё раз.",
+                "Не получилось продлить — нажми «💤 Продлить» ещё раз.",
                 parse_mode=None,
             )
             return True
 
-        # Успех — теперь чистим state (защита от double-reply).
-        try:
-            await store.delete_reminder_snooze(chat_id, reply_to_id)
-        except Exception as e:
-            logger.debug(f"delete_reminder_snooze failed: {e}")
-
         await message.answer(
-            f"💤 Продлено до <b>{_format_fire_at(result.dt, user_tz_name)}</b>",
+            f"💤 Продлено до <b>{_safe(_format_fire_at(result.dt, user_tz_name))}</b>",
             parse_mode="HTML",
         )
         return True
@@ -1208,21 +1301,16 @@ async def handle_reminder_reply(message: Message, api, store) -> bool:
         )
     except Exception as e:
         logger.warning(f"create_reminder failed: {e}")
-        # State не трогаем — юзер может повторить.
+        # State уже consumed (атомарный pop) — пользователю надо
+        # пройти заново через /remind или offer-кнопку.
         await message.answer(
-            "Не получилось создать напоминание — попробуй ещё раз.",
+            "Не получилось создать напоминание — попробуй ещё раз через /remind.",
             parse_mode=None,
         )
         return True
 
-    # Успех — чистим pending state.
-    try:
-        await store.delete_reminder_pending(chat_id, reply_to_id)
-    except Exception as e:
-        logger.debug(f"delete_reminder_pending failed: {e}")
-
     await message.answer(
-        f"🔔 Напомню <b>{_format_fire_at(result.dt, user_tz_name)}</b>",
+        f"🔔 Напомню <b>{_safe(_format_fire_at(result.dt, user_tz_name))}</b>",
         parse_mode="HTML",
     )
     return True
@@ -1303,7 +1391,7 @@ async def _handle_fallback_confirm_reply(
         # Снова размытое — спрашиваем confirm с новым предложенным временем.
         proposed = _format_fire_at(result.dt, user_tz_name)
         prompt = await message.answer(
-            f"Снова не понял. Поставить на <b>{proposed}</b>?\n"
+            f"Снова не понял. Поставить на <b>{_safe(proposed)}</b>?\n"
             f"<b>Reply «да»</b> или укажи точнее.",
             parse_mode="HTML",
         )
@@ -1343,7 +1431,7 @@ async def _apply_reminder_action(
     if not token:
         return True
 
-    text_payload = (message.text or "").strip()
+    text_payload = _cap_text((message.text or "").strip())
 
     try:
         if kind == "snooze":
@@ -1383,7 +1471,7 @@ async def _apply_reminder_action(
 
     when = _format_fire_at(dt, user_tz_name) if dt else fire_at_iso
     label = "💤 Продлено до" if kind == "snooze" else "🔔 Напомню"
-    await message.answer(f"{label} <b>{when}</b>", parse_mode="HTML")
+    await message.answer(f"{label} <b>{_safe(when)}</b>", parse_mode="HTML")
     return True
 
 

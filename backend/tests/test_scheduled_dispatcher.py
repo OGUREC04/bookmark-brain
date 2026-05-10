@@ -39,12 +39,26 @@ def _make_due_row(
     )
 
 
-class _ExecResult:
-    """Mock SQLAlchemy execution result with `.all()`, `.scalar_one_or_none()`, `.rowcount`."""
+class _MappingsResult:
+    """`result.mappings()` возвращает объект с `.one_or_none()`."""
 
-    def __init__(self, *, all_rows=None, scalar=None, rowcount: int = 0):
+    def __init__(self, value):
+        self._value = value
+
+    def one_or_none(self):
+        return self._value
+
+
+class _ExecResult:
+    """Mock SQLAlchemy execution result with `.all()`, `.scalar_one_or_none()`,
+    `.mappings().one_or_none()`, `.rowcount`."""
+
+    def __init__(self, *, all_rows=None, scalar=None, mapping=None, rowcount: int = 0):
         self._all = all_rows or []
         self._scalar = scalar
+        # mapping для .mappings().one_or_none() — dict с column-name доступом.
+        # Если не задан, используем scalar (back-compat).
+        self._mapping = mapping if mapping is not None else scalar
         self.rowcount = rowcount
 
     def all(self):
@@ -52,6 +66,9 @@ class _ExecResult:
 
     def scalar_one_or_none(self):
         return self._scalar
+
+    def mappings(self):
+        return _MappingsResult(self._mapping)
 
 
 @pytest.fixture
@@ -120,7 +137,7 @@ class TestScheduledDispatcher:
 
         # 1й execute — recovery (no stuck), 2й — SELECT due,
         # далее на каждый id: CAS UPDATE → 'sending' → returns row, UPDATE → 'sent'.
-        cas_locked = MagicMock(id=sm_id, user_id=row[1], bookmark_id=None, payload=row[6], retry_count=0)
+        cas_locked = {"id": sm_id, "user_id": row[1], "bookmark_id": None, "payload": row[6], "retry_count": 0}
         mock_session.execute = AsyncMock(side_effect=[
             _ExecResult(rowcount=0),                     # recovery
             _ExecResult(all_rows=[row]),                 # SELECT due
@@ -172,7 +189,7 @@ class TestScheduledDispatcher:
         from app.worker import scheduled_dispatcher
 
         row = _make_due_row(retry_count=0)
-        cas_locked = MagicMock(id=row[0], user_id=row[1], bookmark_id=None, payload={}, retry_count=0)
+        cas_locked = {"id": row[0], "user_id": row[1], "bookmark_id": None, "payload": {}, "retry_count": 0}
         mock_session.execute = AsyncMock(side_effect=[
             _ExecResult(rowcount=0),  # recovery
             _ExecResult(all_rows=[row]),
@@ -196,10 +213,10 @@ class TestScheduledDispatcher:
         from app.worker import MAX_REMINDER_RETRIES, scheduled_dispatcher
 
         row = _make_due_row(retry_count=MAX_REMINDER_RETRIES)  # уже на пределе
-        cas_locked = MagicMock(
-            id=row[0], user_id=row[1], bookmark_id=None,
-            payload={}, retry_count=MAX_REMINDER_RETRIES,
-        )
+        cas_locked = {
+            "id": row[0], "user_id": row[1], "bookmark_id": None,
+            "payload": {}, "retry_count": MAX_REMINDER_RETRIES,
+        }
         mock_session.execute = AsyncMock(side_effect=[
             _ExecResult(rowcount=0),  # recovery
             _ExecResult(all_rows=[row]),
@@ -224,8 +241,8 @@ class TestScheduledDispatcher:
 
         row1 = _make_due_row(payload={"text": "first"})
         row2 = _make_due_row(payload={"text": "second"})
-        cas1 = MagicMock(id=row1[0], user_id=row1[1], bookmark_id=None, payload=row1[6], retry_count=0)
-        cas2 = MagicMock(id=row2[0], user_id=row2[1], bookmark_id=None, payload=row2[6], retry_count=0)
+        cas1 = {"id": row1[0], "user_id": row1[1], "bookmark_id": None, "payload": row1[6], "retry_count": 0}
+        cas2 = {"id": row2[0], "user_id": row2[1], "bookmark_id": None, "payload": row2[6], "retry_count": 0}
 
         mock_session.execute = AsyncMock(side_effect=[
             _ExecResult(rowcount=0),                  # recovery
@@ -251,7 +268,7 @@ class TestScheduledDispatcher:
         from app.worker import scheduled_dispatcher
 
         row = _make_due_row(payload={})  # пустой payload
-        cas = MagicMock(id=row[0], user_id=row[1], bookmark_id=None, payload={}, retry_count=0)
+        cas = {"id": row[0], "user_id": row[1], "bookmark_id": None, "payload": {}, "retry_count": 0}
         mock_session.execute = AsyncMock(side_effect=[
             _ExecResult(rowcount=0),   # recovery
             _ExecResult(all_rows=[row]),

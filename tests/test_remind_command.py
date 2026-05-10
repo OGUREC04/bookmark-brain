@@ -55,6 +55,9 @@ def _make_msg(text: str = "/remind"):
     msg.from_user = MagicMock(id=999, username="testuser", first_name="Test")
     prompt = MagicMock(message_id=43)
     msg.answer = AsyncMock(return_value=prompt)
+    # bot.send_checklist для эксперимента с date_time chip
+    msg.bot = AsyncMock()
+    msg.bot.send_checklist = AsyncMock()
     return msg
 
 
@@ -130,10 +133,29 @@ class TestCmdRemindWithTime:
         assert kwargs.get("payload", {}).get("text") == "купить хлеб"
         assert kwargs.get("payload", {}).get("source") == "explicit_remind"
 
-        # Подтверждение юзеру
-        sent_text = msg.answer.call_args.args[0]
-        assert "напомн" in sent_text.lower()
-        assert "купить хлеб" in sent_text
+        # Подтверждение юзеру: через sendChecklist (эксперимент с date_time chip)
+        # либо fallback в message.answer.
+        sent_via_checklist = msg.bot.send_checklist.called if hasattr(msg.bot, "send_checklist") else False
+        sent_via_answer = msg.answer.call_args is not None
+        assert sent_via_checklist or sent_via_answer
+        if sent_via_checklist:
+            kwargs = msg.bot.send_checklist.call_args.kwargs
+            checklist = kwargs.get("checklist")
+            assert checklist is not None
+            # Один task с купить хлеб + дата
+            assert len(checklist.tasks) == 1
+            assert "купить хлеб" in checklist.tasks[0].text
+            # date_time entity прицеплен
+            assert checklist.tasks[0].text_entities is not None
+            assert any(
+                getattr(e, "type", None) == "date_time"
+                or getattr(getattr(e, "type", None), "value", None) == "date_time"
+                for e in checklist.tasks[0].text_entities
+            )
+        else:
+            sent_text = msg.answer.call_args.args[0]
+            assert "напомн" in sent_text.lower()
+            assert "купить хлеб" in sent_text
 
     async def test_past_time_rejected(self, api, store):
         from bot.handlers.reminders import cmd_remind

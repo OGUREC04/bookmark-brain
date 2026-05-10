@@ -119,11 +119,15 @@ class TestF1PermanentFailureNotify:
                datetime.now(timezone.utc) - timedelta(seconds=5),
                MAX_REMINDER_RETRIES, {"text": "купить хлеб"})
 
-        cas_locked = MagicMock(
-            id=sm_id, user_id=row[1], bookmark_id=None,
-            payload={"text": "купить хлеб"},
-            retry_count=MAX_REMINDER_RETRIES,
-        )
+        cas_locked = {
+            "id": sm_id, "user_id": row[1], "bookmark_id": None,
+            "payload": {"text": "купить хлеб"},
+            "retry_count": MAX_REMINDER_RETRIES,
+        }
+
+        class _Map:
+            def __init__(self, v): self._v = v
+            def one_or_none(self): return self._v
 
         class _ER:
             def __init__(self, **kw):
@@ -132,6 +136,7 @@ class TestF1PermanentFailureNotify:
                 self.rowcount = kw.get("rowcount", 0)
             def all(self): return self._all
             def scalar_one_or_none(self): return self._scalar
+            def mappings(self): return _Map(self._scalar)
 
         mock_session = AsyncMock()
         mock_session.commit = AsyncMock()
@@ -171,10 +176,11 @@ class TestF1PermanentFailureNotify:
 class TestF4SnoozeOrder:
     async def test_edit_failure_does_not_store_state(self):
         """Если edit_text упал — store_reminder_snooze НЕ вызывается."""
+        from uuid import uuid4
         from bot.handlers.reminders import cb_snooze_reminder
 
         cb = AsyncMock()
-        cb.data = "rsnz:rid-123"
+        cb.data = f"rsnz:{uuid4()}"
         cb.message = AsyncMock()
         cb.message.chat = MagicMock(id=100)
         cb.message.message_id = 42
@@ -193,11 +199,18 @@ class TestF4SnoozeOrder:
         cb.answer.assert_called()
 
     async def test_edit_success_then_store(self):
-        """Edit прошёл → store вызывается с (chat, msg, rid)."""
+        """Edit прошёл → store вызывается с (chat, msg, rid).
+
+        H1: reminder_id должен быть валидным UUID — без этого callback
+        отклоняется до edit_text/store. Используем настоящий UUID.
+        """
+        from uuid import uuid4
+
         from bot.handlers.reminders import cb_snooze_reminder
 
+        rid = str(uuid4())
         cb = AsyncMock()
-        cb.data = "rsnz:rid-123"
+        cb.data = f"rsnz:{rid}"
         cb.message = AsyncMock()
         cb.message.chat = MagicMock(id=100)
         cb.message.message_id = 42
@@ -210,7 +223,7 @@ class TestF4SnoozeOrder:
 
         await cb_snooze_reminder(cb, api, store)
 
-        store.store_reminder_snooze.assert_called_once_with(100, 42, "rid-123")
+        store.store_reminder_snooze.assert_called_once_with(100, 42, rid)
 
 
 # ──────────────────────────────────────────────────
