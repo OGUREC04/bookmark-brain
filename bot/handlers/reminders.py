@@ -17,7 +17,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 import httpx
@@ -32,6 +32,29 @@ router = Router()
 # Часовой пояс по умолчанию — если у юзера в users.timezone пусто или
 # зона не распарсилась.
 DEFAULT_TZ = "Europe/Moscow"
+
+
+def extract_first_datetime_entity(message: Message) -> datetime | None:
+    """T19 (Bot API 9.5): если в сообщении есть MessageEntity type='date_time' —
+    Telegram-клиент уже определил дату в локали и таймзоне юзера. Используем
+    готовый unix_time, парсер не нужен.
+
+    Fallback на nl_date.parse если entity нет (старые клиенты до Bot API 9.5).
+    """
+    entities = list(message.entities or []) + list(message.caption_entities or [])
+    for ent in entities:
+        ent_type = getattr(ent, "type", None)
+        # aiogram отдаёт enum или строку — поддержим оба
+        if hasattr(ent_type, "value"):
+            ent_type = ent_type.value
+        if ent_type == "date_time":
+            unix_ts = getattr(ent, "unix_time", None)
+            if unix_ts is not None:
+                try:
+                    return datetime.fromtimestamp(int(unix_ts), tz=timezone.utc)
+                except (TypeError, ValueError, OSError):
+                    continue
+    return None
 
 # Подсказка с примерами для reply'я (используется в rsk: и rsnz:)
 TIME_EXAMPLES = (
@@ -168,20 +191,29 @@ async def handle_strong_intent_message(message: Message, api, store):
 
     # Pre-parse time из исходного текста (auto-detect).
     # Если есть — сэкономим юзеру шаг «когда?».
+    # T19 приоритет: если у юзера Telegram client с Bot API 9.5 — берём
+    # date_time entity напрямую (правильная локаль и таймзона). Иначе fallback
+    # на текстовый парсер.
     parsed_dt_iso = None
     try:
-        token = None
         from bot.handlers.start import _ensure_user
         token = await _ensure_user(message, api)
         if token:
             user_tz_name = await _get_user_tz_name(api, token)
-            from backend.app.services.nl_date import ParseStatus, parse
-            split_text, split_time = _split_remind_text_and_time(text)
-            if split_time:
-                pr = parse(split_time, user_tz=user_tz_name)
-                if pr.status == ParseStatus.OK and pr.dt is not None:
-                    parsed_dt_iso = pr.dt.isoformat()
-                    text = split_text  # обрезаем время — в payload пойдёт чистый текст
+            entity_dt = extract_first_datetime_entity(message)
+            if entity_dt is not None and entity_dt > datetime.now(timezone.utc):
+                parsed_dt_iso = entity_dt.isoformat()
+                # Не трогаем text — в payload идёт оригинал юзера. Entity offset
+                # не вырезаем чтобы юзер видел «надо купить хлеб 13 мая в 9»
+                # как полную фразу в reminder.
+            else:
+                from backend.app.services.nl_date import ParseStatus, parse
+                split_text, split_time = _split_remind_text_and_time(text)
+                if split_time:
+                    pr = parse(split_time, user_tz=user_tz_name)
+                    if pr.status == ParseStatus.OK and pr.dt is not None:
+                        parsed_dt_iso = pr.dt.isoformat()
+                        text = split_text  # обрезаем время — в payload пойдёт чистый текст
     except Exception as e:
         logger.debug(f"strong_intent: pre-parse failed: {e}")
 
@@ -507,6 +539,36 @@ async def cmd_remind(message: Message, command: CommandObject, api, store):
                 )
             except Exception as e:
                 logger.warning(f"cmd_remind: failed to save pending state: {e}")
+        return
+
+    # T19: если в исходном /remind сообщении есть date_time entity —
+    # юзер сам ввёл «13 мая в 9» и Telegram-клиент уже определил дату.
+    # Пропускаем парсер.
+    entity_dt = extract_first_datetime_entity(message)
+    if entity_dt is not None:
+        now_utc = datetime.now(timezone.utc)
+        if entity_dt < now_utc - timedelta(seconds=30):
+            await message.answer(
+                "Это в прошлом. Назначь время в будущем.", parse_mode=None,
+            )
+            return
+        try:
+            await api.create_reminder(
+                token, entity_dt.isoformat(),
+                bookmark_id=None,
+                payload={"text": text_part, "source": "explicit_remind"},
+            )
+        except Exception as e:
+            logger.warning(f"cmd_remind entity create failed: {e}")
+            await message.answer(
+                "Не получилось создать напоминание. Попробуй ещё раз.",
+                parse_mode=None,
+            )
+            return
+        await message.answer(
+            f"🔔 Напомню <b>{_format_fire_at(entity_dt, user_tz_name)}</b> — «{text_part}»",
+            parse_mode="HTML",
+        )
         return
 
     # Время есть — парсим, создаём reminder сразу
@@ -1013,11 +1075,40 @@ async def handle_reminder_reply(message: Message, api, store) -> bool:
         )
         return True
 
-    # Парсер живёт в backend/app/services/nl_date.py.
-    # Оба процесса (bot, worker) импортируют его одинаково.
-    from backend.app.services.nl_date import ParseStatus, parse
-
+    # T19: Bot API 9.5 — date_time entity. Telegram-клиент сам определил
+    # дату в локали и таймзоне юзера. Если entity есть — пропускаем парсер.
     user_tz_name = await _get_user_tz_name(api, token)
+    entity_dt = extract_first_datetime_entity(message)
+    if entity_dt is not None:
+        # Проверка прошлое/будущее на стороне бота (валидация одинаковая)
+        now_utc = datetime.now(timezone.utc)
+        if entity_dt < now_utc - timedelta(seconds=30):
+            await message.answer(
+                "Это в прошлом. Назначь время в будущем.", parse_mode=None,
+            )
+            return True
+        return await _apply_reminder_action(
+            message, api, store,
+            kind="snooze" if snooze_rid else (
+                "explicit_create" if (
+                    isinstance(pending_bid, str)
+                    and pending_bid.startswith("__explicit__|")
+                ) else "create"
+            ),
+            target_id=(
+                snooze_rid
+                or (pending_bid[len("__explicit__|"):]
+                    if isinstance(pending_bid, str)
+                    and pending_bid.startswith("__explicit__|")
+                    else pending_bid)
+            ),
+            fire_at_iso=entity_dt.isoformat(),
+            user_tz_name=user_tz_name,
+            confirm_msg_id=reply_to_id,
+        )
+
+    # Fallback: nl_date.parse (для клиентов без Bot API 9.5)
+    from backend.app.services.nl_date import ParseStatus, parse
     result = parse(text, user_tz=user_tz_name)
 
     if result.status == ParseStatus.UNPARSEABLE:

@@ -136,8 +136,14 @@ def parse(
     # Препроцессинг: «в 9» → «в 9:00» (dateparser не парсит часы без минут)
     text_for_parser = _preprocess_short_time(text_normalized)
 
+    # БАГ-фикс: ранее RELATIVE_BASE передавался naive (через .replace(tzinfo=None)).
+    # Dateparser трактует naive base как UTC → «завтра» в локальном 01:08 даёт
+    # неверный день (UTC 22:08 → «завтра» = тот же local day).
+    # Передаём tz-aware RELATIVE_BASE + явный TIMEZONE чтобы parsing шёл в user_tz.
     settings: dict = {
-        "RELATIVE_BASE": now_in_user_tz.replace(tzinfo=None),  # naive в user_tz
+        "RELATIVE_BASE": now_in_user_tz,  # tz-aware в user_tz
+        "TIMEZONE": user_tz,
+        "RETURN_AS_TIMEZONE_AWARE": True,
     }
     if not has_today_marker:
         settings["PREFER_DATES_FROM"] = "future"
@@ -205,6 +211,18 @@ def _preprocess_short_time(text: str) -> str:
         # Lookbehind: «не цифра и не цифра-пробел»
         full_pat = re.compile(r"(?<!\d)(?<!\d\s)" + pat, re.IGNORECASE)
         text = full_pat.sub(replacement, text)
+
+    # Bare time без контекста («22:00», «9:00») dateparser теперь не парсит
+    # (после tz-фикса). Если в строке нет дня (сегодня/завтра/в субботу/число.число)
+    # и есть только время → подставляем «сегодня».
+    text_stripped = text.strip()
+    has_day_marker = bool(re.search(
+        r"\b(сегодня|завтра|послезавтра|вчера|в\s+(?:понедельник|вторник|сред[уы]|четверг|пятниц[уы]|суббот[уы]|воскресень)\w*|\d{1,2}\.\d{1,2}|\d+\s*(?:дн|недел|месяц))",
+        text_stripped, re.IGNORECASE,
+    ))
+    has_only_time = bool(re.fullmatch(r"\d{1,2}[:.]\d{2}", text_stripped))
+    if has_only_time and not has_day_marker:
+        text = "сегодня " + text_stripped
 
     # 2. «в N» / «at N» → «в N:00» (числа 0..23, не followed by :, ., -, час/h)
     def repl(m: re.Match) -> str:
