@@ -14,6 +14,8 @@ import pytest
 def mock_redis():
     r = AsyncMock()
     r.set = AsyncMock(return_value=True)
+    r.get = AsyncMock(return_value=None)  # T13 anti-double-offer flag check
+    r.delete = AsyncMock()
     r.aclose = AsyncMock()
     return r
 

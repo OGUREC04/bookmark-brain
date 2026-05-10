@@ -729,6 +729,29 @@ async def _maybe_offer_reminder(
     if not structured.get("reminder_intent"):
         return
 
+    # T13 anti-double-offer: если юзер уже выбрал «📝 Заметка» в strong-flow,
+    # не показываем второй offer на ту же исходную message_id.
+    # Bot ставит strong_handled:{chat_id}:{source_msg_id} TTL 5 мин.
+    src_msg_id = (
+        getattr(bookmark, "source_message_id", None)
+        or (structured.get("source_message_id") if isinstance(structured, dict) else None)
+    )
+    if src_msg_id is not None:
+        try:
+            r_check = aioredis_from_url(settings.REDIS_URL)
+            try:
+                handled = await r_check.get(f"strong_handled:{chat_id}:{src_msg_id}")
+                if handled:
+                    logger.info(
+                        f"_maybe_offer_reminder: skip — strong_handled flag for "
+                        f"{chat_id}:{src_msg_id}"
+                    )
+                    return
+            finally:
+                await r_check.aclose()
+        except Exception as e:
+            logger.debug(f"_maybe_offer_reminder: anti-double check failed: {e}")
+
     bookmark_id = str(bookmark.id)
     text = _reminder_offer_text()
     buttons = _reminder_offer_buttons(bookmark_id)
