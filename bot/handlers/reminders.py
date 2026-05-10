@@ -191,12 +191,10 @@ async def cb_snooze_reminder(callback: CallbackQuery, api, store):
     msg_id = callback.message.message_id
     reminder_id = (callback.data or "").split(":", 1)[1] if ":" in (callback.data or "") else ""
 
-    if reminder_id:
-        try:
-            await store.store_reminder_snooze(chat_id, msg_id, reminder_id)
-        except Exception as e:
-            logger.warning(f"cb_snooze_reminder: store_snooze failed: {e}")
-
+    # F4: invert order — edit_text first, store_snooze only on success.
+    # Иначе: если edit упадёт, в Redis висит orphan reminder_snooze key
+    # (TTL 1ч), и любой reply на этот msg_id будет ошибочно ловиться как
+    # snooze-ответ.
     try:
         await callback.message.edit_text(
             "💤 На сколько продлить? <b>Ответь reply</b> со временем.\n\n"
@@ -204,7 +202,19 @@ async def cb_snooze_reminder(callback: CallbackQuery, api, store):
             parse_mode="HTML",
         )
     except Exception as e:
-        logger.debug(f"cb_snooze_reminder: edit_text failed: {e}")
+        logger.warning(f"cb_snooze_reminder: edit_text failed, NOT storing state: {e}")
+        try:
+            await callback.answer("Не получилось — попробуй ещё раз")
+        except Exception:
+            pass
+        return
+
+    if reminder_id:
+        try:
+            await store.store_reminder_snooze(chat_id, msg_id, reminder_id)
+        except Exception as e:
+            logger.warning(f"cb_snooze_reminder: store_snooze failed: {e}")
+
     try:
         await callback.answer()
     except Exception:
@@ -235,6 +245,20 @@ async def handle_reminder_reply(message: Message, api, store) -> bool:
     # consumed. Read+delete-on-success жертвует GETDEL-атомарностью, но
     # double-reply защищён tем что после delete второй reply пойдёт по
     # пути «state нет» → SkipHandler → tasks-fallback (не страшно).
+
+    # F2: confirm-state имеет приоритет над snooze/pending. Если бот ждёт
+    # «да/уточни» по предложенному fallback-времени — обрабатываем здесь.
+    fallback_state = None
+    try:
+        fallback_state = await store.get_reminder_fallback(chat_id, reply_to_id)
+    except Exception as e:
+        logger.debug(f"handle_reminder_reply: get_fallback failed: {e}")
+
+    if fallback_state is not None:
+        return await _handle_fallback_confirm_reply(
+            message, api, store, fallback_state, reply_to_id,
+        )
+
     snooze_rid = None
     try:
         snooze_rid = await store.get_reminder_snooze(chat_id, reply_to_id)
@@ -289,7 +313,30 @@ async def handle_reminder_reply(message: Message, api, store) -> bool:
         )
         return True
 
-    # OK или FALLBACK_DEFAULT — у нас валидный datetime
+    # F2: FALLBACK_DEFAULT — НЕ создаём reminder молча. Спрашиваем confirm.
+    if result.status == ParseStatus.FALLBACK_DEFAULT and result.dt is not None:
+        kind = "snooze" if snooze_rid else "create"
+        target_id = snooze_rid or pending_bid
+        proposed = _format_fire_at(result.dt, user_tz_name)
+        prompt = await message.answer(
+            f"Не понял точное время. Поставить на <b>{proposed}</b>?\n"
+            f"<b>Reply «да»</b> — подтверждаю, или укажи время точнее "
+            f"(например «через час», «завтра в 9»).",
+            parse_mode="HTML",
+        )
+        # Сохраняем proposed в state до confirm.
+        if prompt is not None and getattr(prompt, "message_id", None) is not None:
+            try:
+                await store.store_reminder_fallback(
+                    chat_id, prompt.message_id,
+                    kind=kind, target_id=target_id,
+                    proposed_dt_iso=result.dt.isoformat(),
+                )
+            except Exception as e:
+                logger.warning(f"store_reminder_fallback failed: {e}")
+        return True
+
+    # OK — у нас валидный datetime
     if result.dt is None:
         await message.answer(
             "Не понял время. " + TIME_EXAMPLES, parse_mode="HTML",
@@ -355,6 +402,153 @@ async def handle_reminder_reply(message: Message, api, store) -> bool:
 # ──────────────────────────────────────────────────
 # Router-level message hook
 # ──────────────────────────────────────────────────
+
+
+_FALLBACK_CONFIRM_YES = ("да", "ага", "ок", "окей", "yes", "y", "+", "подтверждаю")
+
+
+async def _handle_fallback_confirm_reply(
+    message: Message, api, store,
+    fallback_state: dict,
+    reply_to_id: int,
+) -> bool:
+    """F2: юзер reply'ит на «поставить на 11.05 22:00? да / уточни».
+
+    Если ответ — confirm-слово → создаём/обновляем reminder с предложенным
+    временем. Если другое — пробуем парсить как новое время. Если и оно
+    fallback — снова спрашиваем confirm (с новым state).
+    """
+    from bot.handlers.start import _ensure_user
+    from backend.app.services.nl_date import ParseStatus, parse
+
+    chat_id = message.chat.id
+    text = (message.text or "").strip()
+    text_lower = text.lower()
+
+    token = await _ensure_user(message, api)
+    if not token:
+        return True
+
+    kind = fallback_state.get("kind")
+    target_id = fallback_state.get("target_id")
+    dt_iso = fallback_state.get("dt_iso")
+
+    if not target_id or not dt_iso or kind not in ("create", "snooze"):
+        # Битый state — лучше выйти.
+        try:
+            await store.pop_reminder_fallback(chat_id, reply_to_id)
+        except Exception:
+            pass
+        return True
+
+    user_tz_name = await _get_user_tz_name(api, token)
+
+    is_confirm = any(text_lower == w or text_lower.startswith(w + " ") for w in _FALLBACK_CONFIRM_YES)
+
+    if is_confirm:
+        return await _apply_reminder_action(
+            message, api, store, kind, target_id, dt_iso, user_tz_name,
+            confirm_msg_id=reply_to_id,
+        )
+
+    # Не confirm — пробуем парсить как новое время.
+    result = parse(text, user_tz=user_tz_name)
+    if result.status == ParseStatus.OK and result.dt is not None:
+        return await _apply_reminder_action(
+            message, api, store, kind, target_id, result.dt.isoformat(), user_tz_name,
+            confirm_msg_id=reply_to_id,
+        )
+
+    if result.status == ParseStatus.IN_PAST:
+        await message.answer("Это в прошлом. Назначь время в будущем.", parse_mode=None)
+        return True
+
+    if result.status == ParseStatus.NEEDS_TIME:
+        await message.answer(
+            "Уточни время (например «в 9» или «в 18:30»). " + TIME_EXAMPLES,
+            parse_mode="HTML",
+        )
+        return True
+
+    if result.status == ParseStatus.FALLBACK_DEFAULT and result.dt is not None:
+        # Снова размытое — спрашиваем confirm с новым предложенным временем.
+        proposed = _format_fire_at(result.dt, user_tz_name)
+        prompt = await message.answer(
+            f"Снова не понял. Поставить на <b>{proposed}</b>?\n"
+            f"<b>Reply «да»</b> или укажи точнее.",
+            parse_mode="HTML",
+        )
+        if prompt is not None and getattr(prompt, "message_id", None) is not None:
+            try:
+                await store.store_reminder_fallback(
+                    chat_id, prompt.message_id,
+                    kind=kind, target_id=target_id,
+                    proposed_dt_iso=result.dt.isoformat(),
+                )
+                # Старый state можно почистить — мы заменили его новым.
+                await store.pop_reminder_fallback(chat_id, reply_to_id)
+            except Exception as e:
+                logger.warning(f"fallback re-store failed: {e}")
+        return True
+
+    # UNPARSEABLE — оставляем старый state, просим переформулировать.
+    await message.answer(
+        "Не понял. " + TIME_EXAMPLES + "\nИли reply «да» чтобы согласиться с прошлым временем.",
+        parse_mode="HTML",
+    )
+    return True
+
+
+async def _apply_reminder_action(
+    message: Message, api, store,
+    kind: str, target_id: str, fire_at_iso: str, user_tz_name: str,
+    confirm_msg_id: int,
+) -> bool:
+    """Финальный create/update reminder + чистка fallback-state."""
+    from datetime import datetime
+    chat_id = message.chat.id
+
+    # Получаем токен
+    from bot.handlers.start import _ensure_user
+    token = await _ensure_user(message, api)
+    if not token:
+        return True
+
+    text_payload = (message.text or "").strip()
+
+    try:
+        if kind == "snooze":
+            await api.update_reminder(token, target_id, fire_at_iso)
+        else:  # create
+            await api.create_reminder(
+                token, fire_at_iso,
+                bookmark_id=target_id,
+                payload={"text": text_payload, "source": "implicit_weak"},
+            )
+    except Exception as e:
+        logger.warning(f"_apply_reminder_action {kind} failed: {e}")
+        # State не трогаем — юзер может повторить «да».
+        await message.answer(
+            "Не получилось — попробуй ещё раз.",
+            parse_mode=None,
+        )
+        return True
+
+    # Успех — чистим fallback state.
+    try:
+        await store.pop_reminder_fallback(chat_id, confirm_msg_id)
+    except Exception as e:
+        logger.debug(f"pop_reminder_fallback failed: {e}")
+
+    try:
+        dt = datetime.fromisoformat(fire_at_iso)
+    except Exception:
+        dt = None
+
+    when = _format_fire_at(dt, user_tz_name) if dt else fire_at_iso
+    label = "💤 Продлено до" if kind == "snooze" else "🔔 Напомню"
+    await message.answer(f"{label} <b>{when}</b>", parse_mode="HTML")
+    return True
 
 
 @router.message(F.reply_to_message & F.text & ~F.text.startswith("/"))

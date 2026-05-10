@@ -48,6 +48,9 @@ def store():
     s.pop_reminder_snooze = AsyncMock(return_value=None)
     s.get_reminder_snooze = AsyncMock(return_value=None)
     s.delete_reminder_snooze = AsyncMock()
+    s.get_reminder_fallback = AsyncMock(return_value=None)
+    s.pop_reminder_fallback = AsyncMock(return_value=None)
+    s.store_reminder_fallback = AsyncMock()
     return s
 
 

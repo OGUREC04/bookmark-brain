@@ -711,12 +711,16 @@ def _reminder_offer_text() -> str:
 async def _maybe_offer_reminder(
     *, bookmark, chat_id: int | None, silent: bool,
 ) -> None:
-    """Если bookmark.structured_data.reminder_intent=True и НЕ silent —
-    шлём offer message с одной кнопкой и подсказкой про reply.
+    """Если bookmark.structured_data.reminder_intent=True — шлём offer
+    с одной кнопкой и подсказкой про reply.
+
+    Silent mode НЕ блокирует offer: silent_mode по дефолту True у
+    каждого юзера, иначе фича reminders становится невидимой. Offer —
+    это одно сообщение с одной кнопкой, минимум шума.
 
     Best-effort: любые ошибки проглатываем, основной flow не ломаем.
     """
-    if chat_id is None or silent:
+    if chat_id is None:
         return
 
     structured = getattr(bookmark, "structured_data", None) or {}
@@ -729,32 +733,63 @@ async def _maybe_offer_reminder(
     text = _reminder_offer_text()
     buttons = _reminder_offer_buttons(bookmark_id)
 
+    # F3: probe Redis ДО отправки сообщения. Иначе если Redis упал между
+    # send и SET — в чате висит кнопка которая не работает (silent UX fail).
+    # Probe-ключ заодно содержит bookmark_id — на случай если final SET
+    # не дойдёт, мы хотя бы знаем что offer был.
+    r = None
     sent = None
+    msg_id = None
+    probe_key = f"reminder_pending_probe:{chat_id}:{bookmark_id}"
     try:
+        r = aioredis_from_url(settings.REDIS_URL)
+        try:
+            await r.set(probe_key, bookmark_id, ex=60)
+        except Exception as e:
+            logger.warning(
+                f"_maybe_offer_reminder: Redis probe failed, skipping offer for "
+                f"{bookmark.id}: {e}"
+            )
+            return
+
+        # Redis жив — теперь безопасно отправлять
         sent = await _send_message(chat_id, text, buttons)
         if not sent or not sent.get("message_id"):
+            # Send упал — чистим probe чтобы не висел orphan
+            try:
+                await r.delete(probe_key)
+            except Exception:
+                pass
             return
         msg_id = sent["message_id"]
-        # Redis state — bot reply-handler читает по этому ключу.
-        # Если Redis недоступен — кнопка в чате висит, но клик не сработает
-        # (UX broken), поэтому warning, не debug.
-        r = aioredis_from_url(settings.REDIS_URL)
+
+        # Финальный SET с реальным msg_id
         try:
             await r.set(
                 f"reminder_pending:{chat_id}:{msg_id}",
                 bookmark_id,
                 ex=REMINDER_PENDING_TTL_SEC,
             )
-        finally:
-            await r.aclose()
-    except Exception as e:
-        if sent and sent.get("message_id"):
+            await r.delete(probe_key)
+        except Exception as e:
+            # Probe прошёл, но финальная запись упала (race?). Удаляем
+            # сообщение в чате чтобы не было broken-button.
             logger.warning(
-                f"_maybe_offer_reminder: message sent but Redis state failed for "
-                f"{bookmark.id} (button will appear broken): {e}"
+                f"_maybe_offer_reminder: probe ok but final SET failed for "
+                f"{bookmark.id}, deleting offer message: {e}"
             )
-        else:
-            logger.debug(f"_maybe_offer_reminder failed for {bookmark.id}: {e}")
+            try:
+                await _delete_message(chat_id, msg_id)
+            except Exception:
+                pass
+    except Exception as e:
+        logger.debug(f"_maybe_offer_reminder failed for {bookmark.id}: {e}")
+    finally:
+        if r is not None:
+            try:
+                await r.aclose()
+            except Exception:
+                pass
 
 
 # ──────────────────────────────────────────────────
@@ -924,6 +959,16 @@ async def scheduled_dispatcher(ctx: dict) -> None:
                         f"Reminder {sm_id} failed permanently "
                         f"after {current_retry} retries"
                     )
+                    # F1: уведомляем юзера. Best-effort — это уже notify-канал
+                    # тоже может упасть, но если оно упало 1 раз транзиентно
+                    # из retry, сейчас (минуту спустя) может уже работать.
+                    short_text = (actual_payload.get("text") or "")[:60]
+                    fail_msg = (
+                        "⚠️ Не удалось отправить напоминание"
+                        + (f" «{short_text}»" if short_text else "")
+                        + ". Попробуй создать заново через /remind."
+                    )
+                    asyncio.create_task(_send_message(telegram_id, fail_msg))
                 else:
                     # Reschedule — пока без exponential backoff, фиксированный лаг
                     await session.execute(sa_text(
@@ -957,6 +1002,9 @@ async def auto_done_reminders(ctx: dict) -> None:
     from sqlalchemy import text as sa_text
 
     async with async_session() as session:
+        # F5: добавлен guard `fire_at <= NOW()` — защита от race с snooze.
+        # update_reminder сбрасывает sent_at=NULL при snooze, но если race
+        # оставил status='sent' с fire_at в будущем — не трогаем.
         result = await session.execute(sa_text(
             """
             UPDATE scheduled_messages
@@ -966,6 +1014,7 @@ async def auto_done_reminders(ctx: dict) -> None:
             WHERE kind = 'reminder'
               AND status = 'sent'
               AND sent_at < NOW() - (:hours || ' hours')::interval
+              AND fire_at <= NOW()
             """
         ).bindparams(hours=str(AUTO_DONE_HOURS)))
         await session.commit()

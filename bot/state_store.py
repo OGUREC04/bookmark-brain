@@ -419,6 +419,56 @@ class StateStore:
         r = await self._get()
         return await r.getdel(f"reminder_snooze:{chat_id}:{msg_id}")
 
+    # F2: FALLBACK_DEFAULT confirm flow.
+    # Когда юзер написал «потом / не знаю / ладно» в reply на «когда напомнить?»,
+    # мы ставим reminder на now+24h, но НЕ создаём сразу — спрашиваем confirm.
+    # До «да» — храним предложенное время + контекст (bid или snooze rid).
+    _REMINDER_FALLBACK_TTL = 5 * 60   # 5 минут на ответ «да/уточни»
+
+    async def store_reminder_fallback(
+        self, chat_id: int, msg_id: int,
+        kind: str,                        # "create" | "snooze"
+        target_id: str,                   # bookmark_id или reminder_id
+        proposed_dt_iso: str,             # ISO-строка предложенного времени
+    ) -> None:
+        import json
+        r = await self._get()
+        await r.set(
+            f"reminder_fallback:{chat_id}:{msg_id}",
+            json.dumps({
+                "kind": kind,
+                "target_id": target_id,
+                "dt_iso": proposed_dt_iso,
+            }),
+            ex=self._REMINDER_FALLBACK_TTL,
+        )
+
+    async def pop_reminder_fallback(
+        self, chat_id: int, msg_id: int,
+    ) -> dict | None:
+        import json
+        r = await self._get()
+        raw = await r.getdel(f"reminder_fallback:{chat_id}:{msg_id}")
+        if raw is None:
+            return None
+        try:
+            return json.loads(raw)
+        except (json.JSONDecodeError, TypeError):
+            return None
+
+    async def get_reminder_fallback(
+        self, chat_id: int, msg_id: int,
+    ) -> dict | None:
+        import json
+        r = await self._get()
+        raw = await r.get(f"reminder_fallback:{chat_id}:{msg_id}")
+        if raw is None:
+            return None
+        try:
+            return json.loads(raw)
+        except (json.JSONDecodeError, TypeError):
+            return None
+
     async def get_reminder_snooze(
         self, chat_id: int, msg_id: int,
     ) -> str | None:
