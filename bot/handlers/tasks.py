@@ -577,29 +577,12 @@ async def cb_dedup_merge(callback: CallbackQuery, api, store=None):
         # pop уже удалил dedup state — ничего чистить не нужно
         return
 
-    # Удаляем сообщение нового списка
-    try:
-        await callback.message.bot.delete_message(chat_id, new_msg_id)
-    except TelegramBadRequest:
-        pass
-
-    # Unbind новый список из Redis
-    try:
-        await store.unbind_list_message(chat_id, new_msg_id)
-    except Exception:
-        pass
-
-    # ��даляем alert
-    try:
-        await callback.message.delete()
-    except TelegramBadRequest:
-        pass
-
-    # Re-render старый список внизу чата
+    # ВАЖНО: рендерим обновлённый старый список ПЕРВЫМ — даже если delete
+    # ниже упадёт, юзер уже увидит результат merge.
+    # См. docs/bugs/2026-05-11-task-list-duplicates-and-merge-ui.md.
     silent = await is_silent(api, token, callback.from_user.id)
 
     # Найдём старое сообщение списка (может быть другой msg_id)
-    # Ищем через Redis scan — у нас есть bid старого
     old_msg_id = None
     try:
         task_list_ids = await store.list_task_list_message_ids(chat_id)
@@ -608,26 +591,74 @@ async def cb_dedup_merge(callback: CallbackQuery, api, store=None):
             if bid == old_bid:
                 old_msg_id = mid
                 break
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"cb_dedup_merge: scan for old_msg_id failed: {e}")
 
+    rendered_ok = False
     if old_msg_id:
-        await _rerender_at_bottom(
-            callback.message.bot, chat_id, old_msg_id,
-            updated_old, store=store, silent=silent,
-        )
-    else:
-        # Если не нашли — просто отправляем обновлённый список
-        text = _render_text(updated_old.get("title"), updated_old.get("structured_data", {}), silent=silent)
-        keyboard = None if silent else _build_keyboard(old_bid, updated_old.get("structured_data", {}))
-        resp = await callback.message.bot.send_message(
-            chat_id, text, reply_markup=keyboard,
-            parse_mode="HTML", disable_web_page_preview=True,
-        )
         try:
-            await store.bind_list_message(chat_id, resp.message_id, old_bid)
-        except Exception:
-            pass
+            await _rerender_at_bottom(
+                callback.message.bot, chat_id, old_msg_id,
+                updated_old, store=store, silent=silent,
+            )
+            rendered_ok = True
+        except Exception as e:
+            logger.warning(f"cb_dedup_merge: _rerender_at_bottom failed: {e}")
+
+    if not rendered_ok:
+        # Fallback: отправляем обновлённый список свежим сообщением
+        try:
+            text = _render_text(
+                updated_old.get("title"),
+                updated_old.get("structured_data", {}),
+                silent=silent,
+            )
+            keyboard = (
+                None if silent
+                else _build_keyboard(old_bid, updated_old.get("structured_data", {}))
+            )
+            resp = await callback.message.bot.send_message(
+                chat_id, text, reply_markup=keyboard,
+                parse_mode="HTML", disable_web_page_preview=True,
+            )
+            try:
+                await store.bind_list_message(chat_id, resp.message_id, old_bid)
+            except Exception as e:
+                logger.warning(f"cb_dedup_merge: bind_list_message failed: {e}")
+        except Exception as e:
+            # Если и это не сработало — юзеру хоть alert чтобы понимал.
+            logger.error(f"cb_dedup_merge: send_message fallback failed: {e}")
+
+    # Теперь чистим старое сообщение нового списка + alert.
+    # Pinned message — сначала unpin (best-effort), потом delete.
+    try:
+        await callback.message.bot.unpin_chat_message(chat_id, new_msg_id)
+    except TelegramBadRequest as e:
+        # Если не был запинен — это OK
+        logger.debug(f"cb_dedup_merge: unpin {new_msg_id} skipped: {e.message}")
+    except Exception as e:
+        logger.warning(f"cb_dedup_merge: unpin {new_msg_id} unexpected: {e}")
+
+    try:
+        await callback.message.bot.delete_message(chat_id, new_msg_id)
+    except TelegramBadRequest as e:
+        # WARNING — иначе никогда не узнаем что мусор остаётся в чате.
+        # См. docs/bugs/2026-05-11-task-list-duplicates-and-merge-ui.md.
+        logger.warning(
+            f"cb_dedup_merge: delete new list message {new_msg_id} failed: {e.message}"
+        )
+
+    # Unbind новый список из Redis
+    try:
+        await store.unbind_list_message(chat_id, new_msg_id)
+    except Exception as e:
+        logger.debug(f"cb_dedup_merge: unbind_list_message failed: {e}")
+
+    # Удаляем alert
+    try:
+        await callback.message.delete()
+    except TelegramBadRequest as e:
+        logger.warning(f"cb_dedup_merge: delete alert failed: {e.message}")
 
     # Redis dedup state уже удалён через pop_dedup_alert
     await callback.answer("Списки объединены ✅")
