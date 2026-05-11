@@ -677,14 +677,44 @@ _DEADLINE_PATTERN = re.compile(
     r"^(\d+)\s*(?:пункт|п|:|-|—)?\s*(?:до|к|дедлайн|срок|deadline)?\s*(.+)$",
     re.IGNORECASE,
 )
-# Toggle done — широкий список синонимов + один или несколько индексов через "," или "и".
-# Ловит: "закрой 1", "закрой 1, 3", "выполни 2 и 4", "1 готово", "3 пункт сделано", "✅ 1, 2".
+# Mark done — широкий список синонимов + один или несколько индексов через "," или "и".
+# Ловит: "закрой 1", "закрой 1, 3", "выполни 2 и 4", "1 готово", "3 пункт сделано",
+#        "✅ 1, 2", "сделал 5", "гтв 7", "done 10".
+# ВАЖНО: идемпотентный SET (done=True), НЕ toggle. Снять галку — через _UNDONE_PATTERN.
 _INDEX_GROUP = r"(\d+(?:\s*(?:[,;]|\bи\b)\s*\d+)*)"
-_DONE_VERBS = r"готово|сделано?|done|✓|✅|закрой|закрыть|закрыт[аоы]?|отметь|отметить|выполни|выполнить|сделай"
+_DONE_VERBS = (
+    r"готово|сделано?|сделал[аи]?|закончил[аи]?|завершил[аи]?|"
+    r"гтв|done|✓|✅|закрой|закрыть|закрыт[аоы]?|"
+    r"отметь|отметить|выполни|выполнить|сделай"
+)
 _DONE_PATTERN = re.compile(
     rf"^(?:{_DONE_VERBS})\s*{_INDEX_GROUP}\s*(?:пункт[аы]?|п)?$"
     rf"|"
     rf"^{_INDEX_GROUP}\s*(?:пункт[аы]?|п)?\s*(?:{_DONE_VERBS})$",
+    re.IGNORECASE,
+)
+# Unmark done — снять галку. ВАЖНО: «не готово» проверяем ДО _DONE_PATTERN
+# чтобы «готово» не сматчилось раньше.
+_UNDONE_VERBS = (
+    r"не\s+готов[оы]?|не\s+сделано?|"
+    r"отмени|отменить|"
+    r"вернуть|верни|"
+    r"снять|сними|открой|открыть"
+)
+_UNDONE_PATTERN = re.compile(
+    rf"^(?:{_UNDONE_VERBS})\s*{_INDEX_GROUP}\s*(?:пункт[аы]?|п)?$"
+    rf"|"
+    rf"^{_INDEX_GROUP}\s*(?:пункт[аы]?|п)?\s*(?:{_UNDONE_VERBS})$",
+    re.IGNORECASE,
+)
+# Bulk: «всё/все готово», «закрой всё/все», «готово всё». done=True для всех.
+_ALL_DONE_PATTERN = re.compile(
+    r"^(?:"
+    r"(?:всё|все)\s+(?:готово|сделано|закрыт[оы]?)"
+    r"|закрой\s+(?:всё|все)"
+    r"|закрыть\s+(?:всё|все)"
+    r"|готово\s+(?:всё|все)"
+    r")$",
     re.IGNORECASE,
 )
 # "добавь X", "+ X", "запиши X"
@@ -776,18 +806,36 @@ def _try_fast_edit(user_text: str, structured: dict) -> dict | None:
     if not tasks:
         return None
 
-    # Toggle done: "закрой 1", "закрой 1, 3", "выполни 2 и 4", "3 готово"
+    # All done: «всё готово», «закрой все» → done=True для всех
+    if _ALL_DONE_PATTERN.match(text):
+        new_tasks = [{**t, "done": True} for t in tasks]
+        return {**structured, "tasks": new_tasks}
+
+    # Undone — проверяем ДО done чтобы «не готово» не сматчилось как «готово»
+    m = _UNDONE_PATTERN.match(text)
+    if m:
+        group = m.group(1) or m.group(2)
+        indices = _parse_indices(group)
+        if not indices:
+            return None
+        if any(i < 0 or i >= len(tasks) for i in indices):
+            return None
+        for idx in indices:
+            tasks[idx] = {**tasks[idx], "done": False}
+        return {**structured, "tasks": tasks}
+
+    # Done: «закрой 1», «закрой 1, 3», «выполни 2 и 4», «3 готово», «сделал 5».
+    # ИДЕМПОТЕНТНО (set done=True, не toggle).
     m = _DONE_PATTERN.match(text)
     if m:
         group = m.group(1) or m.group(2)
         indices = _parse_indices(group)
         if not indices:
             return None
-        # Все индексы должны быть валидны — иначе откатываем на LLM
         if any(i < 0 or i >= len(tasks) for i in indices):
             return None
         for idx in indices:
-            tasks[idx] = {**tasks[idx], "done": not tasks[idx].get("done", False)}
+            tasks[idx] = {**tasks[idx], "done": True}
         return {**structured, "tasks": tasks}
 
     # Remove: "удали 3", "удали 1, 3", "убери 2 и 4"
@@ -1416,12 +1464,15 @@ async def msg_nl_edit_on_reply(message: Message, api, store=None):
         await safe_react(message, "\U0001f44e")
         help_msg = await message.reply(
             "Не понял.\n"
-            "Доступно: закрыть пункт(ы), добавить пункт, удалить пункт, удалить весь список.\n\n"
+            "Доступно: отметить готово/не готово, добавить, удалить, дедлайн.\n\n"
             "Примеры:\n"
-            "• «закрой 1, 3»\n"
+            "• «10 готово» / «сделал 5» / «гтв 7»\n"
+            "• «10 не готово» / «отмени 12»\n"
+            "• «всё готово»\n"
+            "• «закрой 1, 3» / «выполни 2 и 4»\n"
             "• «добавь купить хлеб»\n"
-            "• «удали 2»\n"
-            "• «удали список»",
+            "• «удали 2» / «удали список»\n"
+            "• «3 до завтра» (дедлайн)",
             parse_mode=None,
         )
         # Трекаем «хвосты» — если следующий reply сработает, удалим оба.
