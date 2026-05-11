@@ -6,7 +6,7 @@
 
 **Готово к запуску на реальных юзерах:** ❌ нет. Не хватает Smart Blocks + Mini App.
 
-**Следующее действие:** дождаться завершения Phase 2.5 Reminders (другой чат) → стартовать Phase 5 Smart Blocks.
+**Следующее действие:** перед Phase 5 — закрыть `pre-phase-3` pool (2 бада: split tasks.py + reminders.py). См. `bd list --label pre-phase-3`. После — Phase 5 Smart Blocks.
 
 ---
 
@@ -27,12 +27,13 @@
 ├─ Phase 3A   Voice Input            ✅
 ├─ Phase 3B   Documents              ✅
 ├─ Phase 3D   Voice Features         ✅
-├─ Deploy     VPS Beget              ✅ (sync STT)
+├─ Deploy     VPS Beget              ✅ (sync + async STT с 2026-05-12)
 ├─ Phase R0   Project rule           ✅
-└─ Phase R2   Documentation          ✅ (API docs остались)
+├─ Phase R2   Documentation          ✅ (API docs остались)
+└─ Phase 2.5  Reminders MVP          ✅ (PR #10 merged + PR #11 фиксы + ADR 0008)
 
 В РАБОТЕ:
-└─ Phase 2.5  Reminders MVP          ◐ 8/10 done (T9+T10 left)
+└─ (пусто — готовы к Phase 5)
 
 ОЧЕРЕДЬ (новый порядок):
 ├─ Phase 5    Smart Blocks           ← следующее (2-3 дня)

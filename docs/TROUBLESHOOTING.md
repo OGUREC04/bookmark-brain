@@ -10,6 +10,12 @@
 | Bot: HTML parse error с кириллицей | `<слово>` парсится как HTML-тег | `parse_mode=None` для plain text ответов |
 | `.env` не находится | Settings ищет в CWD (backend/) | Абсолютный путь в `config.py`: `Path(__file__).resolve().parent.parent.parent / ".env"` |
 | Поиск 500 если нет embeddings | Voyage API не ответил | Fallback: full-text → ILIKE поиск (`search.py`) |
+| Голосовое >30с: «Не удалось распознать (ошибка 400)» | Sync Yandex STT режет на 30с, Hybrid fallback на async требует S3 envs | Добавить `YANDEX_S3_BUCKET / ACCESS_KEY / SECRET_KEY` в `.env`, redeploy. Bucket: public-read ACL, KMS off, регион `ru-central1` |
+| POST /bookmarks 500 на повторе сообщения | Не обработан `IntegrityError` на `idx_bookmarks_source_dedup` | Фикс 2026-05-11: catch → return existing (idempotent). См. `backend/app/api/bookmarks.py::create_bookmark` |
+| Reply «10 готово» зачёркивает не тот пункт | LLM мискаунтил длинный JSON без numbered repr | Фикс 2026-05-11: numbered repr в payload + post-validation. См. `task_list_editor.py::_validate_no_hallucinated_add` |
+| Merge/dedup-update: «✅ Оригинал обновлён» без видимого списка | Re-render шёл ПОСЛЕ delete с silent swallow | Фикс 2026-05-11: re-render first + явные `logger.warning`. См. `docs/bugs/2026-05-11-task-list-duplicates-and-merge-ui.md` |
+| SSH `Permission denied` после нескольких попыток | fail2ban забанил IP | Подождать 15 мин ИЛИ через VNC консоль: `fail2ban-client unban <IP>` |
+| Beget «Сменил пароль» — SSH/VNC не пускают | Кнопка «Изменить пароль» меняет ТОЛЬКО пароль панели, root system отдельно | Сброс root: Rescue-режим (mount + chroot + `passwd`) или тикет в поддержку |
 
 ## Дополнительно
 
