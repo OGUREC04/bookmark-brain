@@ -136,8 +136,14 @@ def parse(
     # Препроцессинг: «в 9» → «в 9:00» (dateparser не парсит часы без минут)
     text_for_parser = _preprocess_short_time(text_normalized)
 
+    # БАГ-фикс: ранее RELATIVE_BASE передавался naive (через .replace(tzinfo=None)).
+    # Dateparser трактует naive base как UTC → «завтра» в локальном 01:08 даёт
+    # неверный день (UTC 22:08 → «завтра» = тот же local day).
+    # Передаём tz-aware RELATIVE_BASE + явный TIMEZONE чтобы parsing шёл в user_tz.
     settings: dict = {
-        "RELATIVE_BASE": now_in_user_tz.replace(tzinfo=None),  # naive в user_tz
+        "RELATIVE_BASE": now_in_user_tz,  # tz-aware в user_tz
+        "TIMEZONE": user_tz,
+        "RETURN_AS_TIMEZONE_AWARE": True,
     }
     if not has_today_marker:
         settings["PREFER_DATES_FROM"] = "future"
@@ -180,10 +186,45 @@ def parse(
 def _preprocess_short_time(text: str) -> str:
     """«в 9» → «в 9:00», «в 18» → «в 18:00», «at 9» → «at 9:00».
 
-    Без этого dateparser игнорирует короткое указание часа без минут.
+    Также маппит словесные части суток (T15):
+      «утром» → «9:00», «днём/днем» → «14:00»,
+      «вечером» → «18:00», «ночью» → «22:00»
+
+    Без этого dateparser игнорирует короткое указание часа без минут
+    и не понимает части суток («завтра утром», «в субботу вечером»).
+
     Не трогает «в 9:00», «в 18-30», «через 9 часов», числа > 23.
     """
-    # «в N» / «at N» где N=0..23 и НЕ followed by :, ., -, час/часов
+    # 1. Часть суток → конкретное время. Делаем ДО обработки «в N»:
+    #    после маппинга «утром» → «9:00» в строке нет «в N», обработка идёт чисто.
+    time_of_day_map = {
+        r"\bутром\b": "9:00",
+        r"\bутра\b": "9:00",            # «9 утра» → «9 9:00»? нет, только без числа
+        r"\bднём\b": "14:00",
+        r"\bднем\b": "14:00",
+        r"\bвечером\b": "18:00",
+        r"\bночью\b": "22:00",
+    }
+    # «9 утра» / «3 ночи» — не подменяем (там число уже задаёт час).
+    # Простая эвристика: подменяем только если перед маркером нет цифры.
+    for pat, replacement in time_of_day_map.items():
+        # Lookbehind: «не цифра и не цифра-пробел»
+        full_pat = re.compile(r"(?<!\d)(?<!\d\s)" + pat, re.IGNORECASE)
+        text = full_pat.sub(replacement, text)
+
+    # Bare time без контекста («22:00», «9:00») dateparser теперь не парсит
+    # (после tz-фикса). Если в строке нет дня (сегодня/завтра/в субботу/число.число)
+    # и есть только время → подставляем «сегодня».
+    text_stripped = text.strip()
+    has_day_marker = bool(re.search(
+        r"\b(сегодня|завтра|послезавтра|вчера|в\s+(?:понедельник|вторник|сред[уы]|четверг|пятниц[уы]|суббот[уы]|воскресень)\w*|\d{1,2}\.\d{1,2}|\d+\s*(?:дн|недел|месяц))",
+        text_stripped, re.IGNORECASE,
+    ))
+    has_only_time = bool(re.fullmatch(r"\d{1,2}[:.]\d{2}", text_stripped))
+    if has_only_time and not has_day_marker:
+        text = "сегодня " + text_stripped
+
+    # 2. «в N» / «at N» → «в N:00» (числа 0..23, не followed by :, ., -, час/h)
     def repl(m: re.Match) -> str:
         prefix, hour_str = m.group(1), m.group(2)
         try:

@@ -48,6 +48,9 @@ def store():
     s.pop_reminder_snooze = AsyncMock(return_value=None)
     s.get_reminder_snooze = AsyncMock(return_value=None)
     s.delete_reminder_snooze = AsyncMock()
+    s.get_reminder_fallback = AsyncMock(return_value=None)
+    s.pop_reminder_fallback = AsyncMock(return_value=None)
+    s.store_reminder_fallback = AsyncMock()
     return s
 
 
@@ -220,8 +223,8 @@ class TestReplyHandlerCreate:
         from bot.handlers.reminders import handle_reminder_reply
 
         bid = str(uuid4())
-        store.get_reminder_pending = AsyncMock(return_value=bid)
-        store.get_reminder_snooze = AsyncMock(return_value=None)
+        store.pop_reminder_pending = AsyncMock(return_value=bid)
+        store.pop_reminder_snooze = AsyncMock(return_value=None)
 
         msg = _make_reply_message("через час")
         handled = await handle_reminder_reply(msg, api, store)
@@ -235,15 +238,15 @@ class TestReplyHandlerCreate:
         assert bid in all_args or kwargs.get("bookmark_id") == bid
         # Подтверждение отправлено
         msg.answer.assert_called()
-        # state удалён ПОСЛЕ успеха API (read-then-delete-on-success)
-        store.delete_reminder_pending.assert_called_once_with(100, 42)
+        # state атомарно consumed через pop (GETDEL) — отдельный delete не нужен.
+        store.pop_reminder_pending.assert_called_once_with(100, 42)
 
     async def test_unparseable_text_shows_help_no_create(self, api, store):
         from bot.handlers.reminders import handle_reminder_reply
 
         bid = str(uuid4())
-        store.get_reminder_pending = AsyncMock(return_value=bid)
-        store.get_reminder_snooze = AsyncMock(return_value=None)
+        store.pop_reminder_pending = AsyncMock(return_value=bid)
+        store.pop_reminder_snooze = AsyncMock(return_value=None)
 
         msg = _make_reply_message("какая-то дичь")
         handled = await handle_reminder_reply(msg, api, store)
@@ -260,8 +263,8 @@ class TestReplyHandlerCreate:
         from bot.handlers.reminders import handle_reminder_reply
 
         bid = str(uuid4())
-        store.get_reminder_pending = AsyncMock(return_value=bid)
-        store.get_reminder_snooze = AsyncMock(return_value=None)
+        store.pop_reminder_pending = AsyncMock(return_value=bid)
+        store.pop_reminder_snooze = AsyncMock(return_value=None)
 
         msg = _make_reply_message("вчера в 18")
         handled = await handle_reminder_reply(msg, api, store)
@@ -275,8 +278,8 @@ class TestReplyHandlerCreate:
         """Reply на сообщение без reminder state — handler возвращает False (не наш)."""
         from bot.handlers.reminders import handle_reminder_reply
 
-        store.get_reminder_pending = AsyncMock(return_value=None)
-        store.get_reminder_snooze = AsyncMock(return_value=None)
+        store.pop_reminder_pending = AsyncMock(return_value=None)
+        store.pop_reminder_snooze = AsyncMock(return_value=None)
 
         msg = _make_reply_message("через час")
         handled = await handle_reminder_reply(msg, api, store)
@@ -303,8 +306,8 @@ class TestReplyHandlerSnooze:
         from bot.handlers.reminders import handle_reminder_reply
 
         sm_id = str(uuid4())
-        store.get_reminder_pending = AsyncMock(return_value=None)
-        store.get_reminder_snooze = AsyncMock(return_value=sm_id)
+        store.pop_reminder_pending = AsyncMock(return_value=None)
+        store.pop_reminder_snooze = AsyncMock(return_value=sm_id)
 
         msg = _make_reply_message("через 2 часа")
         handled = await handle_reminder_reply(msg, api, store)
@@ -314,8 +317,8 @@ class TestReplyHandlerSnooze:
         args = api.update_reminder.call_args.args
         kwargs = api.update_reminder.call_args.kwargs
         assert sm_id in list(args) + list(kwargs.values())
-        # state удалён только после успеха
-        store.delete_reminder_snooze.assert_called_once_with(100, 42)
+        # state атомарно consumed через pop (GETDEL).
+        store.pop_reminder_snooze.assert_called_once_with(100, 42)
         msg.answer.assert_called()
 
     async def test_snooze_takes_priority_over_pending(self, api, store):
@@ -324,8 +327,8 @@ class TestReplyHandlerSnooze:
 
         bid = str(uuid4())
         sm_id = str(uuid4())
-        store.get_reminder_pending = AsyncMock(return_value=bid)
-        store.get_reminder_snooze = AsyncMock(return_value=sm_id)
+        store.pop_reminder_pending = AsyncMock(return_value=bid)
+        store.pop_reminder_snooze = AsyncMock(return_value=sm_id)
 
         msg = _make_reply_message("через час")
         handled = await handle_reminder_reply(msg, api, store)
@@ -335,13 +338,15 @@ class TestReplyHandlerSnooze:
         api.update_reminder.assert_called_once()
         api.create_reminder.assert_not_called()
 
-    async def test_state_preserved_on_api_failure(self, api, store):
-        """API упал → state не удалён (юзер может повторить reply)."""
+    async def test_state_consumed_atomically_on_api_failure(self, api, store):
+        """API упал → state УЖЕ consumed (pop атомарен).
+        Защита от race на double-tap. Юзеру говорим повторить через /remind.
+        """
         from bot.handlers.reminders import handle_reminder_reply
 
         bid = str(uuid4())
-        store.get_reminder_pending = AsyncMock(return_value=bid)
-        store.get_reminder_snooze = AsyncMock(return_value=None)
+        store.pop_reminder_pending = AsyncMock(return_value=bid)
+        store.pop_reminder_snooze = AsyncMock(return_value=None)
         api.create_reminder = AsyncMock(
             side_effect=httpx.HTTPStatusError(
                 "500",
@@ -353,11 +358,11 @@ class TestReplyHandlerSnooze:
         msg = _make_reply_message("через час")
         await handle_reminder_reply(msg, api, store)
 
-        # State НЕ удалён — retry-friendly
-        store.delete_reminder_pending.assert_not_called()
-        # Юзеру сказали попробовать ещё раз
+        # State consumed атомарно — pop вызван один раз.
+        store.pop_reminder_pending.assert_called_once_with(100, 42)
+        # Юзеру предложили повторить заново
         sent = msg.answer.call_args.args[0]
-        assert "ещё раз" in sent.lower() or "попробуй" in sent.lower()
+        assert "ещё раз" in sent.lower() or "попробуй" in sent.lower() or "remind" in sent.lower()
 
 
 # ──────────────────────────────────────────────────

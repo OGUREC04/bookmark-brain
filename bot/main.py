@@ -84,9 +84,13 @@ async def main():
     store = StateStore(settings.REDIS_URL)
 
     # Порядок роутеров важен:
-    # 1. reminders первым — его reply-handler перехватывает rsk:/rsnz:
-    #    state ДО tasks (иначе tasks "Не нашёл этот список" съест reply).
-    # 2. tasks — reply на task_list ДО catch-all в start.
+    # 1. reminders.strong_router САМЫЙ ПЕРВЫЙ (T13 v2.1) — ловит strong-intent
+    #    сообщения ДО того как они попадут в start.handle_text и отправятся
+    #    в AI. Если intent не сильный → SkipHandler → событие падает дальше.
+    # 2. reminders.router — callbacks rsk:/rsn:/rdone:/rsnz:/rstrong_*,
+    #    /remind команда, /reminders команда, reply-handler.
+    # 3. tasks — reply на task_list ДО catch-all в start.
+    dp.include_router(reminders_handler.strong_router)
     dp.include_router(reminders_handler.router)
     dp.include_router(tasks.router)
     dp.include_router(settings_handler.router)
@@ -121,6 +125,8 @@ async def main():
     try:
         await bot.set_my_commands([
             BotCommand(command="todo", description="Список задач: /todo пункт1, пункт2"),
+            BotCommand(command="remind", description="Создать напоминание: /remind текст время"),
+            BotCommand(command="reminders", description="Активные напоминания + история"),
             BotCommand(command="list", description="Все закладки"),
             BotCommand(command="search", description="Поиск: /search запрос"),
             BotCommand(command="random", description="Случайная закладка"),

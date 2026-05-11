@@ -156,6 +156,35 @@ async def list_upcoming(
     return ReminderListResponse(items=items, total=len(items))
 
 
+@router.get("/history", response_model=ReminderListResponse)
+async def list_history(
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+    limit: int = Query(default=20, ge=1, le=200),
+    days: int = Query(default=30, ge=1, le=365),
+):
+    """T12 v2.1: история выполненных/отменённых reminder'ов за N дней.
+
+    status в (done, cancelled), отсортировано по созданию (новые первые).
+    """
+    from datetime import timedelta as _td
+    since = datetime.now(timezone.utc) - _td(days=days)
+    stmt = (
+        select(ScheduledMessage)
+        .where(
+            ScheduledMessage.user_id == current_user.id,
+            ScheduledMessage.kind == REMINDER_KIND,
+            ScheduledMessage.status.in_(["done", "cancelled"]),
+            ScheduledMessage.created_at >= since,
+        )
+        .order_by(ScheduledMessage.created_at.desc())
+        .limit(limit)
+    )
+    result = await session.execute(stmt)
+    items = list(result.scalars().all())
+    return ReminderListResponse(items=items, total=len(items))
+
+
 async def _get_user_reminder(
     session: AsyncSession, reminder_id: UUID, user_id: UUID
 ) -> ScheduledMessage:

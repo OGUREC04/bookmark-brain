@@ -117,6 +117,18 @@ class BackendClient:
         response.raise_for_status()
         return response.json()
 
+    async def list_reminder_history(
+        self, token: str, limit: int = 20, days: int = 30,
+    ) -> dict:
+        """GET /api/v1/reminders/history (T12 v2.1)."""
+        response = await self.client.get(
+            "/api/v1/reminders/history",
+            headers={"Authorization": f"Bearer {token}"},
+            params={"limit": limit, "days": days},
+        )
+        response.raise_for_status()
+        return response.json()
+
     async def create_bookmark(
         self,
         token: str,
