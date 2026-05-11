@@ -786,11 +786,14 @@ async def _maybe_offer_reminder(
             return
         msg_id = sent["message_id"]
 
-        # Финальный SET с реальным msg_id
+        # Финальный SET с реальным msg_id.
+        # 12y: JSON envelope вместо голой UUID-строки.
+        # Bot reader умеет читать оба формата (legacy + envelope).
+        import json as _json
         try:
             await r.set(
                 f"reminder_pending:{chat_id}:{msg_id}",
-                bookmark_id,
+                _json.dumps({"kind": "bookmark", "bookmark_id": bookmark_id}),
                 ex=REMINDER_PENDING_TTL_SEC,
             )
             await r.delete(probe_key)

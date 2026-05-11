@@ -178,11 +178,8 @@ class TestCmdRemindWithoutTime:
         sent = msg.answer.call_args.args[0]
         assert "когда" in sent.lower()
         assert "reply" in sent.lower() or "ответь" in sent.lower()
-        # Pending state сохранён в Redis (через store._get())
-        # __explicit__| маркер в значении
-        r_inst = store._get.return_value
-        r_inst.set.assert_called_once()
-        key, val = r_inst.set.call_args.args[:2]
-        assert key.startswith("reminder_pending:")
-        assert val.startswith("__explicit__|")
-        assert "купить хлеб" in val
+        # 12y: explicit /remind без времени → store_reminder_pending_explicit
+        store.store_reminder_pending_explicit.assert_called_once()
+        args = store.store_reminder_pending_explicit.call_args.args
+        # (chat_id, msg_id, text)
+        assert "купить хлеб" in args[2]

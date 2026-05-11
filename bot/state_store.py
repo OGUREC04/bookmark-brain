@@ -355,33 +355,83 @@ class StateStore:
         return [int(x) for x in raw if x.isdigit()]
 
     # ── reminders (Phase 2.5) ──────────────────────────────
-    # Три ключа:
-    #   reminder_pending:{chat_id}:{msg_id} → bookmark_id  (TTL 1ч)
-    #     Ставит worker._maybe_offer_reminder при показе кнопки «Создать?».
-    #     Читает reply-handler когда юзер отвечает временем.
-    #   reminder:{chat_id}:{msg_id}         → scheduled_message_id (TTL 25ч)
-    #     Ставит worker.scheduled_dispatcher при отправке reminder'а.
-    #     Читают callbacks rdone:/rsnz: для маппинга msg_id → reminder_id.
-    #   reminder_snooze:{chat_id}:{msg_id}  → scheduled_message_id (TTL 1ч)
-    #     Ставит callback rsnz: когда юзер нажал «Продлить».
-    #     Читает reply-handler когда юзер отвечает новым временем.
+    # Полная таблица Redis-ключей reminder-флоу:
+    #
+    # | Key                                       | TTL  | Writer                            | Reader                          |
+    # |-------------------------------------------|------|-----------------------------------|---------------------------------|
+    # | reminder_pending:{chat}:{msg}             | 1ч   | worker._maybe_offer_reminder      | bot handle_reminder_reply (pop) |
+    # |                                           |      | bot cmd_remind (explicit без вр.) |                                 |
+    # |                                           |      | bot cb_strong_choice (remind без) |                                 |
+    # | reminder_pending_probe:{chat}:{bid}       | 60с  | worker._maybe_offer_reminder      | self (cleanup перед SET final)  |
+    # | reminder_strong:{chat}:{msg}              | 1ч   | bot handle_strong_intent_message  | bot cb_strong_choice (pop)      |
+    # | strong_handled:{chat}:{src_msg_id}        | 5мин | bot cb_strong_choice (note)       | worker._maybe_offer_reminder    |
+    # | reminder_snooze:{chat}:{msg}              | 1ч   | bot cb_snooze_reminder            | bot handle_reminder_reply (pop) |
+    # | reminder_fallback:{chat}:{msg}            | 5мин | bot handle_reminder_reply         | bot _handle_fallback_confirm    |
+    # |                                           |      | bot cmd_remind (fallback)         |                                 |
+    # | reminder:{chat}:{msg}                     | 25ч  | worker._save_reminder_redis_state | bot cb_done/cb_snooze           |
+    # | reminders_list:{chat}:{msg}               | 1ч   | bot cmd_reminders                 | bot handle_reminders_list_reply |
+    #
+    # См. docs/decisions/0008-reminders-three-flow.md и
+    # bookmark-brain-d71 (централизация reminder_strong ключа).
 
     _REMINDER_PENDING_TTL = 3600
     _REMINDER_SNOOZE_TTL = 3600
+    _REMINDER_STRONG_TTL = 3600
+
+    # 12y: формат значения reminder_pending — JSON envelope.
+    #   {"kind": "bookmark", "bookmark_id": "<uuid>"}  ← weak offer (writer: worker)
+    #   {"kind": "explicit", "text": "купить хлеб"}    ← explicit /remind (writer: bot)
+    # Backward-compat при чтении: голая UUID-строка → bookmark; "__explicit__|X" → explicit.
+    # Старый формат уходит сам по истечении TTL (1ч после деплоя).
+
+    @staticmethod
+    def _decode_pending(raw: str | None) -> dict | None:
+        if not raw:
+            return None
+        import json
+        # JSON envelope — основной формат
+        if raw.startswith("{"):
+            try:
+                data = json.loads(raw)
+                if isinstance(data, dict) and data.get("kind") in ("bookmark", "explicit"):
+                    return data
+            except (json.JSONDecodeError, TypeError):
+                pass
+        # Legacy: "__explicit__|<text>"
+        if raw.startswith("__explicit__|"):
+            return {"kind": "explicit", "text": raw[len("__explicit__|"):]}
+        # Legacy: голая UUID-строка → weak offer
+        return {"kind": "bookmark", "bookmark_id": raw}
 
     async def get_reminder_pending(
         self, chat_id: int, msg_id: int,
-    ) -> str | None:
-        """bookmark_id для msg_id с offer-кнопкой, или None."""
+    ) -> dict | None:
+        """Возвращает pending state как dict, или None.
+        См. _decode_pending для формата.
+        """
         r = await self._get()
-        return await r.get(f"reminder_pending:{chat_id}:{msg_id}")
+        raw = await r.get(f"reminder_pending:{chat_id}:{msg_id}")
+        return self._decode_pending(raw)
 
     async def pop_reminder_pending(
         self, chat_id: int, msg_id: int,
-    ) -> str | None:
-        """Атомарно читаем + удаляем — защита от double-reply."""
+    ) -> dict | None:
+        """Атомарный GETDEL — защита от double-reply / race."""
         r = await self._get()
-        return await r.getdel(f"reminder_pending:{chat_id}:{msg_id}")
+        raw = await r.getdel(f"reminder_pending:{chat_id}:{msg_id}")
+        return self._decode_pending(raw)
+
+    async def store_reminder_pending_explicit(
+        self, chat_id: int, msg_id: int, text: str,
+    ) -> None:
+        """Explicit /remind без времени — ждём reply со временем."""
+        import json
+        r = await self._get()
+        await r.set(
+            f"reminder_pending:{chat_id}:{msg_id}",
+            json.dumps({"kind": "explicit", "text": text}),
+            ex=self._REMINDER_PENDING_TTL,
+        )
 
     async def delete_reminder_pending(
         self, chat_id: int, msg_id: int,
@@ -401,6 +451,34 @@ class StateStore:
     ) -> None:
         r = await self._get()
         await r.delete(f"reminder:{chat_id}:{msg_id}")
+
+    async def store_reminder_strong(
+        self, chat_id: int, msg_id: int, state: dict,
+    ) -> None:
+        """T13: strong-intent prompt state.
+        Писатель: handle_strong_intent_message. Читатель: cb_strong_choice (pop).
+        """
+        import json
+        r = await self._get()
+        await r.set(
+            f"reminder_strong:{chat_id}:{msg_id}",
+            json.dumps(state),
+            ex=self._REMINDER_STRONG_TTL,
+        )
+
+    async def pop_reminder_strong(
+        self, chat_id: int, msg_id: int,
+    ) -> dict | None:
+        """Атомарный GETDEL для strong state. None если истёк / не найден."""
+        import json
+        r = await self._get()
+        raw = await r.getdel(f"reminder_strong:{chat_id}:{msg_id}")
+        if raw is None:
+            return None
+        try:
+            return json.loads(raw)
+        except (json.JSONDecodeError, TypeError):
+            return None
 
     async def store_reminder_snooze(
         self, chat_id: int, msg_id: int, reminder_id: str,

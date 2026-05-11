@@ -29,6 +29,16 @@ logger = logging.getLogger(__name__)
 
 router = Router()
 
+# ──────────────────────────────────────────────────
+# Confirm-сообщения (единая точка правки текста, готовность к i18n)
+# ──────────────────────────────────────────────────
+MSG_LIST_MERGED = "Списки объединены ✅"
+MSG_ORIGINAL_UPDATED = "✅ Оригинал обновлён"
+MSG_DUP_DELETED = "✅ Дубль удалён"
+MSG_SAVED_NEW = "✅ Сохранено как новая закладка"
+MSG_MERGE_FAILED = "Не удалось объединить. Оставлю оба списка."
+MSG_UPDATE_FAILED = "Не удалось обновить. Оба сохранены."
+
 # Per-(chat_id, bookmark_id) lock to prevent concurrent _rerender_at_bottom races.
 # Locks are evicted after use when no one else is waiting.
 _rerender_locks: dict[tuple[int, str], asyncio.Lock] = {}
@@ -569,7 +579,7 @@ async def cb_dedup_merge(callback: CallbackQuery, api, store=None):
         updated_old = await api.merge_task_list(token, new_bid, old_bid)
     except Exception as e:
         logger.error(f"merge_task_list failed: {e}")
-        await callback.answer("Не удалось объединить. Оставлю оба списка.", show_alert=True)
+        await callback.answer(MSG_MERGE_FAILED, show_alert=True)
         try:
             await callback.message.delete()
         except TelegramBadRequest:
@@ -661,7 +671,7 @@ async def cb_dedup_merge(callback: CallbackQuery, api, store=None):
         logger.warning(f"cb_dedup_merge: delete alert failed: {e.message}")
 
     # Redis dedup state уже удалён через pop_dedup_alert
-    await callback.answer("Списки объединены ✅")
+    await callback.answer(MSG_LIST_MERGED)
 
 
 @router.callback_query(F.data.startswith("dk:"))
@@ -1038,6 +1048,45 @@ async def _show_updated_task_list_after_dedup_update(
         return False
 
 
+async def _apply_dedup_update(
+    api, token: str, new_bid: str, old_bid: str,
+) -> dict | None:
+    """Общая логика intent='update' для всех 3 dedup flow:
+    1. cb_dedup_merge (callback кнопки)
+    2. _handle_general_dedup_reply (reply на alert)
+    3. _handle_pending_dedup (следующее сообщение по ключевому слову)
+
+    Семантика: переносит поля new → old, удаляет new, возвращает обновлённый old.
+    None если что-то упало (вызывающий покажет error).
+
+    См. bookmark-brain-4ag.
+    """
+    try:
+        new_bm = await api.get_bookmark(token, new_bid)
+    except Exception as e:
+        logger.warning(f"_apply_dedup_update: get new {new_bid} failed: {e}")
+        return None
+
+    update_fields = {}
+    for field in ("raw_text", "title", "summary", "structured_data"):
+        if new_bm.get(field):
+            update_fields[field] = new_bm[field]
+
+    try:
+        if update_fields:
+            await api.update_bookmark(token, old_bid, update_fields)
+        await api.delete_bookmark(token, new_bid)
+    except Exception as e:
+        logger.warning(f"_apply_dedup_update: patch/delete failed: {e}")
+        return None
+
+    try:
+        return await api.get_bookmark(token, old_bid)
+    except Exception as e:
+        logger.warning(f"_apply_dedup_update: get updated old failed: {e}")
+        return None
+
+
 async def _handle_general_dedup_reply(
     message: Message, api, store, dedup: dict,
 ) -> None:
@@ -1115,7 +1164,7 @@ async def _handle_general_dedup_reply(
         except Exception as e:
             logger.debug(f"delete new bookmark failed: {e}")
         try:
-            await replied.edit_text("✅ Дубль удалён", parse_mode=None)
+            await replied.edit_text(MSG_DUP_DELETED, parse_mode=None)
             asyncio.create_task(_delete_after(replied, 5.0))
         except TelegramBadRequest:
             pass
@@ -1123,59 +1172,33 @@ async def _handle_general_dedup_reply(
     elif intent == "save_new":
         # Оставляем оба — просто убираем alert
         try:
-            await replied.edit_text("✅ Сохранено как новая закладка", parse_mode=None)
+            await replied.edit_text(MSG_SAVED_NEW, parse_mode=None)
             asyncio.create_task(_delete_after(replied, 5.0))
         except TelegramBadRequest:
             pass
 
     elif intent == "update":
-        # Заменяем содержимое оригинала данными нового, удаляем новый.
-        # Если оригинал — task_list, после обновления показываем его
-        # последним сообщением (юзер отправил новый список значит забыл
-        # про старый и должен увидеть результат).
         # См. docs/bugs/2026-05-11-task-list-duplicates-and-merge-ui.md
-        try:
-            new_bm = await api.get_bookmark(token, new_bid)
-            update_fields = {}
-            for field in ("raw_text", "title", "summary", "structured_data"):
-                if new_bm.get(field):
-                    update_fields[field] = new_bm[field]
-            if update_fields:
-                await api.update_bookmark(token, old_bid, update_fields)
-            await api.delete_bookmark(token, new_bid)
-
-            # Получаем обновлённый старый bookmark и показываем как task_list
-            old_bm = None
-            try:
-                old_bm = await api.get_bookmark(token, old_bid)
-            except Exception as e:
-                logger.warning(f"dedup update: get old_bm failed: {e}")
-
+        old_bm = await _apply_dedup_update(api, token, new_bid, old_bid)
+        if old_bm is None:
+            await _ephemeral(message, MSG_UPDATE_FAILED)
+        else:
             from bot.handlers.settings import is_silent
             silent = await is_silent(api, token, message.from_user.id)
-
-            rendered = False
-            if old_bm:
-                rendered = await _show_updated_task_list_after_dedup_update(
-                    message.bot, chat_id, old_bid, old_bm, store, silent=silent,
-                )
-
+            rendered = await _show_updated_task_list_after_dedup_update(
+                message.bot, chat_id, old_bid, old_bm, store, silent=silent,
+            )
             if rendered:
-                # Список показан — удаляем alert, не оставляем подтверждение
                 try:
                     await replied.delete()
                 except TelegramBadRequest:
                     pass
             else:
-                # Не task_list (статья/voice) — оставляем краткое подтверждение
                 try:
-                    await replied.edit_text("✅ Оригинал обновлён", parse_mode=None)
+                    await replied.edit_text(MSG_ORIGINAL_UPDATED, parse_mode=None)
                     asyncio.create_task(_delete_after(replied, 5.0))
                 except TelegramBadRequest:
                     pass
-        except Exception as e:
-            logger.error(f"dedup update failed: {e}")
-            await _ephemeral(message, "Не удалось обновить. Оба сохранены.")
 
     else:
         # Неизвестный интент — переспрашиваем
@@ -1251,54 +1274,32 @@ async def _handle_pending_dedup(
             await api.delete_bookmark(token, new_bid)
         except Exception:
             pass
-        await _edit_alert("✅ Дубль удалён")
+        await _edit_alert(MSG_DUP_DELETED)
         asyncio.create_task(_delete_after_by_id(bot, chat_id, alert_msg_id, 5.0))
 
     elif intent == "save_new":
-        await _edit_alert("✅ Сохранено как новая закладка")
+        await _edit_alert(MSG_SAVED_NEW)
         asyncio.create_task(_delete_after_by_id(bot, chat_id, alert_msg_id, 5.0))
 
     elif intent == "update":
-        # Если оригинал — task_list, после обновления показываем его внизу
-        # (юзер забыл про старый список → должен увидеть результат).
         # См. docs/bugs/2026-05-11-task-list-duplicates-and-merge-ui.md
-        try:
-            new_bm = await api.get_bookmark(token, new_bid)
-            update_fields = {}
-            for field in ("raw_text", "title", "summary", "structured_data"):
-                if new_bm.get(field):
-                    update_fields[field] = new_bm[field]
-            if update_fields:
-                await api.update_bookmark(token, old_bid, update_fields)
-            await api.delete_bookmark(token, new_bid)
-
-            old_bm = None
-            try:
-                old_bm = await api.get_bookmark(token, old_bid)
-            except Exception as e:
-                logger.warning(f"pending dedup update: get old_bm failed: {e}")
-
+        old_bm = await _apply_dedup_update(api, token, new_bid, old_bid)
+        if old_bm is None:
+            await _edit_alert(MSG_UPDATE_FAILED)
+        else:
             from bot.handlers.settings import is_silent
             silent = await is_silent(api, token, message.from_user.id)
-
-            rendered = False
-            if old_bm:
-                rendered = await _show_updated_task_list_after_dedup_update(
-                    bot, chat_id, old_bid, old_bm, store, silent=silent,
-                )
-
+            rendered = await _show_updated_task_list_after_dedup_update(
+                bot, chat_id, old_bid, old_bm, store, silent=silent,
+            )
             if rendered:
-                # Список показан внизу — alert можно удалить
                 try:
                     await bot.delete_message(chat_id, alert_msg_id)
                 except TelegramBadRequest:
                     pass
             else:
-                await _edit_alert("✅ Оригинал обновлён")
+                await _edit_alert(MSG_ORIGINAL_UPDATED)
                 asyncio.create_task(_delete_after_by_id(bot, chat_id, alert_msg_id, 5.0))
-        except Exception as e:
-            logger.error(f"pending dedup update failed: {e}")
-            await _edit_alert("Не удалось обновить. Оба сохранены.")
 
     # Удаляем сообщение юзера
     try:
