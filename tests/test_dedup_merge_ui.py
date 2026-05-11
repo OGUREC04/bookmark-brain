@@ -242,3 +242,182 @@ class TestApiMergeFail:
         api.merge_task_list.assert_not_called()
         # Юзер получил информативный ответ
         cb.answer.assert_called()
+
+
+# ──────────────────────────────────────────────────
+# Bug 2026-05-11 corner case: dedup "update" intent на task_list
+# должен показать обновлённый список (юзер забыл что список уже есть,
+# отправил новый — ожидает увидеть результат).
+# ──────────────────────────────────────────────────
+
+
+def _make_reply_message(text: str = "обнови"):
+    """Юзер-сообщение с reply на bot alert."""
+    msg = AsyncMock()
+    msg.text = text
+    msg.chat = MagicMock(id=100)
+    msg.message_id = 600
+    msg.from_user = MagicMock(id=999)
+    msg.bot = AsyncMock()
+    msg.bot.send_message = AsyncMock(return_value=MagicMock(message_id=999))
+    msg.delete = AsyncMock()
+    replied = AsyncMock()
+    replied.message_id = 555
+    replied.edit_text = AsyncMock()
+    msg.reply_to_message = replied
+    return msg, replied
+
+
+def _make_pending_message(text: str = "обнови"):
+    """Юзер-сообщение БЕЗ reply (pending dedup variant)."""
+    msg = AsyncMock()
+    msg.text = text
+    msg.chat = MagicMock(id=100)
+    msg.message_id = 600
+    msg.from_user = MagicMock(id=999)
+    msg.bot = AsyncMock()
+    msg.bot.send_message = AsyncMock(return_value=MagicMock(message_id=999))
+    msg.bot.edit_message_text = AsyncMock()
+    msg.delete = AsyncMock()
+    msg.reply_to_message = None
+    return msg
+
+
+def _make_task_list_bm(bid: str = "old-bid", tasks: list | None = None):
+    return {
+        "id": bid,
+        "title": "Покупки",
+        "structured_data": {
+            "type": "task_list",
+            "tasks": tasks or [
+                {"text": "молоко", "done": False, "deadline": None, "note": None},
+                {"text": "хлеб", "done": False, "deadline": None, "note": None},
+            ],
+        },
+    }
+
+
+class TestDedupUpdateRerendersTaskList:
+    async def test_general_dedup_update_shows_updated_list(self):
+        """Bug 2026-05-11 follow-up:
+        intent=update + old is task_list → должен ОТРЕНДЕРИТЬ обновлённый
+        список (либо через _rerender_at_bottom либо send_message), иначе
+        юзер не видит результата.
+        """
+        from bot.handlers.tasks import _handle_general_dedup_reply
+
+        msg, _ = _make_reply_message("обнови")
+        api = AsyncMock()
+        new_bm = _make_task_list_bm("new-bid", [
+            {"text": "молоко", "done": False, "deadline": None, "note": None},
+            {"text": "хлеб", "done": False, "deadline": None, "note": None},
+        ])
+        old_bm = _make_task_list_bm("old-bid")
+        api.get_bookmark = AsyncMock(side_effect=[new_bm, old_bm])
+        api.update_bookmark = AsyncMock()
+        api.delete_bookmark = AsyncMock()
+
+        store = AsyncMock()
+        store.pop_general_dedup = AsyncMock()
+        store.clear_pending_dedup = AsyncMock()
+        store.list_task_list_message_ids = AsyncMock(return_value=[])
+        store.bind_list_message = AsyncMock()
+
+        dedup = {"new_bid": "new-bid", "old_bid": "old-bid"}
+
+        with patch("bot.handlers.tasks._rerender_at_bottom") as rerender_mock:
+            rerender_mock.return_value = None
+            await _handle_general_dedup_reply(msg, api, store, dedup)
+
+        # Главное: юзер увидел обновлённый список
+        rendered = rerender_mock.called or msg.bot.send_message.called
+        assert rendered, (
+            "intent=update на task_list НЕ показал обновлённый список юзеру"
+        )
+
+    async def test_general_dedup_update_non_task_list_no_rerender(self):
+        """Anti-regression: для НЕ-task_list (статья, голос) — re-render не нужен,
+        достаточно "Оригинал обновлён"."""
+        from bot.handlers.tasks import _handle_general_dedup_reply
+
+        msg, _ = _make_reply_message("обнови")
+        api = AsyncMock()
+        # Не task_list — статья
+        new_bm = {"id": "new", "title": "Статья", "summary": "...",
+                  "structured_data": None}
+        old_bm = {"id": "old", "title": "Старая статья", "summary": "...",
+                  "structured_data": None}
+        api.get_bookmark = AsyncMock(side_effect=[new_bm, old_bm])
+        api.update_bookmark = AsyncMock()
+        api.delete_bookmark = AsyncMock()
+
+        store = AsyncMock()
+        store.pop_general_dedup = AsyncMock()
+        store.clear_pending_dedup = AsyncMock()
+        store.list_task_list_message_ids = AsyncMock(return_value=[])
+
+        dedup = {"new_bid": "new-bid", "old_bid": "old-bid"}
+
+        with patch("bot.handlers.tasks._rerender_at_bottom") as rerender_mock:
+            await _handle_general_dedup_reply(msg, api, store, dedup)
+
+        # НЕ task_list → не вызываем rerender и не шлём список
+        assert not rerender_mock.called
+        # send_message может быть вызван для других целей, главное rerender не активен
+        # Confirm "Оригинал обновлён" редактирует replied
+        # (поведение не регрессировано)
+
+    async def test_pending_dedup_update_shows_updated_list(self):
+        """Тот же кейс для _handle_pending_dedup (без reply, по ключевому слову)."""
+        from bot.handlers.tasks import _handle_pending_dedup
+
+        msg = _make_pending_message("обнови")
+        api = AsyncMock()
+        new_bm = _make_task_list_bm("new-bid")
+        old_bm = _make_task_list_bm("old-bid")
+        api.get_bookmark = AsyncMock(side_effect=[new_bm, old_bm])
+        api.update_bookmark = AsyncMock()
+        api.delete_bookmark = AsyncMock()
+
+        store = AsyncMock()
+        store.list_task_list_message_ids = AsyncMock(return_value=[])
+        store.bind_list_message = AsyncMock()
+
+        dedup = {"new_bid": "new-bid", "old_bid": "old-bid"}
+
+        with patch("bot.handlers.tasks._rerender_at_bottom") as rerender_mock:
+            rerender_mock.return_value = None
+            await _handle_pending_dedup(
+                msg, api, store, dedup, intent="update", alert_msg_id=555,
+            )
+
+        rendered = rerender_mock.called or msg.bot.send_message.called
+        assert rendered, (
+            "_handle_pending_dedup intent=update task_list не показал список"
+        )
+
+    async def test_user_source_message_deleted_on_update(self):
+        """Юзер-сообщение со списком (которое он отправил, забыв про старый)
+        должно быть удалено — иначе остаётся дубликат текста в чате."""
+        from bot.handlers.tasks import _handle_general_dedup_reply
+
+        msg, _ = _make_reply_message("обнови")
+        api = AsyncMock()
+        new_bm = _make_task_list_bm("new-bid")
+        old_bm = _make_task_list_bm("old-bid")
+        api.get_bookmark = AsyncMock(side_effect=[new_bm, old_bm])
+        api.update_bookmark = AsyncMock()
+        api.delete_bookmark = AsyncMock()
+
+        store = AsyncMock()
+        store.pop_general_dedup = AsyncMock()
+        store.clear_pending_dedup = AsyncMock()
+        store.list_task_list_message_ids = AsyncMock(return_value=[])
+        store.bind_list_message = AsyncMock()
+
+        dedup = {"new_bid": "new-bid", "old_bid": "old-bid"}
+
+        with patch("bot.handlers.tasks._rerender_at_bottom"):
+            await _handle_general_dedup_reply(msg, api, store, dedup)
+
+        msg.delete.assert_called()

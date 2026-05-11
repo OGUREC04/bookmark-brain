@@ -158,6 +158,38 @@ pytest backend/tests/integration/ -m integration -v
 # 9 passed (5 reminders T16 + 4 bookmarks duplicate)
 ```
 
+## Corner case 2 — «Оригинал обновлён» без видимого списка
+
+**Симптом (последующий смок):** после фиксов A+B юзер отправил список повторно,
+сработал auto-dedup → intent="update" → API обновил старый task_list данными
+нового → бот вывел **только** `✅ Оригинал обновлён` (мини-confirm) → юзер не
+увидел обновлённый список и не понял что произошло.
+
+**Правило различия:**
+
+| Сценарий | Что юзер ожидает |
+|----------|------------------|
+| Reply на список: «добавь хлеб» | Inline-edit того же сообщения списка (текущее поведение OK) |
+| Новое сообщение со списком (юзер забыл что список уже есть) | Показать обновлённый список **последним** сообщением + удалить юзер-сообщение |
+
+Источник правила: feedback пользователя 2026-05-11.
+
+**Фикс:** новый helper `_show_updated_task_list_after_dedup_update`:
+- Проверяет что `old_bm.structured_data.type == "task_list"`. Для статей/voice
+  поведение остаётся прежним («Оригинал обновлён» + auto-delete через 5с).
+- Для task_list: ищет старое сообщение списка в Redis → `_rerender_at_bottom`
+  (двигает список вниз чата с актуальным содержимым). Если не нашли —
+  `send_message` свежим сообщением + `bind_list_message`.
+- В обоих flow (`_handle_general_dedup_reply` + `_handle_pending_dedup`) после
+  успешного рендера alert/replied **удаляется** (не оставляем дубль-confirm).
+
+**Тесты** (`tests/test_dedup_merge_ui.py::TestDedupUpdateRerendersTaskList`):
+- `test_general_dedup_update_shows_updated_list` — task_list → re-render
+- `test_pending_dedup_update_shows_updated_list` — то же для pending variant
+- `test_general_dedup_update_non_task_list_no_rerender` — статья → старое
+  поведение сохранено (regression guard)
+- `test_user_source_message_deleted_on_update` — юзер-сообщение удаляется
+
 ## Уроки
 
 1. **Silent `except: pass` запрещён** в любом UI-флоу. Минимум — `logger.debug`,
