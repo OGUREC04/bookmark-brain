@@ -48,6 +48,24 @@ ssh root@5.181.109.142 "docker compose -f ~/bookmark-brain/docker-compose.prod.y
 
 Если в логах нет ошибок и есть строчки про polling — всё ок.
 
+## Куда класть тесты
+
+Правило простое: **тест живёт там же где код, который он тестирует**.
+
+| Код | Тесты |
+|-----|-------|
+| `bot/...` | `tests/test_*.py` (root) |
+| `backend/...` | `backend/tests/test_*.py` |
+| Что-то на живом Postgres | `backend/tests/integration/test_*.py` + `pytest.mark.integration` |
+
+Run:
+```bash
+pytest tests/ backend/tests/                          # unit (default)
+pytest backend/tests/integration/ -m integration      # требует docker-compose up
+```
+
+Не клади тесты в `tests/` для backend-кода — там conftest.py из root, не загружает backend env.
+
 ## Перед коммитом
 
 1. **`pytest` в терминале — все зелёные.** Красные тесты в `main` ломают не только тебе.

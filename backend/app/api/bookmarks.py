@@ -7,6 +7,7 @@ logger = logging.getLogger(__name__)
 from arq.connections import ArqRedis, create_pool
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import func, select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -48,6 +49,12 @@ async def create_bookmark(
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ):
+    """Создание закладки.
+
+    ИДЕМПОТЕНТНОСТЬ: при попытке создать дубликат по
+    (user_id, source, source_message_id) — возвращаем существующую закладку
+    вместо 500. См. docs/bugs/2026-05-11-task-list-duplicates-and-merge-ui.md.
+    """
     bookmark = Bookmark(
         user_id=current_user.id,
         raw_text=data.raw_text,
@@ -63,7 +70,44 @@ async def create_bookmark(
         document_page_count=data.document_page_count,
     )
     session.add(bookmark)
-    await session.flush()
+    try:
+        await session.flush()
+    except IntegrityError as e:
+        # Дубликат по idx_bookmarks_source_dedup: возвращаем существующий.
+        # Унифицированный признак — наличие имени индекса в orig (asyncpg)
+        # или 23505 (unique_violation) код Postgres.
+        err_str = str(getattr(e, "orig", e)).lower()
+        is_source_dedup = (
+            "idx_bookmarks_source_dedup" in err_str
+            or "source_message_id" in err_str
+        )
+        if not is_source_dedup or data.source_message_id is None:
+            raise  # другой constraint — не наш кейс
+
+        await session.rollback()
+        # Возвращаем существующий bookmark
+        existing = await session.execute(
+            select(Bookmark)
+            .options(selectinload(Bookmark.tags))
+            .where(
+                Bookmark.user_id == current_user.id,
+                Bookmark.source == data.source,
+                Bookmark.source_message_id == data.source_message_id,
+            )
+        )
+        existing_bm = existing.scalar_one_or_none()
+        if existing_bm is None:
+            # Гонка: дубликат был, но к моменту SELECT удалён. Bot ретраит.
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Concurrent duplicate detected, please retry",
+            )
+        logger.warning(
+            f"Duplicate POST bookmark: returned existing {existing_bm.id} "
+            f"for (user={current_user.id}, source={data.source}, "
+            f"source_message_id={data.source_message_id})"
+        )
+        return existing_bm
 
     # Phase 3D: auto-tag #voice for voice messages
     if data.voice_tag:

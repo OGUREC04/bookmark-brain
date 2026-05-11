@@ -182,7 +182,7 @@ class TestEntityBypassesParser:
         from bot.handlers.reminders import handle_reminder_reply
 
         bid = str(uuid4())
-        store.pop_reminder_pending = AsyncMock(return_value=bid)
+        store.pop_reminder_pending = AsyncMock(return_value={"kind": "bookmark", "bookmark_id": bid})
         store.pop_reminder_snooze = AsyncMock(return_value=None)
 
         future_ts = int((datetime.now(timezone.utc) + timedelta(hours=2)).timestamp())
@@ -203,7 +203,7 @@ class TestEntityBypassesParser:
         from bot.handlers.reminders import handle_reminder_reply
 
         bid = str(uuid4())
-        store.pop_reminder_pending = AsyncMock(return_value=bid)
+        store.pop_reminder_pending = AsyncMock(return_value={"kind": "bookmark", "bookmark_id": bid})
         store.pop_reminder_snooze = AsyncMock(return_value=None)
 
         past_ts = int((datetime.now(timezone.utc) - timedelta(hours=1)).timestamp())
@@ -220,7 +220,7 @@ class TestEntityBypassesParser:
         from bot.handlers.reminders import handle_reminder_reply
 
         bid = str(uuid4())
-        store.pop_reminder_pending = AsyncMock(return_value=bid)
+        store.pop_reminder_pending = AsyncMock(return_value={"kind": "bookmark", "bookmark_id": bid})
         store.pop_reminder_snooze = AsyncMock(return_value=None)
 
         msg = _make_reply("через час", entity_unix=None)

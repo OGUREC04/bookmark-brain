@@ -300,12 +300,7 @@ async def handle_strong_intent_message(message: Message, api, store):
         "parsed_dt_iso": parsed_dt_iso,
     }
     try:
-        r = await store._get()
-        await r.set(
-            f"reminder_strong:{chat_id}:{prompt.message_id}",
-            json.dumps(state),
-            ex=_STRONG_PROMPT_TTL,
-        )
+        await store.store_reminder_strong(chat_id, prompt.message_id, state)
     except Exception as e:
         logger.warning(f"strong_intent: failed to save state: {e}")
         # Удалим уже отправленный prompt чтобы не было broken-button
@@ -343,10 +338,10 @@ async def cb_strong_choice(callback: CallbackQuery, api, store):
     chat_id = callback.message.chat.id
     msg_id = callback.message.message_id
 
-    # Достаём state
+    # Достаём state (атомарный GETDEL через типизированный метод)
+    state: dict = {}
     try:
-        r = await store._get()
-        raw = await r.getdel(f"reminder_strong:{chat_id}:{msg_id}")
+        loaded = await store.pop_reminder_strong(chat_id, msg_id)
     except Exception as e:
         logger.warning(f"cb_strong_choice: state get failed: {e}")
         try:
@@ -355,7 +350,7 @@ async def cb_strong_choice(callback: CallbackQuery, api, store):
             pass
         return
 
-    if raw is None:
+    if loaded is None:
         # Истёк TTL или второй клик
         try:
             await callback.answer("Это сообщение устарело")
@@ -363,11 +358,7 @@ async def cb_strong_choice(callback: CallbackQuery, api, store):
         except Exception:
             pass
         return
-
-    try:
-        state = json.loads(raw)
-    except Exception:
-        state = {}
+    state = loaded
 
     text = state.get("text", "")
     source_msg_id = state.get("source_msg_id")
@@ -497,11 +488,8 @@ async def cb_strong_choice(callback: CallbackQuery, api, store):
         else msg_id
     )
     try:
-        r = await store._get()
-        await r.set(
-            f"reminder_pending:{chat_id}:{target_msg_id}",
-            f"__explicit__|{_cap_text(text)}",
-            ex=3600,
+        await store.store_reminder_pending_explicit(
+            chat_id, target_msg_id, _cap_text(text),
         )
     except Exception as e:
         logger.warning(f"strong remind: failed to save pending: {e}")
@@ -597,22 +585,12 @@ async def cmd_remind(message: Message, command: CommandObject, api, store):
             f"{TIME_EXAMPLES}",
             parse_mode="HTML",
         )
-        # Сохраняем pending state — bookmark_id=None т.к. это explicit
-        # /remind без закладки. Используем отдельный ключ из-за специфики:
-        # reminder_pending_explicit:{chat}:{msg} → text (а не bookmark_id).
+        # 12y: explicit /remind без времени — typed envelope через store
         if prompt is not None and getattr(prompt, "message_id", None) is not None:
             try:
-                # Reuse store_reminder_pending — но bid сохраним в формате
-                # "explicit:<text>" чтобы reply-handler различал.
-                # Альтернатива — отдельный метод, но это +API surface.
-                payload_marker = f"__explicit__|{_cap_text(text_part or args)}"
-                # Сохраним через прямой Redis-set чтобы избежать API-расширения.
-                # store.set_reminder_pending пока нет — используем _r напрямую.
-                r = await store._get()
-                await r.set(
-                    f"reminder_pending:{message.chat.id}:{prompt.message_id}",
-                    payload_marker,
-                    ex=3600,
+                await store.store_reminder_pending_explicit(
+                    message.chat.id, prompt.message_id,
+                    _cap_text(text_part or args),
                 )
             except Exception as e:
                 logger.warning(f"cmd_remind: failed to save pending state: {e}")
@@ -1185,21 +1163,21 @@ async def handle_reminder_reply(message: Message, api, store) -> bool:
                 "Это в прошлом. Назначь время в будущем.", parse_mode=None,
             )
             return True
+        # 12y: pending_bid теперь dict {kind, bookmark_id|text}
+        if snooze_rid:
+            kind_arg, target_arg = "snooze", snooze_rid
+        elif isinstance(pending_bid, dict) and pending_bid.get("kind") == "explicit":
+            kind_arg, target_arg = "explicit_create", pending_bid.get("text", "")
+        else:
+            kind_arg = "create"
+            target_arg = (
+                pending_bid.get("bookmark_id")
+                if isinstance(pending_bid, dict) else None
+            )
         return await _apply_reminder_action(
             message, api, store,
-            kind="snooze" if snooze_rid else (
-                "explicit_create" if (
-                    isinstance(pending_bid, str)
-                    and pending_bid.startswith("__explicit__|")
-                ) else "create"
-            ),
-            target_id=(
-                snooze_rid
-                or (pending_bid[len("__explicit__|"):]
-                    if isinstance(pending_bid, str)
-                    and pending_bid.startswith("__explicit__|")
-                    else pending_bid)
-            ),
+            kind=kind_arg,
+            target_id=target_arg,
             fire_at_iso=entity_dt.isoformat(),
             user_tz_name=user_tz_name,
             confirm_msg_id=reply_to_id,
@@ -1229,8 +1207,16 @@ async def handle_reminder_reply(message: Message, api, store) -> bool:
 
     # F2: FALLBACK_DEFAULT — НЕ создаём reminder молча. Спрашиваем confirm.
     if result.status == ParseStatus.FALLBACK_DEFAULT and result.dt is not None:
-        kind = "snooze" if snooze_rid else "create"
-        target_id = snooze_rid or pending_bid
+        if snooze_rid:
+            kind, target_id = "snooze", snooze_rid
+        elif isinstance(pending_bid, dict) and pending_bid.get("kind") == "explicit":
+            kind, target_id = "explicit_create", pending_bid.get("text", "")
+        else:
+            kind = "create"
+            target_id = (
+                pending_bid.get("bookmark_id")
+                if isinstance(pending_bid, dict) else None
+            )
         proposed = _format_fire_at(result.dt, user_tz_name)
         prompt = await message.answer(
             f"Не понял точное время. Поставить на <b>{_safe(proposed)}</b>?\n"
@@ -1278,14 +1264,14 @@ async def handle_reminder_reply(message: Message, api, store) -> bool:
         )
         return True
 
-    # pending_bid — создание нового reminder.
-    # Если bid начинается с "__explicit__|" — это /remind без времени,
-    # bid в действительности содержит текст напоминания. bookmark_id=None.
+    # 12y: pending_bid теперь dict {kind, bookmark_id|text}
     explicit_text = None
-    actual_bid = pending_bid
-    if isinstance(pending_bid, str) and pending_bid.startswith("__explicit__|"):
-        explicit_text = pending_bid[len("__explicit__|"):]
-        actual_bid = None  # explicit /remind не привязан к bookmark
+    actual_bid = None
+    if isinstance(pending_bid, dict):
+        if pending_bid.get("kind") == "explicit":
+            explicit_text = pending_bid.get("text", "")
+        else:  # "bookmark"
+            actual_bid = pending_bid.get("bookmark_id")
 
     payload = {
         "text": explicit_text if explicit_text else text,

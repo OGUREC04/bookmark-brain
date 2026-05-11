@@ -223,7 +223,10 @@ class TestReplyHandlerCreate:
         from bot.handlers.reminders import handle_reminder_reply
 
         bid = str(uuid4())
-        store.pop_reminder_pending = AsyncMock(return_value=bid)
+        # 12y: pop_reminder_pending теперь возвращает dict envelope
+        store.pop_reminder_pending = AsyncMock(
+            return_value={"kind": "bookmark", "bookmark_id": bid}
+        )
         store.pop_reminder_snooze = AsyncMock(return_value=None)
 
         msg = _make_reply_message("через час")
@@ -236,16 +239,14 @@ class TestReplyHandlerCreate:
         # bookmark_id передан
         all_args = list(args) + list(kwargs.values())
         assert bid in all_args or kwargs.get("bookmark_id") == bid
-        # Подтверждение отправлено
         msg.answer.assert_called()
-        # state атомарно consumed через pop (GETDEL) — отдельный delete не нужен.
         store.pop_reminder_pending.assert_called_once_with(100, 42)
 
     async def test_unparseable_text_shows_help_no_create(self, api, store):
         from bot.handlers.reminders import handle_reminder_reply
 
         bid = str(uuid4())
-        store.pop_reminder_pending = AsyncMock(return_value=bid)
+        store.pop_reminder_pending = AsyncMock(return_value={"kind": "bookmark", "bookmark_id": bid})
         store.pop_reminder_snooze = AsyncMock(return_value=None)
 
         msg = _make_reply_message("какая-то дичь")
@@ -263,7 +264,7 @@ class TestReplyHandlerCreate:
         from bot.handlers.reminders import handle_reminder_reply
 
         bid = str(uuid4())
-        store.pop_reminder_pending = AsyncMock(return_value=bid)
+        store.pop_reminder_pending = AsyncMock(return_value={"kind": "bookmark", "bookmark_id": bid})
         store.pop_reminder_snooze = AsyncMock(return_value=None)
 
         msg = _make_reply_message("вчера в 18")
@@ -327,7 +328,7 @@ class TestReplyHandlerSnooze:
 
         bid = str(uuid4())
         sm_id = str(uuid4())
-        store.pop_reminder_pending = AsyncMock(return_value=bid)
+        store.pop_reminder_pending = AsyncMock(return_value={"kind": "bookmark", "bookmark_id": bid})
         store.pop_reminder_snooze = AsyncMock(return_value=sm_id)
 
         msg = _make_reply_message("через час")
@@ -345,7 +346,7 @@ class TestReplyHandlerSnooze:
         from bot.handlers.reminders import handle_reminder_reply
 
         bid = str(uuid4())
-        store.pop_reminder_pending = AsyncMock(return_value=bid)
+        store.pop_reminder_pending = AsyncMock(return_value={"kind": "bookmark", "bookmark_id": bid})
         store.pop_reminder_snooze = AsyncMock(return_value=None)
         api.create_reminder = AsyncMock(
             side_effect=httpx.HTTPStatusError(

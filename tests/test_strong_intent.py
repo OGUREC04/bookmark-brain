@@ -145,11 +145,14 @@ class TestStrongIntentPromptHandler:
         msg = _make_msg("надо позвонить маме")
         await handle_strong_intent_message(msg, api, store)
 
-        r_inst = store._get.return_value
-        r_inst.set.assert_called()
-        # Ключ reminder_strong:{chat_id}:{prompt_msg_id}
-        keys_set = [c.args[0] for c in r_inst.set.call_args_list]
-        assert any(k.startswith("reminder_strong:100:43") for k in keys_set)
+        # d71: централизованный метод store_reminder_strong.
+        store.store_reminder_strong.assert_called_once()
+        args = store.store_reminder_strong.call_args.args
+        # (chat_id, prompt_msg_id, state_dict)
+        assert args[0] == 100
+        assert args[1] == 43
+        assert isinstance(args[2], dict)
+        assert "text" in args[2]
 
 
 class TestStrongChoiceCancel:
@@ -158,7 +161,7 @@ class TestStrongChoiceCancel:
         # State есть в Redis
         import json
         state_json = json.dumps({"text": "надо купить хлеб", "source_msg_id": 42, "parsed_dt_iso": None})
-        store._get.return_value.getdel = AsyncMock(return_value=state_json)
+        store.pop_reminder_strong = AsyncMock(return_value=json.loads(state_json))
 
         cb = _make_callback("rstrong_x")
         await cb_strong_choice(cb, api, store)
@@ -177,7 +180,7 @@ class TestStrongChoiceNote:
             "source_msg_id": 42,
             "parsed_dt_iso": None,
         })
-        store._get.return_value.getdel = AsyncMock(return_value=state_json)
+        store.pop_reminder_strong = AsyncMock(return_value=json.loads(state_json))
 
         cb = _make_callback("rstrong_n")
         await cb_strong_choice(cb, api, store)
@@ -204,7 +207,7 @@ class TestStrongChoiceRemind:
             "source_msg_id": 42,
             "parsed_dt_iso": "2026-05-12T06:00:00+00:00",
         })
-        store._get.return_value.getdel = AsyncMock(return_value=state_json)
+        store.pop_reminder_strong = AsyncMock(return_value=json.loads(state_json))
 
         cb = _make_callback("rstrong_b")
         await cb_strong_choice(cb, api, store)
@@ -224,25 +227,22 @@ class TestStrongChoiceRemind:
             "source_msg_id": 42,
             "parsed_dt_iso": None,
         })
-        store._get.return_value.getdel = AsyncMock(return_value=state_json)
+        store.pop_reminder_strong = AsyncMock(return_value=json.loads(state_json))
 
         cb = _make_callback("rstrong_b")
         await cb_strong_choice(cb, api, store)
 
         api.create_reminder.assert_not_called()
-        # state save для reply-handler — pending_explicit
-        r_inst = store._get.return_value
-        keys_set = [c.args[0] for c in r_inst.set.call_args_list]
-        # Ключ reminder_pending:{chat}:{prompt_or_msg}
-        assert any(k.startswith("reminder_pending:") for k in keys_set)
-        # Значение начинается с __explicit__|
-        vals = [c.args[1] for c in r_inst.set.call_args_list]
-        assert any(isinstance(v, str) and v.startswith("__explicit__|") for v in vals)
+        # 12y: explicit pending через typed envelope
+        store.store_reminder_pending_explicit.assert_called_once()
+        args = store.store_reminder_pending_explicit.call_args.args
+        # (chat_id, msg_id, text)
+        assert "купить хлеб" in args[2]
 
     async def test_state_expired_returns_friendly_error(self, api, store):
         from bot.handlers.reminders import cb_strong_choice
         # state нет → getdel returns None
-        store._get.return_value.getdel = AsyncMock(return_value=None)
+        store.pop_reminder_strong = AsyncMock(return_value=None)
 
         cb = _make_callback("rstrong_b")
         await cb_strong_choice(cb, api, store)
