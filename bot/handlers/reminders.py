@@ -1215,7 +1215,18 @@ async def handle_reminder_reply(message: Message, api, store) -> bool:
 
     token = await _ensure_user(message, api)
     if not token:
-        return True  # наш reply, но без токена — просто молча выйти
+        # 4dr: раньше тут было silent return → юзер видел молчание после
+        # reply. Теперь явно сообщаем и логируем — backend down / auth fail.
+        logger.warning(
+            f"handle_reminder_reply: ensure_user returned None for "
+            f"chat={chat_id} user={message.from_user.id if message.from_user else None}"
+        )
+        await message.answer(
+            "⚠️ Не удалось авторизоваться (backend недоступен?). "
+            "Попробуй ещё раз через минуту.",
+            parse_mode=None,
+        )
+        return True
 
     text = (message.text or "").strip()
     if not text:
@@ -1543,12 +1554,29 @@ async def _reply_dispatch(message: Message, api, store):
     """
     from aiogram.dispatcher.event.bases import SkipHandler
 
-    handled = await handle_reminders_list_reply(message, api, store)
-    if handled:
-        return
+    try:
+        handled = await handle_reminders_list_reply(message, api, store)
+        if handled:
+            return
 
-    handled = await handle_reminder_reply(message, api, store)
-    if handled:
-        return
+        handled = await handle_reminder_reply(message, api, store)
+        if handled:
+            return
+    except SkipHandler:
+        raise
+    except Exception as e:
+        # 4dr: safety net. Раньше любое исключение в reply-handler могло
+        # уйти в aiogram default error handler → юзер видит молчание.
+        # Теперь явно ловим и сообщаем.
+        logger.exception(f"_reply_dispatch: handler raised: {e}")
+        try:
+            await message.answer(
+                "⚠️ Внутренняя ошибка при обработке reply. Попробуй ещё раз "
+                "или используй <code>/remind &lt;текст&gt; &lt;когда&gt;</code>.",
+                parse_mode="HTML",
+            )
+        except Exception:
+            pass
+        return  # съели — не пускаем дальше
 
     raise SkipHandler()
