@@ -7,3 +7,5 @@ pypdf==5.1.0
 python-docx==1.1.2
 # S3 client для Yandex Object Storage (async STT > 30 сек)
 boto3==1.43.6
+# NL date parsing для напоминаний (bot/services/nl_date.py)
+dateparser==1.4.0

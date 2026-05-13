@@ -299,7 +299,7 @@ async def handle_strong_intent_message(message: Message, api, store):
                 # не вырезаем чтобы юзер видел «надо купить хлеб 13 мая в 9»
                 # как полную фразу в reminder.
             else:
-                from backend.app.services.nl_date import ParseStatus, parse
+                from bot.services.nl_date import ParseStatus, parse
                 split_text, split_time = _split_remind_text_and_time(text, user_tz_name)
                 if split_time:
                     pr = parse(split_time, user_tz=user_tz_name)
@@ -569,7 +569,7 @@ def _split_remind_text_and_time(
 
     Возвращает (text, time_part_or_None).
     """
-    from backend.app.services.nl_date import ParseStatus, parse
+    from bot.services.nl_date import ParseStatus, parse
 
     args = args.strip()
     if not args:
@@ -598,7 +598,7 @@ def _split_remind_text_and_time(
 async def cmd_remind(message: Message, command: CommandObject, api, store):
     """T11: explicit команда /remind для создания напоминания без AI/закладки."""
     from bot.handlers.start import _ensure_user
-    from backend.app.services.nl_date import ParseStatus, parse
+    from bot.services.nl_date import ParseStatus, parse
 
     args = (command.args or "").strip()
 
@@ -929,7 +929,7 @@ async def handle_reminders_list_reply(
             return True
         rid = snapshot[idx]
         from bot.handlers.start import _ensure_user
-        from backend.app.services.nl_date import ParseStatus, parse
+        from bot.services.nl_date import ParseStatus, parse
         token = await _ensure_user(message, api)
         if not token:
             return True
@@ -1268,7 +1268,7 @@ async def handle_reminder_reply(message: Message, api, store) -> bool:
         )
 
     # Fallback: nl_date.parse (для клиентов без Bot API 9.5)
-    from backend.app.services.nl_date import ParseStatus, parse
+    from bot.services.nl_date import ParseStatus, parse
     result = parse(text, user_tz=user_tz_name)
 
     if result.status == ParseStatus.UNPARSEABLE:
@@ -1406,7 +1406,7 @@ async def _handle_fallback_confirm_reply(
     fallback — снова спрашиваем confirm (с новым state).
     """
     from bot.handlers.start import _ensure_user
-    from backend.app.services.nl_date import ParseStatus, parse
+    from bot.services.nl_date import ParseStatus, parse
 
     chat_id = message.chat.id
     text = (message.text or "").strip()
