@@ -141,6 +141,22 @@ TIME_EXAMPLES = (
 )
 
 
+def _reply_prompt(question: str) -> str:
+    """Унифицированный текст prompt'а для ввода времени через reply.
+
+    UX: Reply подсвечено максимально явно — отдельная строка с ↩️ + жирный
+    текст + конкретный пример. Без этого юзеры шлют next-message вместо
+    reply и попадают в catch-all → save_yes/no → «Не сохраняю».
+    См. bookmark-brain-4dr.
+    """
+    return (
+        f"{question}\n\n"
+        f"↩️ <b>Сделай Reply</b> на это сообщение со временем "
+        f"(зажми/свайпни сообщение → «Ответить»).\n\n"
+        f"{TIME_EXAMPLES}"
+    )
+
+
 # ──────────────────────────────────────────────────
 # Helpers
 # ──────────────────────────────────────────────────
@@ -476,8 +492,7 @@ async def cb_strong_choice(callback: CallbackQuery, api, store):
     # Времени нет → просим reply со временем (используя explicit-marker)
     try:
         new_prompt = await callback.message.edit_text(
-            f"Когда напомнить «<b>{_safe(text)}</b>»? <b>Reply</b> со временем.\n\n"
-            f"{TIME_EXAMPLES}",
+            _reply_prompt(f"🔔 Когда напомнить «<b>{_safe(text)}</b>»?"),
             parse_mode="HTML",
         )
     except Exception:
@@ -487,12 +502,35 @@ async def cb_strong_choice(callback: CallbackQuery, api, store):
         new_prompt.message_id if new_prompt and getattr(new_prompt, "message_id", None)
         else msg_id
     )
+    state_saved = False
     try:
         await store.store_reminder_pending_explicit(
             chat_id, target_msg_id, _cap_text(text),
         )
+        state_saved = True
+        logger.info(
+            f"strong remind: pending saved chat={chat_id} msg={target_msg_id} "
+            f"text={_cap_text(text, limit=40)!r}"
+        )
     except Exception as e:
         logger.warning(f"strong remind: failed to save pending: {e}")
+
+    if not state_saved:
+        # State не сохранился — reply юзера потом упадёт в «устарело».
+        # Лучше сразу честно сказать что не получилось.
+        try:
+            await callback.message.edit_text(
+                "⚠️ Не получилось подготовить ожидание. Попробуй "
+                "<code>/remind &lt;текст&gt; &lt;когда&gt;</code>.",
+                parse_mode="HTML",
+            )
+        except Exception:
+            pass
+        try:
+            await callback.answer("Ошибка")
+        except Exception:
+            pass
+        return
 
     try:
         await callback.answer("Жду время")
@@ -580,9 +618,7 @@ async def cmd_remind(message: Message, command: CommandObject, api, store):
         # Текст без времени — спрашиваем reply со временем.
         display_text = _cap_text(text_part or args, limit=200)
         prompt = await message.answer(
-            f"Когда напомнить «<b>{_safe(display_text)}</b>»? "
-            f"<b>Reply</b> на это сообщение со временем.\n\n"
-            f"{TIME_EXAMPLES}",
+            _reply_prompt(f"🔔 Когда напомнить «<b>{_safe(display_text)}</b>»?"),
             parse_mode="HTML",
         )
         # 12y: explicit /remind без времени — typed envelope через store
@@ -591,6 +627,10 @@ async def cmd_remind(message: Message, command: CommandObject, api, store):
                 await store.store_reminder_pending_explicit(
                     message.chat.id, prompt.message_id,
                     _cap_text(text_part or args),
+                )
+                logger.info(
+                    f"cmd_remind: pending saved chat={message.chat.id} "
+                    f"msg={prompt.message_id} text={_cap_text(text_part or args, limit=40)!r}"
                 )
             except Exception as e:
                 logger.warning(f"cmd_remind: failed to save pending state: {e}")
@@ -942,8 +982,7 @@ async def cb_create_reminder(callback: CallbackQuery, api, store):
 
     try:
         await callback.message.edit_text(
-            "Когда напомнить? <b>Ответь reply</b> на это сообщение со временем.\n\n"
-            f"{TIME_EXAMPLES}",
+            _reply_prompt("🔔 Когда напомнить?"),
             parse_mode="HTML",
         )
     except Exception as e:
@@ -1062,8 +1101,7 @@ async def cb_snooze_reminder(callback: CallbackQuery, api, store):
     # snooze-ответ.
     try:
         await callback.message.edit_text(
-            "💤 На сколько продлить? <b>Ответь reply</b> со временем.\n\n"
-            f"{TIME_EXAMPLES}",
+            _reply_prompt("💤 На сколько продлить?"),
             parse_mode="HTML",
         )
     except Exception as e:
@@ -1126,16 +1164,51 @@ async def handle_reminder_reply(message: Message, api, store) -> bool:
     try:
         snooze_rid = await store.pop_reminder_snooze(chat_id, reply_to_id)
     except Exception as e:
-        logger.debug(f"handle_reminder_reply: pop_snooze failed: {e}")
+        logger.warning(f"handle_reminder_reply: pop_snooze failed: {e}")
 
     pending_bid = None
     if not snooze_rid:
         try:
             pending_bid = await store.pop_reminder_pending(chat_id, reply_to_id)
         except Exception as e:
-            logger.debug(f"handle_reminder_reply: pop_pending failed: {e}")
+            logger.warning(f"handle_reminder_reply: pop_pending failed: {e}")
+
+    if snooze_rid or pending_bid:
+        logger.info(
+            f"handle_reminder_reply: matched chat={chat_id} reply_to={reply_to_id} "
+            f"snooze={bool(snooze_rid)} pending_kind={pending_bid.get('kind') if isinstance(pending_bid, dict) else None}"
+        )
 
     if not snooze_rid and not pending_bid:
+        # 4dr: state не нашёлся. Возможные причины:
+        #  - reply на старое сообщение (TTL 1ч истёк)
+        #  - state не сохранился из-за Redis сбоя (warning в логах)
+        #  - reply на бот-сообщение, которое не было reminder-prompt'ом
+        # Эвристика: если reply_to.text похож на reminder-prompt
+        # («Когда напомнить» / «На сколько продлить») — это наш случай,
+        # state протух. Отвечаем понятно, не пускаем в tasks.py.
+        rt_text = (rt.text or rt.caption or "") if rt else ""
+        looks_like_reminder_prompt = bool(
+            rt_text and (
+                "Когда напомнить" in rt_text
+                or "На сколько продлить" in rt_text
+                or "🔔" in rt_text
+                or "💤" in rt_text
+            )
+        )
+        logger.info(
+            f"handle_reminder_reply: no state for chat={chat_id} reply_to={reply_to_id} "
+            f"looks_like_prompt={looks_like_reminder_prompt} "
+            f"user_text={(message.text or '')[:60]!r}"
+        )
+        if looks_like_reminder_prompt:
+            await message.answer(
+                "⏱ Это сообщение устарело (state протух или бот был "
+                "перезапущен).\n\nПопробуй заново: <code>/remind &lt;текст&gt; "
+                "&lt;когда&gt;</code> или /reminders.",
+                parse_mode="HTML",
+            )
+            return True  # съели — не пускаем в tasks.py с «Не нашёл этот список»
         return False  # reply не наш
 
     from bot.handlers.start import _ensure_user
