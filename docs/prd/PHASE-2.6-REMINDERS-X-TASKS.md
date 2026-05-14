@@ -1,6 +1,6 @@
 # PRD: Phase 2.6 — Reminders × Task Lists
 
-**Статус:** draft v1 — после brainstorm-сессии с юзером
+**Статус:** v2 — все open Q закрыты, готов к T1+T2
 **Дата:** 2026-05-14
 **Фаза:** Phase 2.6
 **Зависит от:** Phase 2.5 Reminders MVP (мержен, в проде)
@@ -77,61 +77,89 @@
 
 ## Solution Detail
 
-### Detection rules (финальный после brainstorm)
+### Detection rules (финальный после brainstorm v2)
+
+**Date extraction strategy:** regex first (надёжно), AI только для split на items.
+
+GigaChat (текущий провайдер) не возвращает откалиброванный confidence — поэтому confidence сейчас остаётся как **slot в schema** для будущего DeepSeek/Claude.
 
 ```
-AI получает сообщение → возвращает structured_data:
+Pipeline:
+  1. AI (GigaChat) split сообщение на items[]: list of {text, raw_date_phrase}
+  2. Regex extract date из raw_date_phrase: nl_date.parse() (уже есть из Phase 2.5)
+  3. AI отдельно отмечает single_statement: True/False
+  4. Worker применяет detection rules ниже
+```
+
+**structured_data контракт:**
+```json
 {
   "items": [
-    {"text": "контрольная по дискретной", "date_iso": "2026-05-15T00:00:00", "confidence": 0.9},
-    {"text": "тесты Eltex", "date_iso": null, "confidence": null},
-    {"text": "сессия", "date_iso": null, "confidence": null}
+    {"text": "контрольная по дискретной", "raw_date_phrase": "завтра"},
+    {"text": "тесты Eltex", "raw_date_phrase": null},
+    {"text": "сессия", "raw_date_phrase": null}
   ],
   "single_statement": false,
-  "reminder_form": "task_list_with_reminders"  // или single_reminder / composite_reminder / task_list_no_reminders / none
+  "reminder_form": "task_list_with_reminders"
 }
 ```
+
+Worker берёт `raw_date_phrase`, прогоняет через `nl_date.parse()` → получает UTC datetime или fail → определяет финальный reminder_form по правилам ниже.
 
 **Правила (применяются в порядке):**
 
 1. **Strong-intent (Phase 2.5) — single-statement only**
    - Сообщение начинается с `надо/нужно/не забыть/срочно/обязательно/обязан`
-   - И `single_statement == True` (один пункт)
+   - И `single_statement == True`
    - → Старый 3-button flow (🔔 / 📝 / ✕)
+   - **Если в тексте уже есть час или часть суток** → пропустить 3-button, создать reminder молча (универсальное правило времени, см. ниже)
 
 2. **2+ дат → `task_list_with_reminders` молча**
-   - Создать task_list + reminders per dated item (confidence > 0.7) или с подтверждением (≤ 0.7)
-   - В save-ответе: «📋 Список сохранён. 🔔 +N напоминаний»
+   - Создать task_list + reminders per dated item
 
 3. **1 дата + multi-item → кнопки «📋 Список / 🔔 Напоминание / ✕»**
    - «📋» = task_list_with_reminders на 1 пункт + остальные как чекбоксы
    - «🔔» = composite_reminder на весь текст
-   - «✕» = просто bookmark, ничего не предлагать
+   - «✕» = просто bookmark
 
 4. **1 дата + single-item → `single_reminder`**
-   - Молча создаём reminder
-   - В save-ответе: «🔔 Напомню завтра в 9»
 
 5. **0 дат + multi-item → task_list_no_reminders** (как сейчас)
 
-6. **0 дат + single-item → обычный bookmark** (как сейчас, weak-intent offer если AI намекнул)
+6. **0 дат + single-item → обычный bookmark** (как сейчас)
 
-### Confidence threshold
+### Универсальное правило времени (применяется ВЕЗДЕ где создаём reminder)
 
-- AI возвращает `confidence: 0.0-1.0` для каждой даты
-- Calibration: «1.0 — дата явно прописана («завтра в 9»). 0.7 — день недели без года («в четверг»). 0.5 — неоднозначно («скоро», «к маю»). <0.3 — догадка»
-- Threshold `0.7`: выше → создаём молча, ниже → кнопка подтверждения
+| В тексте | Действие |
+|---|---|
+| **Конкретный час** («в 9», «в 18:30», «через час», «завтра в 9 утра») | Создаём молча, показываем «🔔 Напомню завтра в 9:00» |
+| **Часть суток без часа** («утром», «вечером», «днём», «ночью», «в полдень») | Создаём молча, подставляем default: утром=9:00, днём=14:00, вечером=18:00, ночью=22:00, полдень=12:00 |
+| **Только дата без часа** («завтра», «в пятницу», «15 мая») | Спрашиваем Reply: «Во сколько напомнить? Reply на это сообщение со временем» |
+| **Только намерение без даты** («надо купить молоко») | Phase 2.5 strong-intent 3 кнопки 🔔/📝/✕ |
+
+Уже реализовано частично в `nl_date.py::_preprocess_short_time` (`утром→9:00`, `вечером→18:00`). Расширить:
+- `nl_date.parse()` возвращает новый статус `NEEDS_HOUR` если есть дата но нет часа — bot спрашивает Reply
+- Все handler'ы (strong, weak, per-item, composite) используют единый flow.
+
+### Confidence threshold (slot на будущее)
+
+- AI **может** вернуть `confidence: 0.0-1.0` для каждой даты (опционально, для DeepSeek/Claude)
+- Сейчас (GigaChat): не используется, regex детерминирован
+- Когда подключим DeepSeek/Claude — `REMINDER_CONFIDENCE_THRESHOLD = 0.7`: выше → молча, ниже → кнопка подтверждения
 
 ### Explicit trigger «сделай напоминание»
 
+Поддерживаем 2 формы (a и c, без b — too magic).
+
 **(a) Reply на сохранённый bookmark / task_list:**
 - Юзер reply'ит сообщение бота с текстом «сделай напоминание» / «напомни» / «поставь reminder»
-- Если reply на bookmark → создаём reminder на этот bookmark, спрашиваем время (Reply)
-- Если reply на task_list → берём пункты с датами → создаём per-item reminders. Если дат нет — спрашиваем «напомни о всём списке когда?»
+- Если reply на bookmark → создаём reminder на этот bookmark по универсальному правилу времени
+- Если reply на task_list **с датами** → создаём per-item reminders для dated items (как `task_list_with_reminders`)
+- Если reply на task_list **без дат** → создаём **composite reminder на весь список**, по универсальному правилу времени. Если хочется per-item позже — отдельным NL-edit («перенеси контрольную на пятницу» добавит per-item; см. cascade ниже)
 
 **(c) Inline команда с текстом:**
-- «сделай напоминание купить молоко завтра» = `/remind купить молоко завтра`
-- Если время есть — создаём молча, иначе спрашиваем Reply
+- «сделай напоминание купить молоко завтра» = аналог `/remind купить молоко завтра`
+- По универсальному правилу времени
 
 ### Task_list edit с reminder'ами
 
@@ -149,12 +177,12 @@ AI получает сообщение → возвращает structured_data:
 
 ---
 
-## Open Questions
+## Open Questions — все закрыты
 
-- [ ] **Q-OPEN-1**: AI confidence — реально ли DeepSeek возвращает откалиброванную вероятность? Возможно нужен self-consistency (3 sampling и majority vote)
-- [ ] **Q-OPEN-2**: Когда меняем дату пункта через NL-edit, как находим связанный reminder? По `bookmark_id` + `item_index`? Или хранить reminder_id в task_list payload?
-- [ ] **Q-OPEN-3**: «сделай напоминание» reply на task_list где НЕТ дат — что делать? Спросить «на какой пункт?» или создать composite_reminder для всего списка?
-- [ ] **Q-OPEN-4**: Конфликт со strong-intent для пограничных случаев. «Надо контрольную завтра» — single-statement, начинается с «надо», есть дата. По правилу #1 → strong-intent. Но AI может классифицировать как `single_reminder`. Кто wins? Решение: правило #1 имеет приоритет.
+- [x] **Q-OPEN-1 (AI provider)**: GigaChat не калибрует confidence → используем **regex для дат** (надёжно), AI только для **items split**. Confidence — slot в schema на будущее (когда подключим DeepSeek/Claude).
+- [x] **Q-OPEN-2 (cascade lookup)**: Связь reminder↔item только в **payload reminder'а** (`task_list_id` + `item_index`). Task_list ничего не знает про reminders — search через `SELECT * FROM reminders WHERE payload->>'task_list_id' = '...' AND payload->>'item_index' = '...'`.
+- [x] **Q-OPEN-3 («сделай напоминание» reply на task_list без дат)**: composite reminder на весь список. Можно потом менять отдельные пункты через NL-edit (с конфликт-разрешением кнопкой если уже есть composite).
+- [x] **Q-OPEN-4 (strong-intent priority)**: Универсальное правило времени (выше) решает конфликт. Strong-intent → 3 кнопки **только** если в тексте нет часа/части суток. Иначе создаём reminder молча.
 
 ---
 
@@ -212,8 +240,9 @@ AI получает сообщение → возвращает structured_data:
 
 | Decision | Выбор | Альтернативы | Rationale |
 |---|---|---|---|
-| Date extraction | AI (DeepSeek в structured_data) | Regex / Hybrid | AI уже разбирает каждое сообщение, добавить поле дёшево |
-| Confidence threshold | 0.7 калибруемый | 0.5 / 0.9 / без threshold | Баланс false-positive vs пропусков |
+| Date extraction | Regex (nl_date.parse) + AI items split | Pure AI / Pure regex | Регекс детерминирован, GigaChat не калибрует confidence. AI остаётся для split на пункты. |
+| Confidence threshold | Slot в schema, не используется (GigaChat). 0.7 когда подключим DeepSeek/Claude | Сразу threshold / never | Текущий LLM не отдаёт confidence — не можем фильтровать. Slot заранее под будущий апгрейд. |
+| Time-of-day handling | Универсальное правило: час → молча, часть суток → default 9/14/18/22, только дата → Reply ask | Always-ask / Always-silent | Юзер явно зафиксировал на brainstorm |
 | 2+ dates classification | Молча в task_list_with_reminders | Спросить кнопками | Юзер явно дал контекст, можно не переспрашивать |
 | 1 date + multi-item | Кнопки 📋/🔔/✕ | Авто-выбор по эвристике | Юзер сам знает что хотел |
 | Task_list edit on reminder | Cascade молча | Спрашивать каждый раз | Не отвлекать на NL-edit |
@@ -239,4 +268,4 @@ AI получает сообщение → возвращает structured_data:
 ---
 
 *Generated: 2026-05-14*
-*Status: DRAFT — ждёт финального ревью пользователем перед началом T1*
+*Status: APPROVED — все open Q закрыты юзером 2026-05-14, готов к T1+T2*
