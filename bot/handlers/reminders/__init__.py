@@ -22,11 +22,12 @@ from ._legacy import (
     _safe,
     cb_strong_choice,
     extract_first_datetime_entity,
-    handle_reminder_reply,
     handle_strong_intent_message,
     is_strong_intent,
 )
 from ._legacy import router as _legacy_router
+from .reply import handle_reminder_reply
+from .reply import router as _reply_router
 from .callbacks import (
     cb_create_reminder,
     cb_dismiss_reminder,
@@ -53,6 +54,7 @@ router.include_router(_legacy_router)
 router.include_router(_list_router)
 router.include_router(_explicit_router)
 router.include_router(_callbacks_router)
+router.include_router(_reply_router)
 
 __all__ = [
     "MAX_REMINDER_TEXT_LEN",
