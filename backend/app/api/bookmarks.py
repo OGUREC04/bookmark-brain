@@ -167,6 +167,7 @@ async def list_bookmarks(
     category: str | None = None,
     is_favorite: bool | None = None,
     is_archived: bool | None = None,
+    item_type: str | None = None,  # B2 (2026-05-15): фильтр для Mini App чипов
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ):
@@ -188,6 +189,9 @@ async def list_bookmarks(
     if is_archived is not None:
         stmt = stmt.where(Bookmark.is_archived == is_archived)
         count_stmt = count_stmt.where(Bookmark.is_archived == is_archived)
+    if item_type is not None:
+        stmt = stmt.where(Bookmark.item_type == item_type)
+        count_stmt = count_stmt.where(Bookmark.item_type == item_type)
 
     stmt = stmt.order_by(Bookmark.created_at.desc())
     stmt = stmt.offset((page - 1) * per_page).limit(per_page)
@@ -343,6 +347,31 @@ async def nl_edit_bookmark(
         new_structured = await apply_nl_edit(structured, data.text)
     except NLEditError as e:
         raise HTTPException(status_code=422, detail=f"NL-edit failed: {e}")
+
+    # Phase 2.6 T9: cascade на reminder'ы task_list'а.
+    # Best-effort — если падает, NL-edit всё равно применяется.
+    try:
+        from app.services.reminder_cascade import apply_cascade
+        # Снимок ДО присваивания new_structured (иначе old==new и diff пуст)
+        old_snapshot = dict(structured) if isinstance(structured, dict) else None
+        cascade_result = await apply_cascade(
+            session,
+            bookmark_id=bookmark.id,
+            user_id=current_user.id,
+            old_structured=old_snapshot,
+            new_structured=new_structured,
+            user_tz=current_user.timezone or "Europe/Moscow",
+        )
+        if cascade_result.has_changes:
+            # Прикрепляем сводку к new_structured для UI (бот покажет в reply)
+            new_structured = dict(new_structured)
+            new_structured["cascade_summary"] = cascade_result.summary()
+    except Exception as e:
+        # Не валим основной flow — NL-edit важнее каскада
+        import logging as _logging
+        _logging.getLogger(__name__).warning(
+            "reminder cascade failed for bookmark %s: %s", bookmark.id, e,
+        )
 
     bookmark.structured_data = new_structured
     return bookmark

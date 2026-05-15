@@ -6,7 +6,7 @@ API:
     result = parse("завтра в 9", user_tz="Europe/Moscow", now=...)
     if result.status == ParseStatus.OK:
         save_reminder(result.dt)
-    elif result.status == ParseStatus.NEEDS_TIME:
+    elif result.status == ParseStatus.NEEDS_HOUR:
         ask_user("укажи время — например, в субботу в 9")
     elif result.status == ParseStatus.IN_PAST:
         ask_user("время в прошлом, ты про будущее?")
@@ -35,7 +35,13 @@ class ParseStatus(str, Enum):
     OK = "ok"
     UNPARSEABLE = "unparseable"
     IN_PAST = "in_past"
-    NEEDS_TIME = "needs_time"
+    # NEEDS_HOUR — есть дата, но не указан час и часть суток.
+    # Хендлер должен спросить юзера через Reply («во сколько напомнить?»).
+    # Phase 2.6: ранее называлось NEEDS_TIME — переименовано для ясности
+    # (это именно «нет часа», а не «нет времени вообще» — может быть и часть суток
+    # «утром/вечером», но та маппится в _preprocess_short_time и возвращает OK).
+    NEEDS_HOUR = "needs_hour"
+    NEEDS_TIME = "needs_hour"  # backward-compat alias (same value → enum alias)
     FALLBACK_DEFAULT = "fallback_default"
 
 
@@ -178,7 +184,7 @@ def parse(
         parsed_in_user_tz = parsed.astimezone(user_zone)
         # «завтра» / «в субботу» / «15 мая» dateparser обычно возвращает с time=00:00
         if parsed_in_user_tz.hour == 0 and parsed_in_user_tz.minute == 0:
-            return ParseResult(dt=None, status=ParseStatus.NEEDS_TIME)
+            return ParseResult(dt=None, status=ParseStatus.NEEDS_HOUR)
 
     return ParseResult(dt=parsed, status=ParseStatus.OK)
 

@@ -480,6 +480,22 @@ class StateStore:
         except (json.JSONDecodeError, TypeError):
             return None
 
+    async def pop_reminder_choice(
+        self, chat_id: int, msg_id: int,
+    ) -> dict | None:
+        """Phase 2.6 T4: атомарный GETDEL для 3-button state.
+        Писатель: worker._send_choice_ui. Читатель: reminder_choice handlers.
+        """
+        import json
+        r = await self._get()
+        raw = await r.getdel(f"reminder_choice:{chat_id}:{msg_id}")
+        if raw is None:
+            return None
+        try:
+            return json.loads(raw)
+        except (json.JSONDecodeError, TypeError):
+            return None
+
     async def store_reminder_snooze(
         self, chat_id: int, msg_id: int, reminder_id: str,
     ) -> None:

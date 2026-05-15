@@ -1471,6 +1471,101 @@ async def _handle_nudge_reply(
 # ───────────────────── Reply-based NL editor ─────────────────────
 
 
+async def _handle_remind_on_task_list(
+    message: Message, api, token: str, bookmark_id: str, body: str,
+) -> None:
+    """Phase 2.6 T7: создаём composite reminder на task_list по reply'ю.
+
+    `body` — текст после «сделай напоминание …» (только время, либо
+    «<текст> <время>» — text игнорируется, потому что reminder привязан к
+    task_list'у, источник текста = title/summary списка).
+    """
+    from bot.handlers.reminders import (
+        _get_user_tz_name,
+        _split_remind_text_and_time,
+        _format_fire_at,
+        _safe,
+        TIME_EXAMPLES,
+    )
+    from bot.services.nl_date import ParseStatus, parse
+
+    user_tz_name = await _get_user_tz_name(api, token)
+    body_clean = body.strip()
+    if not body_clean:
+        await message.answer(
+            "Когда напомнить? Например: <code>завтра в 9</code>, "
+            "<code>в пятницу в 18</code>, <code>через час</code>",
+            parse_mode="HTML",
+        )
+        return
+
+    # Разделяем body на (текст, время). Для task_list текст игнорим, нужно
+    # только время. Если время не нашли — всё тело = время (юзер написал
+    # просто «в пятницу в 9»).
+    _text_part, time_part = _split_remind_text_and_time(body_clean, user_tz_name)
+    if time_part is None:
+        time_part = body_clean
+
+    pr = parse(time_part, user_tz=user_tz_name)
+    if pr.status == ParseStatus.IN_PAST:
+        await message.answer("Это в прошлом. Назначь время в будущем.", parse_mode=None)
+        return
+    if pr.status == ParseStatus.NEEDS_HOUR:
+        await message.answer(
+            "Уточни время (например <code>в 9</code>). " + TIME_EXAMPLES,
+            parse_mode="HTML",
+        )
+        return
+    if pr.status == ParseStatus.UNPARSEABLE or pr.dt is None:
+        await message.answer(
+            f"Не понял время «{_safe(time_part)}». " + TIME_EXAMPLES,
+            parse_mode="HTML",
+        )
+        return
+
+    # Composite reminder: text = bookmark.title (или fallback). Создаём
+    # через стандартный create_reminder API (НЕ apply-decision — для уже
+    # существующего task_list decision может отсутствовать или быть
+    # уже применённой).
+    #
+    # IDOR: get_bookmark на backend'е фильтрует по current_user.id (см.
+    # backend/app/api/bookmarks.py:233). Чужой bookmark вернёт 404 → юзер
+    # увидит «Не нашёл этот список». get_list_bookmark в Redis даёт chat-
+    # scoped lookup, плюс этот server-side guard — двойной фильтр.
+    try:
+        bookmark = await api.get_bookmark(token, bookmark_id)
+    except Exception as e:
+        logger.warning(f"T7: get_bookmark failed for {bookmark_id}: {e}")
+        await message.answer("Не нашёл этот список.", parse_mode=None)
+        return
+    reminder_text = (bookmark.get("title") or bookmark.get("summary") or "Список задач")[:200]
+
+    try:
+        await api.create_reminder(
+            token,
+            pr.dt.isoformat(),
+            bookmark_id=bookmark_id,
+            payload={
+                "text": reminder_text,
+                "source": "reply_remind_task_list",
+                "task_list_id": bookmark_id,
+            },
+        )
+    except Exception as e:
+        logger.warning(f"T7: create_reminder failed for {bookmark_id}: {e}")
+        await message.answer(
+            "Не получилось создать напоминание. Попробуй ещё раз.",
+            parse_mode=None,
+        )
+        return
+
+    fire_str = _format_fire_at(pr.dt, user_tz_name)
+    await message.answer(
+        f"🔔 Напомню про список <b>{_safe(reminder_text)}</b> — {_safe(fire_str)}",
+        parse_mode="HTML",
+    )
+
+
 @router.message(
     F.reply_to_message
     & F.reply_to_message.from_user.is_bot
@@ -1526,6 +1621,15 @@ async def msg_nl_edit_on_reply(message: Message, api, store=None):
     user_text = (message.text or "").strip().lower()
     if _is_delete_command(user_text):
         await _handle_delete_via_reply(message, api, token, bid, store)
+        return
+
+    # Phase 2.6 T7: explicit remind trigger в reply на task_list.
+    # «сделай напоминание завтра в 9» / «напомни в пятницу» / «напомни через час»
+    # → создаём composite reminder привязанный к этому task_list.
+    from bot.handlers.reminders import extract_explicit_remind_body
+    explicit_body = extract_explicit_remind_body(message.text or "")
+    if explicit_body is not None:
+        await _handle_remind_on_task_list(message, api, token, bid, explicit_body)
         return
 
     silent = await is_silent(api, token, message.from_user.id)

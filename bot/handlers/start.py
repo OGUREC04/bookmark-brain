@@ -640,6 +640,31 @@ async def handle_text(message: types.Message, api, store=None):
     if not text:
         return
 
+    # Phase 2.6 T8: explicit-trigger «сделай напоминание <текст> <время>» — БЕЗ
+    # AI/закладки, идёт сразу в reminder flow. Должно стоять до URL-extract /
+    # short-save / AI-save чтобы команда не превращалась в bookmark.
+    #
+    # Note: «срочно напомни...» / «надо напомни...» перехватываются strong_router
+    # раньше (matches /^(надо|нужно|срочно|…)/i) — это намеренное поведение,
+    # urgency-маркер сильнее T8 trigger'а. См. ADR 0008 / 0009.
+    from bot.handlers.reminders import (
+        extract_explicit_remind_body,
+        process_explicit_remind_args,
+    )
+    explicit_body = extract_explicit_remind_body(text)
+    if explicit_body is not None:
+        if not explicit_body:
+            # Юзер написал просто «напомни» — спрашиваем что и когда вместо
+            # дампа полной справки /remind.
+            await message.answer(
+                "🔔 Что напомнить и когда?\n"
+                "Например: <code>напомни купить хлеб завтра в 9</code>",
+                parse_mode="HTML",
+            )
+            return
+        await process_explicit_remind_args(message, explicit_body, api, store)
+        return
+
     urls = _extract_urls(message)
 
     from bot.handlers.settings import is_silent

@@ -20,6 +20,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.auth import get_current_user
 from app.database import get_session
@@ -140,9 +141,14 @@ async def list_upcoming(
     session: AsyncSession = Depends(get_session),
     limit: int = Query(default=50, ge=1, le=200),
 ):
-    """Список pending напоминаний юзера, отсортирован по fire_at."""
+    """Список pending напоминаний юзера, отсортирован по fire_at.
+
+    B1 (2026-05-15): eager-load bookmark для Mini App RemindersSheet,
+    чтобы избежать N+1 при рендере title рядом с каждым reminder.
+    """
     stmt = (
         select(ScheduledMessage)
+        .options(selectinload(ScheduledMessage.bookmark))
         .where(
             ScheduledMessage.user_id == current_user.id,
             ScheduledMessage.kind == REMINDER_KIND,
@@ -153,7 +159,8 @@ async def list_upcoming(
     )
     result = await session.execute(stmt)
     items = list(result.scalars().all())
-    return ReminderListResponse(items=items, total=len(items))
+    responses = [_to_reminder_response(m) for m in items]
+    return ReminderListResponse(items=responses, total=len(responses))
 
 
 @router.get("/history", response_model=ReminderListResponse)
@@ -182,7 +189,195 @@ async def list_history(
     )
     result = await session.execute(stmt)
     items = list(result.scalars().all())
-    return ReminderListResponse(items=items, total=len(items))
+    # history без bookmark relationship (history-карточкам title не нужен)
+    responses = [_to_reminder_response(m, include_bookmark=False) for m in items]
+    return ReminderListResponse(items=responses, total=len(responses))
+
+
+def _to_reminder_response(
+    m: ScheduledMessage, include_bookmark: bool = True
+) -> ReminderResponse:
+    """Сериализация ScheduledMessage → ReminderResponse с опциональным bookmark.
+
+    B1: для list_upcoming передаём include_bookmark=True (selectinload загрузил),
+    для list_history — False (relationship lazy="noload", не дергаем DB).
+    """
+    return ReminderResponse(
+        id=m.id,
+        bookmark_id=m.bookmark_id,
+        kind=m.kind,
+        fire_at=m.fire_at,
+        status=m.status,
+        payload=m.payload,
+        created_at=m.created_at,
+        sent_at=m.sent_at,
+        bookmark_title=(m.bookmark.title if include_bookmark and m.bookmark else None),
+        bookmark_raw_text=(m.bookmark.raw_text if include_bookmark and m.bookmark else None),
+    )
+
+
+# ──────────────────── Phase 2.6: apply-decision ────────────────────
+
+
+@router.post(
+    "/apply-decision/{bookmark_id}",
+    response_model=ReminderListResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def apply_reminder_decision(
+    bookmark_id: UUID,
+    form: str = Query(
+        ...,
+        pattern="^(task_list_with_reminders|composite_reminder|single_reminder)$",
+        description="Финальная форма из 3-button click или Phase 2.6 dispatch",
+    ),
+    composite_fire_at: datetime | None = Query(
+        default=None,
+        description="Только для composite_reminder — выбранная дата (UTC).",
+    ),
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    """Применяет ранее сохранённое router-решение (`structured_data.reminder_decision`)
+    к bookmark'у, создавая один или несколько reminder'ов.
+
+    Используется ботом при нажатии 3-button «📋/🔔/✕» (T4) и из dispatch
+    воркера для auto-create (T5).
+
+    IDOR-защита: проверяем, что bookmark принадлежит current_user.
+
+    Идемпотентность не гарантируется на этом уровне — повторный POST создаст
+    дубли. Bot Redis-anti-double блокирует повторные клики по той же кнопке.
+    """
+    from app.services.reminder_creator import (
+        create_composite_reminder,
+        create_per_item_reminders,
+        create_single_reminder,
+    )
+    from app.services.reminder_router import ResolvedItem, ReminderForm, RouterDecision
+    from app.services.nl_date import ParseStatus
+
+    # Загружаем bookmark с проверкой владения
+    result = await session.execute(
+        select(Bookmark).where(
+            Bookmark.id == bookmark_id,
+            Bookmark.user_id == current_user.id,
+        )
+    )
+    bookmark = result.scalar_one_or_none()
+    if bookmark is None:
+        raise HTTPException(status_code=404, detail="Bookmark not found")
+
+    structured = bookmark.structured_data or {}
+    raw_decision = structured.get("reminder_decision")
+    if not raw_decision or not isinstance(raw_decision, dict):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="No reminder_decision in bookmark.structured_data — nothing to apply.",
+        )
+
+    # Idempotency-гард race-safe: атомарный UPDATE с CAS по
+    # `structured_data.reminder_decision_applied`. Если флаг уже стоит
+    # (другой конкурентный запрос / worker auto-create), RETURNING вернёт
+    # пусто → 409. Без этого read-then-write race открывает double-spend.
+    from sqlalchemy import text as _sa_text
+    cas_result = await session.execute(_sa_text(
+        """
+        UPDATE bookmarks
+        SET structured_data = COALESCE(structured_data, '{}'::jsonb)
+                              || jsonb_build_object('reminder_decision_applied', true)
+        WHERE id = CAST(:bid AS uuid)
+          AND user_id = CAST(:uid AS uuid)
+          AND COALESCE(structured_data->>'reminder_decision_applied', 'false') <> 'true'
+        RETURNING id
+        """
+    ).bindparams(bid=str(bookmark_id), uid=str(current_user.id)))
+    if cas_result.scalar_one_or_none() is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Reminder decision already applied for this bookmark.",
+        )
+    # Перезагружаем bookmark чтобы получить актуальное structured_data
+    # после CAS (SQLAlchemy кэширует объект — `bookmark.structured_data` без
+    # refresh покажет старое значение).
+    await session.refresh(bookmark)
+    structured = bookmark.structured_data or {}
+
+    # Восстанавливаем RouterDecision из persisted dict.
+    # Только items нужны — form мы получаем из query (выбор юзера может
+    # отличаться от router-default'а: NEEDS_BUTTON_CHOICE → user picks 📋 vs 🔔).
+    items: list[ResolvedItem] = []
+    for raw in raw_decision.get("items", []):
+        fire_at = raw.get("fire_at_utc")
+        parsed_dt = None
+        if fire_at:
+            try:
+                parsed_dt = datetime.fromisoformat(fire_at)
+                if parsed_dt.tzinfo is None:
+                    parsed_dt = parsed_dt.replace(tzinfo=timezone.utc)
+            except ValueError:
+                logger.warning("apply-decision: bad fire_at_utc %r in bookmark %s", fire_at, bookmark_id)
+                continue
+        status_raw = raw.get("status")
+        items.append(
+            ResolvedItem(
+                text=raw.get("text", ""),
+                raw_date_phrase=raw.get("raw_date_phrase"),
+                fire_at=parsed_dt,
+                status=ParseStatus(status_raw) if status_raw else None,
+            )
+        )
+    decision = RouterDecision(form=ReminderForm(form), items=items)
+
+    now = datetime.now(timezone.utc)
+    created: list[ScheduledMessage] = []
+
+    if form == "task_list_with_reminders":
+        created = await create_per_item_reminders(session, bookmark, decision, now=now)
+    elif form == "composite_reminder":
+        # Bot обязан передать composite_fire_at — берём первую dated_item если нет
+        fire_at = composite_fire_at
+        if fire_at is None and decision.dated_items:
+            fire_at = decision.dated_items[0].fire_at
+        if fire_at is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="composite_fire_at required when no dated items in decision",
+            )
+        if fire_at.tzinfo is None:
+            fire_at = fire_at.replace(tzinfo=timezone.utc)
+        reminder = await create_composite_reminder(
+            session, bookmark, fire_at=fire_at, now=now,
+        )
+        if reminder is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="fire_at must be in the future",
+            )
+        created = [reminder]
+    elif form == "single_reminder":
+        if not decision.dated_items:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No dated items in decision for single_reminder",
+            )
+        reminder = await create_single_reminder(
+            session, bookmark, decision.dated_items[0],
+            now=now, source="single_reminder_decision",
+        )
+        if reminder is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="fire_at must be in the future",
+            )
+        created = [reminder]
+
+    # Флаг уже выставлен через CAS-UPDATE выше — здесь просто flush'аем
+    # созданные ScheduledMessage'ы в той же транзакции.
+    await session.flush()
+    for r in created:
+        await session.refresh(r)
+    return ReminderListResponse(items=created, total=len(created))
 
 
 async def _get_user_reminder(

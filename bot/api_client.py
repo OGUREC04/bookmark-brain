@@ -107,6 +107,30 @@ class BackendClient:
         )
         response.raise_for_status()
 
+    async def apply_reminder_decision(
+        self,
+        token: str,
+        bookmark_id: str,
+        form: str,
+        composite_fire_at: str | None = None,
+    ) -> dict:
+        """POST /api/v1/reminders/apply-decision/{bookmark_id} — Phase 2.6.
+
+        form: task_list_with_reminders | composite_reminder | single_reminder
+        composite_fire_at: ISO 8601 UTC, обязателен для composite_reminder
+        если в decision не было dated items.
+        """
+        params: dict = {"form": form}
+        if composite_fire_at is not None:
+            params["composite_fire_at"] = composite_fire_at
+        response = await self.client.post(
+            f"/api/v1/reminders/apply-decision/{bookmark_id}",
+            headers={"Authorization": f"Bearer {token}"},
+            params=params,
+        )
+        response.raise_for_status()
+        return response.json()
+
     async def list_upcoming_reminders(self, token: str, limit: int = 50) -> dict:
         """GET /api/v1/reminders/upcoming."""
         response = await self.client.get(

@@ -594,15 +594,52 @@ def _split_remind_text_and_time(
     return args, None
 
 
-@router.message(Command("remind"))
-async def cmd_remind(message: Message, command: CommandObject, api, store):
-    """T11: explicit команда /remind для создания напоминания без AI/закладки."""
+# Phase 2.6 T8: префикс explicit-команды «сделай напоминание <body>» / «напомни <body>».
+# Используется и start.handle_text (inline trigger), и могут быть будущие
+# точки входа. Капчуем сам префикс с группой 'body' через extract_explicit_body().
+#
+# Принципы:
+# - Только начало строки (^) — слово в середине предложения НЕ триггер
+# - После триггера требуем whitespace или конец строки — «напомни-ка» НЕ матчится
+#   (защита от частицы «-ка» которая иначе попала бы в body)
+# - «напомнить/напоминаешь/напоминалось» (другие формы глагола) — не матчятся
+#   потому что после «напомни» стоит word-char, граница \b не срабатывает
+_EXPLICIT_REMIND_PREFIX_RE = re.compile(
+    r"^(?:сделай\s+напомин\w+|поставь\s+(?:напомин\w+|reminder)|"
+    r"напомни(?:\s+мне)?|создай\s+напомин\w+)"
+    r"(?=\s|$|[:,.])"   # дальше пробел/конец/допустимая пунктуация — НЕ дефис/буква
+    r"[\s:,.]*",        # съедаем разделитель (без дефиса)
+    re.IGNORECASE,
+)
+
+
+def extract_explicit_remind_body(text: str) -> str | None:
+    """Если text начинается с «сделай напоминание …» — возвращает «...» (что напомнить).
+
+    Возвращает None если префикс не матчится.
+    Возвращает пустую строку если префикс есть, но body пустой («напомни») —
+    caller сам спросит юзера что напомнить.
+    """
+    if not text:
+        return None
+    m = _EXPLICIT_REMIND_PREFIX_RE.match(text.strip())
+    if m is None:
+        return None
+    return text.strip()[m.end():].strip()
+
+
+async def process_explicit_remind_args(
+    message: Message, args: str, api, store,
+) -> None:
+    """Общая логика explicit-remind (Phase 2.5 cmd_remind body, Phase 2.6 T8 trigger).
+
+    Принимает уже извлечённые args (без префикса команды/триггера). Создаёт
+    reminder если время есть, иначе просит Reply со временем.
+    """
     from bot.handlers.start import _ensure_user
     from bot.services.nl_date import ParseStatus, parse
 
-    args = (command.args or "").strip()
-
-    # Без аргументов — справка
+    args = args.strip()
     if not args:
         await message.answer(REMIND_HELP_TEXT, parse_mode="HTML")
         return
@@ -615,13 +652,11 @@ async def cmd_remind(message: Message, command: CommandObject, api, store):
     text_part, time_part = _split_remind_text_and_time(args, user_tz_name)
 
     if time_part is None:
-        # Текст без времени — спрашиваем reply со временем.
         display_text = _cap_text(text_part or args, limit=200)
         prompt = await message.answer(
             _reply_prompt(f"🔔 Когда напомнить «<b>{_safe(display_text)}</b>»?"),
             parse_mode="HTML",
         )
-        # 12y: explicit /remind без времени — typed envelope через store
         if prompt is not None and getattr(prompt, "message_id", None) is not None:
             try:
                 await store.store_reminder_pending_explicit(
@@ -629,16 +664,13 @@ async def cmd_remind(message: Message, command: CommandObject, api, store):
                     _cap_text(text_part or args),
                 )
                 logger.info(
-                    f"cmd_remind: pending saved chat={message.chat.id} "
+                    f"explicit_remind: pending saved chat={message.chat.id} "
                     f"msg={prompt.message_id} text={_cap_text(text_part or args, limit=40)!r}"
                 )
             except Exception as e:
-                logger.warning(f"cmd_remind: failed to save pending state: {e}")
+                logger.warning(f"explicit_remind: failed to save pending state: {e}")
         return
 
-    # T19: если в исходном /remind сообщении есть date_time entity —
-    # юзер сам ввёл «13 мая в 9» и Telegram-клиент уже определил дату.
-    # Пропускаем парсер.
     entity_dt = extract_first_datetime_entity(message)
     if entity_dt is not None:
         now_utc = datetime.now(timezone.utc)
@@ -654,19 +686,17 @@ async def cmd_remind(message: Message, command: CommandObject, api, store):
                 payload={"text": text_part, "source": "explicit_remind"},
             )
         except Exception as e:
-            logger.warning(f"cmd_remind entity create failed: {e}")
+            logger.warning(f"explicit_remind entity create failed: {e}")
             await message.answer(
                 "Не получилось создать напоминание. Попробуй ещё раз.",
                 parse_mode=None,
             )
             return
-        # Эксперимент: confirmation через sendChecklist с date_time chip
         await _send_reminder_confirmation_with_chip(
             message, entity_dt, text_part, user_tz_name,
         )
         return
 
-    # Время есть — парсим, создаём reminder сразу
     parse_result = parse(time_part, user_tz=user_tz_name)
 
     if parse_result.status == ParseStatus.IN_PAST:
@@ -675,7 +705,7 @@ async def cmd_remind(message: Message, command: CommandObject, api, store):
         )
         return
 
-    if parse_result.status == ParseStatus.NEEDS_TIME:
+    if parse_result.status == ParseStatus.NEEDS_HOUR:
         await message.answer(
             "Уточни время (например «в 9»). " + TIME_EXAMPLES,
             parse_mode="HTML",
@@ -683,8 +713,6 @@ async def cmd_remind(message: Message, command: CommandObject, api, store):
         return
 
     if parse_result.status == ParseStatus.UNPARSEABLE or parse_result.dt is None:
-        # Странно — мы же пропустили через _split. Скорее всего dateparser
-        # моргнул. Просим reply со временем.
         await message.answer(
             f"Не понял время «{_safe(time_part)}». " + TIME_EXAMPLES,
             parse_mode="HTML",
@@ -692,7 +720,6 @@ async def cmd_remind(message: Message, command: CommandObject, api, store):
         return
 
     if parse_result.status == ParseStatus.FALLBACK_DEFAULT:
-        # Размытое — confirm flow (F2 паттерн)
         proposed = _format_fire_at(parse_result.dt, user_tz_name)
         prompt = await message.answer(
             f"Не понял точное время. Поставить «<b>{_safe(text_part)}</b>» на "
@@ -701,9 +728,6 @@ async def cmd_remind(message: Message, command: CommandObject, api, store):
         )
         if prompt is not None and getattr(prompt, "message_id", None) is not None:
             try:
-                # Для explicit /remind в fallback используем kind="explicit_create"
-                # чтобы _apply_reminder_action знал что bookmark_id=None и брал
-                # text из target_id.
                 await store.store_reminder_fallback(
                     message.chat.id, prompt.message_id,
                     kind="explicit_create",
@@ -714,7 +738,6 @@ async def cmd_remind(message: Message, command: CommandObject, api, store):
                 logger.warning(f"store_reminder_fallback failed: {e}")
         return
 
-    # ParseStatus.OK — создаём reminder сразу
     try:
         await api.create_reminder(
             token,
@@ -723,17 +746,30 @@ async def cmd_remind(message: Message, command: CommandObject, api, store):
             payload={"text": text_part, "source": "explicit_remind"},
         )
     except Exception as e:
-        logger.warning(f"cmd_remind create failed: {e}")
+        logger.warning(f"explicit_remind create failed: {e}")
         await message.answer(
             "Не получилось создать напоминание. Попробуй ещё раз.",
             parse_mode=None,
         )
         return
 
-    # Эксперимент: confirmation через sendChecklist с date_time chip
     await _send_reminder_confirmation_with_chip(
         message, parse_result.dt, text_part, user_tz_name,
     )
+
+
+@router.message(Command("remind"))
+async def cmd_remind(message: Message, command: CommandObject, api, store):
+    """T11: explicit команда /remind для создания напоминания без AI/закладки.
+
+    Phase 2.6: тело вынесено в `process_explicit_remind_args` для переиспользования
+    в T8 inline-trigger из start.handle_text.
+    """
+    args = (command.args or "").strip()
+    if not args:
+        await message.answer(REMIND_HELP_TEXT, parse_mode="HTML")
+        return
+    await process_explicit_remind_args(message, args, api, store)
 
 
 # ──────────────────────────────────────────────────

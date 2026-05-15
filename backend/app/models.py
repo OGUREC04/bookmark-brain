@@ -322,3 +322,11 @@ class ScheduledMessage(Base):
     )
     sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    # B1 (2026-05-15): Mini App нужен title/preview закладки при list_upcoming.
+    # lazy="noload" — не загружать автоматически, только при явном selectinload.
+    bookmark: Mapped["Bookmark | None"] = relationship(
+        "Bookmark",
+        foreign_keys=[bookmark_id],
+        lazy="noload",
+    )
