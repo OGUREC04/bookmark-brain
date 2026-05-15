@@ -20,12 +20,15 @@ from ._legacy import (
     _cap_text,
     _is_valid_uuid,
     _safe,
-    cb_strong_choice,
     extract_first_datetime_entity,
-    handle_strong_intent_message,
-    is_strong_intent,
 )
 from ._legacy import router as _legacy_router
+from .strong import (
+    cb_strong_choice,
+    handle_strong_intent_message,
+    is_strong_intent,
+    strong_router,
+)
 from .reply import handle_reminder_reply
 from .reply import router as _reply_router
 from .callbacks import (
@@ -77,4 +80,5 @@ __all__ = [
     "handle_strong_intent_message",
     "is_strong_intent",
     "router",
+    "strong_router",
 ]
