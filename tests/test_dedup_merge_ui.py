@@ -119,7 +119,7 @@ class TestMergeHappyPath:
         api = _make_api()
         store = _make_store(old_msg_id=None)  # старого msg в Redis нет — fallback на send
 
-        with patch("bot.handlers.tasks._rerender_at_bottom") as rerender_mock:
+        with patch("bot.handlers.tasks.dedup._rerender_at_bottom") as rerender_mock:
             rerender_mock.return_value = None
             await cb_dedup_merge(cb, api, store)
 
@@ -139,7 +139,7 @@ class TestMergeHappyPath:
         api = _make_api()
         store = _make_store(old_msg_id=400)  # знаем старое сообщение
 
-        with patch("bot.handlers.tasks._rerender_at_bottom") as rerender_mock:
+        with patch("bot.handlers.tasks.dedup._rerender_at_bottom") as rerender_mock:
             rerender_mock.return_value = None
             await cb_dedup_merge(cb, api, store)
 
@@ -171,7 +171,7 @@ class TestDeleteFailFallback:
             )
         )
 
-        with patch("bot.handlers.tasks._rerender_at_bottom") as rerender_mock:
+        with patch("bot.handlers.tasks.dedup._rerender_at_bottom") as rerender_mock:
             rerender_mock.return_value = None
             await cb_dedup_merge(cb, api, store)
 
@@ -197,7 +197,7 @@ class TestDeleteFailFallback:
         )
 
         caplog.set_level(logging.WARNING, logger="bot.handlers.tasks")
-        with patch("bot.handlers.tasks._rerender_at_bottom"):
+        with patch("bot.handlers.tasks.dedup._rerender_at_bottom"):
             await cb_dedup_merge(cb, api, store)
 
         warnings = [r for r in caplog.records if r.levelno >= logging.WARNING]
@@ -325,7 +325,7 @@ class TestDedupUpdateRerendersTaskList:
 
         dedup = {"new_bid": "new-bid", "old_bid": "old-bid"}
 
-        with patch("bot.handlers.tasks._rerender_at_bottom") as rerender_mock:
+        with patch("bot.handlers.tasks.dedup._rerender_at_bottom") as rerender_mock:
             rerender_mock.return_value = None
             await _handle_general_dedup_reply(msg, api, store, dedup)
 
@@ -358,7 +358,7 @@ class TestDedupUpdateRerendersTaskList:
 
         dedup = {"new_bid": "new-bid", "old_bid": "old-bid"}
 
-        with patch("bot.handlers.tasks._rerender_at_bottom") as rerender_mock:
+        with patch("bot.handlers.tasks.dedup._rerender_at_bottom") as rerender_mock:
             await _handle_general_dedup_reply(msg, api, store, dedup)
 
         # НЕ task_list → не вызываем rerender и не шлём список
@@ -385,7 +385,7 @@ class TestDedupUpdateRerendersTaskList:
 
         dedup = {"new_bid": "new-bid", "old_bid": "old-bid"}
 
-        with patch("bot.handlers.tasks._rerender_at_bottom") as rerender_mock:
+        with patch("bot.handlers.tasks.dedup._rerender_at_bottom") as rerender_mock:
             rerender_mock.return_value = None
             await _handle_pending_dedup(
                 msg, api, store, dedup, intent="update", alert_msg_id=555,
@@ -417,7 +417,7 @@ class TestDedupUpdateRerendersTaskList:
 
         dedup = {"new_bid": "new-bid", "old_bid": "old-bid"}
 
-        with patch("bot.handlers.tasks._rerender_at_bottom"):
+        with patch("bot.handlers.tasks.dedup._rerender_at_bottom"):
             await _handle_general_dedup_reply(msg, api, store, dedup)
 
         msg.delete.assert_called()
