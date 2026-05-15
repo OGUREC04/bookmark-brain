@@ -13,7 +13,7 @@ from datetime import datetime, timedelta, timezone
 from aiogram import F, Router
 from aiogram.types import Message
 
-from ._legacy import (
+from .shared import (
     TIME_EXAMPLES,
     _cap_text,
     _format_fire_at,

@@ -16,7 +16,7 @@ import httpx
 from aiogram import F, Router
 from aiogram.types import CallbackQuery
 
-from ._legacy import _is_valid_uuid, _reply_prompt
+from .shared import _is_valid_uuid, _reply_prompt
 
 logger = logging.getLogger(__name__)
 

@@ -1,36 +1,29 @@
+"""Reminders handlers package (Phase 2.6 q21 split — complete).
+
+Public facade. All historic external imports keep working:
+
+    from bot.handlers.reminders import router, cmd_remind, strong_router, ...
+
+Internal layout:
+- ``shared.py``   — pure helpers (HTML-escape, uuid validation, tz / fire_at formatters,
+                    Telegram date_time entity extraction, MAX_* constants, TIME_EXAMPLES)
+- ``list.py``     — ``/reminders`` command + NL-reply (cancel/reschedule/history)
+- ``explicit.py`` — ``/remind`` command + T8 inline trigger
+- ``callbacks.py``— inline-button callbacks (rsk / rsn / rdone / rsnz)
+- ``reply.py``    — reply-handler dispatch (fallback-confirm, pending, snooze)
+- ``strong.py``   — T13 strong-intent flow (3-button «🔔 / 📝 / ✕») with
+                    its OWN ``strong_router`` (registered separately in
+                    ``bot/main.py`` before ``start.router``)
+
+Each sub-file owns its own ``Router()``; the package-level ``router`` aggregates
+all of them via ``include_router`` (native aiogram 3.x pattern).
+
+See ``~/.claude/rules/common/coding-style.md`` (Migration of existing 1500+ LOC file)
+and ``D:/brain/wiki/концепции/декомпозиция-больших-файлов.md`` for the rationale.
 """
-Reminders handlers package (Phase 2.6 q21 split — Step 0).
 
-This package is a facade over the legacy monolithic ``reminders.py`` (now
-``_legacy.py``). All external imports keep working unchanged:
+from aiogram import Router as _Router
 
-    from bot.handlers.reminders import router, cmd_remind, ...
-
-Step 0 only creates the package shell; no code has moved yet. Subsequent
-steps will extract domains into sub-modules (strong / explicit / callbacks
-/ reply / list / keyboards / shared) and update the re-exports here.
-
-See ``D:/projects/bookmark-brain/.beads/issues.jsonl`` issue ``q21``
-and ``~/.claude/rules/common/coding-style.md`` "Migration of existing
-1500+ LOC file" for the migration pattern.
-"""
-
-from ._legacy import (
-    MAX_REMINDER_TEXT_LEN,
-    _cap_text,
-    _is_valid_uuid,
-    _safe,
-    extract_first_datetime_entity,
-)
-from ._legacy import router as _legacy_router
-from .strong import (
-    cb_strong_choice,
-    handle_strong_intent_message,
-    is_strong_intent,
-    strong_router,
-)
-from .reply import handle_reminder_reply
-from .reply import router as _reply_router
 from .callbacks import (
     cb_create_reminder,
     cb_dismiss_reminder,
@@ -47,17 +40,32 @@ from .explicit import (
 from .explicit import router as _explicit_router
 from .list import cmd_reminders, handle_reminders_list_reply
 from .list import router as _list_router
+from .reply import handle_reminder_reply
+from .reply import router as _reply_router
+from .shared import (
+    MAX_REMINDER_TEXT_LEN,
+    _cap_text,
+    _is_valid_uuid,
+    _safe,
+    extract_first_datetime_entity,
+)
+from .strong import (
+    cb_strong_choice,
+    handle_strong_intent_message,
+    is_strong_intent,
+    strong_router,
+)
 
-# Aggregate: parent router includes legacy + sub-domain routers.
-# This is the native aiogram 3.x pattern (each sub-file owns its Router).
-from aiogram import Router as _Router
-
+# Aggregate: each sub-file owns its Router; the package-level `router`
+# includes them all via the native aiogram 3.x mechanism.
 router = _Router()
-router.include_router(_legacy_router)
 router.include_router(_list_router)
 router.include_router(_explicit_router)
 router.include_router(_callbacks_router)
 router.include_router(_reply_router)
+# NOTE: strong_router is registered SEPARATELY in bot/main.py BEFORE start.router
+# (it needs to intercept strong-intent before the regular text flow). Do NOT
+# include it here, otherwise it would be invoked twice.
 
 __all__ = [
     "MAX_REMINDER_TEXT_LEN",
@@ -65,7 +73,6 @@ __all__ = [
     "_is_valid_uuid",
     "_safe",
     "_split_remind_text_and_time",
-    "process_explicit_remind_args",
     "cb_create_reminder",
     "cb_dismiss_reminder",
     "cb_done_reminder",
@@ -79,6 +86,7 @@ __all__ = [
     "handle_reminders_list_reply",
     "handle_strong_intent_message",
     "is_strong_intent",
+    "process_explicit_remind_args",
     "router",
     "strong_router",
 ]

@@ -19,7 +19,7 @@ from datetime import datetime, timezone
 from aiogram import F, Router
 from aiogram.types import CallbackQuery, Message
 
-from ._legacy import (
+from .shared import (
     _cap_text,
     _format_fire_at,
     _get_user_tz_name,

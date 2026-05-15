@@ -20,7 +20,7 @@ from aiogram import Router
 from aiogram.filters import Command, CommandObject
 from aiogram.types import Message
 
-from ._legacy import (
+from .shared import (
     DEFAULT_TZ,
     TIME_EXAMPLES,
     _cap_text,

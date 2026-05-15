@@ -1,15 +1,9 @@
-"""Бот-handlers для напоминаний (Phase 2.5 T6).
+"""Shared helpers for reminders package (q21 Step 6 — renamed from _legacy.py).
 
-Состоит из:
-1. Четыре callback'а на inline-кнопках:
-   - rsk:{bookmark_id}    — юзер подтвердил создание после save → просим время
-   - rsn:{bookmark_id}    — отказ → убираем кнопки, чистим state
-   - rdone:{reminder_id}  — нажал «Выполнено» на отправленном reminder
-   - rsnz:{reminder_id}   — нажал «Продлить» → просим новое время
-2. Reply-handler: ловит reply на сообщение с pending offer или snooze,
-   парсит время через `backend.app.services.nl_date.parse()`, дёргает API.
+Pure utilities and constants used across sub-modules
+(list / explicit / callbacks / reply / strong). No router, no handlers.
 
-Ключи Redis (ставит worker, читает бот):
+Redis-key conventions (set by worker, read by bot):
   reminder_pending:{chat_id}:{msg_id} → bookmark_id (TTL 1ч)
   reminder:{chat_id}:{msg_id}         → reminder_id (TTL 25ч)
   reminder_snooze:{chat_id}:{msg_id}  → reminder_id (TTL 1ч)
@@ -17,21 +11,14 @@
 from __future__ import annotations
 
 import html
-import json
 import logging
-import re
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
-import httpx
-from aiogram import F, Router
-from aiogram.filters import Command, CommandObject
-from aiogram.types import CallbackQuery, Message
+from aiogram.types import Message
 
 logger = logging.getLogger(__name__)
-
-router = Router()
 
 # Часовой пояс по умолчанию — если у юзера в users.timezone пусто или
 # зона не распарсилась.
@@ -192,18 +179,6 @@ def _format_fire_at(fire_at: datetime, tz_name: str) -> str:
 
 
 
-# ──────────────────────────────────────────────────
-# /reminders — moved to .list (q21 Step 1)
-# ──────────────────────────────────────────────────
-
-
-# Imported back for callers that still reference reminders.cmd_reminders directly.
-# Public API is re-exported via the package ``__init__``.
-from .list import (  # noqa: E402, F401
-    _format_reminder_short,
-    cmd_reminders,
-    handle_reminders_list_reply,
-)
 
 
 

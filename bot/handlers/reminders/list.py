@@ -18,7 +18,7 @@ from aiogram import Router
 from aiogram.filters import Command, CommandObject
 from aiogram.types import Message
 
-from ._legacy import (
+from .shared import (
     MAX_PARSE_INPUT_LEN,
     TIME_EXAMPLES,
     _format_fire_at,
