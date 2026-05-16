@@ -577,9 +577,20 @@ async def handle_forward(message: types.Message, api):
         )
 
 
-@router.message(F.text & ~F.text.startswith("/"))
+@router.message(
+    F.text
+    & ~F.text.startswith("/")
+    & ~(F.reply_to_message.from_user.is_bot)
+)
 async def handle_text(message: types.Message, api, store=None):
-    """Обработка обычных текстовых сообщений (не команд)."""
+    """Обработка обычных текстовых сообщений (не команд).
+
+    53j: reply НА БОТА сюда НЕ доходит — его обрабатывают upstream
+    (reminders `_reply_dispatch`, tasks `msg_nl_edit_on_reply`). Без
+    этого reply со временем на strong-intent «когда?» дублировался
+    catch-all'ом «Сохранить как заметку?». Reply на чужое/своё
+    сообщение по-прежнему сохраняется заметкой (regression-safe).
+    """
     # Pending dedup: следующее сообщение обрабатывается как ответ на dedup
     if store and not message.reply_to_message:
         pending_mid = await store.get_pending_dedup(message.chat.id)

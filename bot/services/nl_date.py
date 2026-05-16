@@ -93,6 +93,38 @@ _INTERVAL_HINT_RE = re.compile(
 # Чтобы «в 9 ок» не классифицировалось как fallback.
 _FALLBACK_PATTERNS_FULL_RE: re.Pattern | None = None  # лениво строится
 
+# rby: явный маркер дня в тексте. Если есть — НЕ перекатываем «в прошлом»
+# на завтра (юзер сам указал день: «15 мая» в прошлом = реально прошлое).
+_DAY_MARKER_RE = re.compile(
+    r"\b(?:сегодня|завтра|послезавтра|вчера"
+    r"|понедельник\w*|вторник\w*|сред[ауы]\w*|четверг\w*|пятниц\w*"
+    r"|суббот\w*|воскресень\w*"
+    r"|\d{1,2}[.\/]\d{1,2}"
+    r"|\d+\s*(?:дн|недел|месяц)"
+    r"|январ|феврал|март|апрел|\bма[йя]\b|июн|июл|август|сентябр"
+    r"|октябр|ноябр|декабр)",
+    re.IGNORECASE,
+)
+# Только часть суток / голое время без дня («вечером», «18:00», «в 9»).
+_BARE_TIME_RE = re.compile(
+    r"\b(?:утром|утра|дн[её]м|вечером|ночью)\b", re.IGNORECASE,
+)
+
+
+def _is_bare_time_of_day(text_normalized: str) -> bool:
+    """True если в тексте только время/часть суток и НЕТ явного дня.
+
+    Тогда «в прошлом» = юзер имел в виду ближайшее будущее (rby):
+    «вечером» в 20:00 → завтра 18:00, «в 9» в 10:00 → завтра 9:00.
+    """
+    t = text_normalized.strip()
+    if _DAY_MARKER_RE.search(t):
+        return False
+    return bool(
+        _BARE_TIME_RE.search(t)
+        or re.fullmatch(r"(?:в\s+)?\d{1,2}[:.]\d{2}", t)
+    )
+
 
 def parse(
     text: str,
@@ -174,7 +206,18 @@ def parse(
 
     # Защита от прошлого: если получилось < now (с допуском 30 сек на парсинг)
     if parsed < now - timedelta(seconds=30):
-        return ParseResult(dt=None, status=ParseStatus.IN_PAST)
+        # rby: голое время / часть суток без явного дня. _preprocess
+        # синтетически привязал к «сегодня», has_today_marker=False.
+        # Раз время уже прошло — юзер имел в виду ближайшее будущее →
+        # перекатываем на следующий день.
+        if not has_today_marker and _is_bare_time_of_day(text_normalized):
+            rolled = parsed + timedelta(days=1)
+            if rolled >= now - timedelta(seconds=30):
+                parsed = rolled
+            else:
+                return ParseResult(dt=None, status=ParseStatus.IN_PAST)
+        else:
+            return ParseResult(dt=None, status=ParseStatus.IN_PAST)
 
     # Проверка «есть ли в тексте указание времени»
     has_time_in_text = bool(_TIME_HINT_RE.search(text_normalized))
