@@ -1,7 +1,7 @@
 /* ChatRow + DaySeparator — ported 1:1 from
    docs/design-system-miniapp/ds/ChatRow.jsx. Inline styles verbatim. */
 import { cloneElement, type ReactNode } from "react";
-import { Icons } from "./icons";
+import { Icons, ExtraIcons } from "./icons";
 import { Glyph, Pulse } from "./atoms";
 
 export type AvatarTone = "sage" | "honey" | "slate" | "plum" | "clay" | "moss";
@@ -95,6 +95,7 @@ export interface ChatRowProps {
   done?: boolean;
   muted?: boolean;
   onClick?: () => void;
+  onMore?: () => void;
   isLast?: boolean;
 }
 
@@ -113,6 +114,7 @@ export function ChatRow({
   done = false,
   muted = false,
   onClick,
+  onMore,
   isLast = false,
 }: ChatRowProps) {
   return (
@@ -263,6 +265,30 @@ export function ChatRow({
           )}
           {star && <Glyph ch="★" size={15} color="var(--brand-primary)" />}
           {pulsing && <Pulse size={7} />}
+          {onMore && (
+            <button
+              aria-label="действия"
+              onClick={(e) => {
+                e.stopPropagation();
+                onMore();
+              }}
+              style={{
+                flexShrink: 0,
+                width: 28,
+                height: 28,
+                borderRadius: "50%",
+                background: "transparent",
+                border: "none",
+                color: "var(--fg-3)",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              {cloneElement(ExtraIcons.more, { size: 16, sw: 1.6 } as never)}
+            </button>
+          )}
         </div>
       </div>
     </div>

@@ -1,4 +1,6 @@
 /* BookmarkCard — ported 1:1 from docs/design-system-miniapp/ds/BookmarkCard.jsx */
+import { cloneElement } from "react";
+import { ExtraIcons } from "./icons";
 import { Glyph, Pulse, TagChip } from "./atoms";
 
 export interface BookmarkCardData {
@@ -14,7 +16,15 @@ export interface BookmarkCardData {
   task_progress?: { done: number; total: number } | null;
 }
 
-export function BookmarkCard({ bookmark, onOpen }: { bookmark: BookmarkCardData; onOpen?: () => void }) {
+export function BookmarkCard({
+  bookmark,
+  onOpen,
+  onMore,
+}: {
+  bookmark: BookmarkCardData;
+  onOpen?: () => void;
+  onMore?: () => void;
+}) {
   const { title, summary, url, tags = [], time, ai_status = "completed", is_favorite, content_type, task_progress } = bookmark;
   const isTask = content_type === "task";
 
@@ -36,9 +46,36 @@ export function BookmarkCard({ bookmark, onOpen }: { bookmark: BookmarkCardData;
         transition: "transform 200ms var(--ease-out), box-shadow 200ms var(--ease-out)",
       }}
     >
-      <h4 style={{ fontSize: 15.5, fontWeight: 500, color: "var(--fg-1)", lineHeight: 1.25, margin: "0 0 6px", letterSpacing: "-0.02em" }}>
-        {title}
-      </h4>
+      <div style={{ display: "flex", alignItems: "flex-start", gap: 8, margin: "0 0 6px" }}>
+        <h4 style={{ flex: 1, fontSize: 15.5, fontWeight: 500, color: "var(--fg-1)", lineHeight: 1.25, margin: 0, letterSpacing: "-0.02em" }}>
+          {title}
+        </h4>
+        {onMore && (
+          <button
+            aria-label="действия"
+            onClick={(e) => {
+              e.stopPropagation();
+              onMore();
+            }}
+            style={{
+              flexShrink: 0,
+              width: 26,
+              height: 26,
+              marginTop: -2,
+              borderRadius: "50%",
+              background: "transparent",
+              border: "none",
+              color: "var(--fg-3)",
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            {cloneElement(ExtraIcons.more, { size: 16, sw: 1.6 } as never)}
+          </button>
+        )}
+      </div>
 
       {summary && (
         <p style={{ fontFamily: "var(--font-display)", fontStyle: "italic", fontWeight: 400, fontSize: 14, color: "var(--fg-2)", lineHeight: 1.4, margin: "0 0 10px", letterSpacing: 0 }}>

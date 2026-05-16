@@ -179,13 +179,13 @@ export function MysliScreen({
   reloadKey,
   onSearch,
   onBell,
-  onLongPress,
+  onMore,
   onOpen,
 }: {
   reloadKey: number;
   onSearch: () => void;
   onBell: () => void;
-  onLongPress: (b: Bookmark) => void;
+  onMore: (b: Bookmark) => void;
   onOpen: (b: Bookmark) => void;
 }) {
   const [view, setView] = useState<"chat" | "cards">("chat");
@@ -294,13 +294,11 @@ export function MysliScreen({
           copy={items.length === 0 ? "сохрани первую мысль через +" : "сбрось чипы, чтобы увидеть всё"}
         />
       ) : view === "chat" ? (
-        <ChatView items={filtered} onLongPress={onLongPress} onOpen={onOpen} />
+        <ChatView items={filtered} onMore={onMore} onOpen={onOpen} />
       ) : (
         <div style={{ padding: "4px 16px 0" }}>
           {filtered.map((b) => (
-            <div key={b.id} onClick={() => onOpen(b)}>
-              <BookmarkCard bookmark={bookmarkToCard(b)} />
-            </div>
+            <BookmarkCard key={b.id} bookmark={bookmarkToCard(b)} onOpen={() => onOpen(b)} onMore={() => onMore(b)} />
           ))}
         </div>
       )}
@@ -310,11 +308,11 @@ export function MysliScreen({
 
 function ChatView({
   items,
-  onLongPress,
+  onMore,
   onOpen,
 }: {
   items: Bookmark[];
-  onLongPress: (b: Bookmark) => void;
+  onMore: (b: Bookmark) => void;
   onOpen: (b: Bookmark) => void;
 }) {
   // group by relative day for DaySeparator
@@ -337,14 +335,7 @@ function ChatView({
         const cr = bookmarkToChatRow(r.b);
         const last = i === rows.length - 1;
         return (
-          <div
-            key={r.b.id}
-            onClick={() => onOpen(r.b)}
-            onContextMenu={(e) => {
-              e.preventDefault();
-              onLongPress(r.b);
-            }}
-          >
+          <div key={r.b.id} onClick={() => onOpen(r.b)}>
             <ChatRow
               avatar={cr.avatar}
               name={cr.name}
@@ -355,6 +346,7 @@ function ChatView({
               pulsing={cr.pulsing}
               done={cr.done}
               muted={cr.muted}
+              onMore={() => onMore(r.b)}
               isLast={last}
             />
           </div>

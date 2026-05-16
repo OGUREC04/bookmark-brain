@@ -6,6 +6,7 @@ import { MysliScreen } from "./screens/Mysli";
 import { SearchScreen } from "./screens/SearchScreen";
 import { SpacesScreen } from "./screens/SpacesScreen";
 import { MeScreen } from "./screens/MeScreen";
+import { DetailScreen } from "./screens/DetailScreen";
 import {
   ActionSheet,
   RemindersSheet,
@@ -66,8 +67,22 @@ function groupReminders(items: RemItem[]): { label: string; rows: ReminderRowDat
 export function App() {
   const [tab, setTab] = useState<NavTab>("mysli");
   const [searchOpen, setSearchOpen] = useState(false);
+  const [detail, setDetail] = useState<Bookmark | null>(null);
   const [sheet, setSheet] = useState<Sheet>(null);
+  const [toast, setToast] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
+
+  // "В разработке" stub for actions without backend yet.
+  const comingSoon = useCallback(() => {
+    hapticImpact("light");
+    setToast("в разработке");
+  }, []);
+
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 1800);
+    return () => clearTimeout(t);
+  }, [toast]);
 
   const [reminders, setReminders] = useState<
     { id: string; fire_at: string; bookmark_title: string | null; bookmark_raw_text: string | null }[]
@@ -115,11 +130,12 @@ export function App() {
   useEffect(() => {
     const back = getBackButton();
     if (!back) return;
-    const overlayOpen = searchOpen || sheet !== null;
+    const overlayOpen = searchOpen || detail !== null || sheet !== null;
     if (overlayOpen) {
       back.show();
       const onBack = () => {
         if (sheet !== null) setSheet(null);
+        else if (detail !== null) setDetail(null);
         else setSearchOpen(false);
       };
       back.onClick(onBack);
@@ -129,11 +145,16 @@ export function App() {
       };
     }
     back.hide();
-  }, [searchOpen, sheet]);
+  }, [searchOpen, detail, sheet]);
 
-  const onLongPress = useCallback((b: Bookmark) => {
+  const openActions = useCallback((b: Bookmark) => {
     hapticImpact("medium");
     setSheet({ type: "action", target: targetOf(b), bookmark: b });
+  }, []);
+
+  const openDetail = useCallback((b: Bookmark) => {
+    hapticImpact("light");
+    setDetail(b);
   }, []);
 
   return (
@@ -145,25 +166,27 @@ export function App() {
       }}
       className="app-shell"
     >
-      <div key={searchOpen ? "search" : tab} className="screen-fade">
-        {searchOpen ? (
-          <SearchScreen onBack={() => setSearchOpen(false)} onOpen={() => {}} />
+      <div key={detail ? `d-${detail.id}` : searchOpen ? "search" : tab} className="screen-fade">
+        {detail ? (
+          <DetailScreen bookmark={detail} onBack={() => setDetail(null)} onMore={() => openActions(detail)} />
+        ) : searchOpen ? (
+          <SearchScreen onBack={() => setSearchOpen(false)} onOpen={comingSoon} />
         ) : tab === "mysli" ? (
           <MysliScreen
             reloadKey={reloadKey}
             onSearch={() => setSearchOpen(true)}
             onBell={() => setSheet({ type: "reminders" })}
-            onLongPress={onLongPress}
-            onOpen={onLongPress}
+            onMore={openActions}
+            onOpen={openDetail}
           />
         ) : tab === "spaces" ? (
-          <SpacesScreen onOpen={() => {}} onCreate={() => {}} />
+          <SpacesScreen onOpen={comingSoon} onCreate={comingSoon} />
         ) : (
-          <MeScreen />
+          <MeScreen onComingSoon={comingSoon} />
         )}
       </div>
 
-      {!searchOpen && (
+      {!searchOpen && !detail && (
         <BottomNav
           current={tab}
           onChange={(t) => {
@@ -248,7 +271,7 @@ export function App() {
               reload();
             })
           }
-          onCreate={() => {}}
+          onCreate={comingSoon}
         />
       )}
 
@@ -263,6 +286,32 @@ export function App() {
             })
           }
         />
+      )}
+
+      {toast && (
+        <div
+          style={{
+            position: "fixed",
+            left: "50%",
+            bottom: "calc(110px + env(safe-area-inset-bottom, 0px))",
+            transform: "translateX(-50%)",
+            zIndex: 200,
+            padding: "10px 18px",
+            borderRadius: 999,
+            background: "rgba(28,22,18,0.86)",
+            color: "#FBF7EC",
+            fontFamily: "var(--font-ui)",
+            fontSize: 13,
+            fontWeight: 500,
+            letterSpacing: "-0.005em",
+            boxShadow: "0 6px 20px rgba(60,40,25,0.28)",
+            animation: "screenIn 220ms var(--ease-out, ease) both",
+            pointerEvents: "none",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {toast}
+        </div>
       )}
     </div>
   );

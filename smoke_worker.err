@@ -22174,3 +22174,171 @@ Call stack:
     logger.info('%6.2fs \u2190 %s \u25cf %s', (finished_ms - start_ms) / 1000, ref, result_str)
 Message: '%6.2fs \u2190 %s \u25cf %s'
 Arguments: (0.032, 'cron:scheduled_dispatcher', '')
+--- Logging error ---
+Traceback (most recent call last):
+  File "C:\Users\nicha\AppData\Local\Programs\Python\Python313\Lib\logging\__init__.py", line 1154, in emit
+    stream.write(msg + self.terminator)
+    ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\nicha\AppData\Local\Programs\Python\Python313\Lib\encodings\cp1251.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode character '\u2192' in position 51: character maps to <undefined>
+Call stack:
+  File "D:\projects\bookmark-brain\backend\run_worker.py", line 25, in <module>
+    asyncio.run(main())
+  File "C:\Users\nicha\AppData\Local\Programs\Python\Python313\Lib\asyncio\runners.py", line 195, in run
+    return runner.run(main)
+  File "C:\Users\nicha\AppData\Local\Programs\Python\Python313\Lib\asyncio\runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+  File "C:\Users\nicha\AppData\Local\Programs\Python\Python313\Lib\asyncio\base_events.py", line 712, in run_until_complete
+    self.run_forever()
+  File "C:\Users\nicha\AppData\Local\Programs\Python\Python313\Lib\asyncio\base_events.py", line 683, in run_forever
+    self._run_once()
+  File "C:\Users\nicha\AppData\Local\Programs\Python\Python313\Lib\asyncio\base_events.py", line 2061, in _run_once
+    handle._run()
+  File "C:\Users\nicha\AppData\Local\Programs\Python\Python313\Lib\asyncio\events.py", line 89, in _run
+    self._context.run(self._callback, *self._args)
+  File "C:\Users\nicha\AppData\Local\bookmark-brain\venv\Lib\site-packages\arq\worker.py", line 587, in run_job
+    logger.info('%6.2fs \u2192 %s(%s)%s', (start_ms - enqueue_time_ms) / 1000, ref, s, extra)
+Message: '%6.2fs \u2192 %s(%s)%s'
+Arguments: (0.758, 'cron:scheduled_dispatcher', '', '')
+--- Logging error ---
+Traceback (most recent call last):
+  File "C:\Users\nicha\AppData\Local\Programs\Python\Python313\Lib\logging\__init__.py", line 1154, in emit
+    stream.write(msg + self.terminator)
+    ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\nicha\AppData\Local\Programs\Python\Python313\Lib\encodings\cp1251.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode character '\u2190' in position 51: character maps to <undefined>
+Call stack:
+  File "D:\projects\bookmark-brain\backend\run_worker.py", line 25, in <module>
+    asyncio.run(main())
+  File "C:\Users\nicha\AppData\Local\Programs\Python\Python313\Lib\asyncio\runners.py", line 195, in run
+    return runner.run(main)
+  File "C:\Users\nicha\AppData\Local\Programs\Python\Python313\Lib\asyncio\runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+  File "C:\Users\nicha\AppData\Local\Programs\Python\Python313\Lib\asyncio\base_events.py", line 712, in run_until_complete
+    self.run_forever()
+  File "C:\Users\nicha\AppData\Local\Programs\Python\Python313\Lib\asyncio\base_events.py", line 683, in run_forever
+    self._run_once()
+  File "C:\Users\nicha\AppData\Local\Programs\Python\Python313\Lib\asyncio\base_events.py", line 2061, in _run_once
+    handle._run()
+  File "C:\Users\nicha\AppData\Local\Programs\Python\Python313\Lib\asyncio\events.py", line 89, in _run
+    self._context.run(self._callback, *self._args)
+  File "C:\Users\nicha\AppData\Local\bookmark-brain\venv\Lib\site-packages\arq\worker.py", line 631, in run_job
+    logger.info('%6.2fs \u2190 %s \u25cf %s', (finished_ms - start_ms) / 1000, ref, result_str)
+Message: '%6.2fs \u2190 %s \u25cf %s'
+Arguments: (0.186, 'cron:scheduled_dispatcher', '')
+--- Logging error ---
+Traceback (most recent call last):
+  File "C:\Users\nicha\AppData\Local\Programs\Python\Python313\Lib\logging\__init__.py", line 1154, in emit
+    stream.write(msg + self.terminator)
+    ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\nicha\AppData\Local\Programs\Python\Python313\Lib\encodings\cp1251.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode character '\u2192' in position 51: character maps to <undefined>
+Call stack:
+  File "D:\projects\bookmark-brain\backend\run_worker.py", line 25, in <module>
+    asyncio.run(main())
+  File "C:\Users\nicha\AppData\Local\Programs\Python\Python313\Lib\asyncio\runners.py", line 195, in run
+    return runner.run(main)
+  File "C:\Users\nicha\AppData\Local\Programs\Python\Python313\Lib\asyncio\runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+  File "C:\Users\nicha\AppData\Local\Programs\Python\Python313\Lib\asyncio\base_events.py", line 712, in run_until_complete
+    self.run_forever()
+  File "C:\Users\nicha\AppData\Local\Programs\Python\Python313\Lib\asyncio\base_events.py", line 683, in run_forever
+    self._run_once()
+  File "C:\Users\nicha\AppData\Local\Programs\Python\Python313\Lib\asyncio\base_events.py", line 2061, in _run_once
+    handle._run()
+  File "C:\Users\nicha\AppData\Local\Programs\Python\Python313\Lib\asyncio\events.py", line 89, in _run
+    self._context.run(self._callback, *self._args)
+  File "C:\Users\nicha\AppData\Local\bookmark-brain\venv\Lib\site-packages\arq\worker.py", line 587, in run_job
+    logger.info('%6.2fs \u2192 %s(%s)%s', (start_ms - enqueue_time_ms) / 1000, ref, s, extra)
+Message: '%6.2fs \u2192 %s(%s)%s'
+Arguments: (1.025, 'cron:scheduled_dispatcher', '', '')
+--- Logging error ---
+Traceback (most recent call last):
+  File "C:\Users\nicha\AppData\Local\Programs\Python\Python313\Lib\logging\__init__.py", line 1154, in emit
+    stream.write(msg + self.terminator)
+    ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\nicha\AppData\Local\Programs\Python\Python313\Lib\encodings\cp1251.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode character '\u2190' in position 51: character maps to <undefined>
+Call stack:
+  File "D:\projects\bookmark-brain\backend\run_worker.py", line 25, in <module>
+    asyncio.run(main())
+  File "C:\Users\nicha\AppData\Local\Programs\Python\Python313\Lib\asyncio\runners.py", line 195, in run
+    return runner.run(main)
+  File "C:\Users\nicha\AppData\Local\Programs\Python\Python313\Lib\asyncio\runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+  File "C:\Users\nicha\AppData\Local\Programs\Python\Python313\Lib\asyncio\base_events.py", line 712, in run_until_complete
+    self.run_forever()
+  File "C:\Users\nicha\AppData\Local\Programs\Python\Python313\Lib\asyncio\base_events.py", line 683, in run_forever
+    self._run_once()
+  File "C:\Users\nicha\AppData\Local\Programs\Python\Python313\Lib\asyncio\base_events.py", line 2061, in _run_once
+    handle._run()
+  File "C:\Users\nicha\AppData\Local\Programs\Python\Python313\Lib\asyncio\events.py", line 89, in _run
+    self._context.run(self._callback, *self._args)
+  File "C:\Users\nicha\AppData\Local\bookmark-brain\venv\Lib\site-packages\arq\worker.py", line 631, in run_job
+    logger.info('%6.2fs \u2190 %s \u25cf %s', (finished_ms - start_ms) / 1000, ref, result_str)
+Message: '%6.2fs \u2190 %s \u25cf %s'
+Arguments: (0.045, 'cron:scheduled_dispatcher', '')
+--- Logging error ---
+Traceback (most recent call last):
+  File "C:\Users\nicha\AppData\Local\Programs\Python\Python313\Lib\logging\__init__.py", line 1154, in emit
+    stream.write(msg + self.terminator)
+    ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\nicha\AppData\Local\Programs\Python\Python313\Lib\encodings\cp1251.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode character '\u2192' in position 51: character maps to <undefined>
+Call stack:
+  File "D:\projects\bookmark-brain\backend\run_worker.py", line 25, in <module>
+    asyncio.run(main())
+  File "C:\Users\nicha\AppData\Local\Programs\Python\Python313\Lib\asyncio\runners.py", line 195, in run
+    return runner.run(main)
+  File "C:\Users\nicha\AppData\Local\Programs\Python\Python313\Lib\asyncio\runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+  File "C:\Users\nicha\AppData\Local\Programs\Python\Python313\Lib\asyncio\base_events.py", line 712, in run_until_complete
+    self.run_forever()
+  File "C:\Users\nicha\AppData\Local\Programs\Python\Python313\Lib\asyncio\base_events.py", line 683, in run_forever
+    self._run_once()
+  File "C:\Users\nicha\AppData\Local\Programs\Python\Python313\Lib\asyncio\base_events.py", line 2061, in _run_once
+    handle._run()
+  File "C:\Users\nicha\AppData\Local\Programs\Python\Python313\Lib\asyncio\events.py", line 89, in _run
+    self._context.run(self._callback, *self._args)
+  File "C:\Users\nicha\AppData\Local\bookmark-brain\venv\Lib\site-packages\arq\worker.py", line 587, in run_job
+    logger.info('%6.2fs \u2192 %s(%s)%s', (start_ms - enqueue_time_ms) / 1000, ref, s, extra)
+Message: '%6.2fs \u2192 %s(%s)%s'
+Arguments: (1.028, 'cron:scheduled_dispatcher', '', '')
+--- Logging error ---
+Traceback (most recent call last):
+  File "C:\Users\nicha\AppData\Local\Programs\Python\Python313\Lib\logging\__init__.py", line 1154, in emit
+    stream.write(msg + self.terminator)
+    ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\nicha\AppData\Local\Programs\Python\Python313\Lib\encodings\cp1251.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode character '\u2190' in position 51: character maps to <undefined>
+Call stack:
+  File "D:\projects\bookmark-brain\backend\run_worker.py", line 25, in <module>
+    asyncio.run(main())
+  File "C:\Users\nicha\AppData\Local\Programs\Python\Python313\Lib\asyncio\runners.py", line 195, in run
+    return runner.run(main)
+  File "C:\Users\nicha\AppData\Local\Programs\Python\Python313\Lib\asyncio\runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+  File "C:\Users\nicha\AppData\Local\Programs\Python\Python313\Lib\asyncio\base_events.py", line 712, in run_until_complete
+    self.run_forever()
+  File "C:\Users\nicha\AppData\Local\Programs\Python\Python313\Lib\asyncio\base_events.py", line 683, in run_forever
+    self._run_once()
+  File "C:\Users\nicha\AppData\Local\Programs\Python\Python313\Lib\asyncio\base_events.py", line 2061, in _run_once
+    handle._run()
+  File "C:\Users\nicha\AppData\Local\Programs\Python\Python313\Lib\asyncio\events.py", line 89, in _run
+    self._context.run(self._callback, *self._args)
+  File "C:\Users\nicha\AppData\Local\bookmark-brain\venv\Lib\site-packages\arq\worker.py", line 631, in run_job
+    logger.info('%6.2fs \u2190 %s \u25cf %s', (finished_ms - start_ms) / 1000, ref, result_str)
+Message: '%6.2fs \u2190 %s \u25cf %s'
+Arguments: (0.493, 'cron:scheduled_dispatcher', '')

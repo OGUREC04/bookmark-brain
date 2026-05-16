@@ -115,7 +115,7 @@ function SettingsGroup({
   );
 }
 
-export function MeScreen() {
+export function MeScreen({ onComingSoon }: { onComingSoon: () => void }) {
   const [me, setMe] = useState<UserInfo | null>(null);
 
   useEffect(() => {
@@ -206,6 +206,7 @@ export function MeScreen() {
           { l: "AI-подсказки", r: "вкл" },
           { l: "таймзона", r: "GMT+3" },
         ]}
+        onRow={onComingSoon}
       />
       <SettingsGroup
         title="вид"
@@ -214,6 +215,7 @@ export function MeScreen() {
           { l: "архивировать через", r: "90 дней" },
           { l: "плотность списка", r: "обычная" },
         ]}
+        onRow={onComingSoon}
       />
       <SettingsGroup
         title="данные"
@@ -221,6 +223,7 @@ export function MeScreen() {
           { l: "экспорт в Markdown", r: "→" },
           { l: "подключить Notion", r: "→" },
         ]}
+        onRow={onComingSoon}
       />
 
       <div
