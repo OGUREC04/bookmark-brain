@@ -59,12 +59,16 @@ async def _maybe_send_first_task_list_tip(session, user_id, chat_id: int) -> Non
 
 async def _store_general_dedup(
     chat_id: int, alert_msg_id: int,
-    new_bid: str, old_bid: str,
+    new_bid: str, old_bid: str, src_msg_id: int | None = None,
 ) -> None:
     """Сохраняет состояние general dedup в Redis.
 
     Ключ: general_dedup:{chat_id}:{alert_msg_id}.
     Bot reply handler использует этот ключ для обработки ответа юзера.
+
+    src_msg_id — исходное сообщение юзера. В silent-режиме near-dup
+    снимает с него 👀; по нему bot вернёт 👍 после save_new/update,
+    иначе фидбэка нет вообще (#10).
     """
     import json
     try:
@@ -76,6 +80,7 @@ async def _store_general_dedup(
                 json.dumps({
                     "new_bid": new_bid,
                     "old_bid": old_bid,
+                    "src_msg_id": src_msg_id,
                 }),
                 ex=24 * 3600,
             )

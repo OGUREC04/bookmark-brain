@@ -186,6 +186,7 @@ async def process_bookmark_task(
                         await _store_general_dedup(
                             chat_id, alert_mid,
                             bookmark_id, dup["id"],
+                            src_msg_id=message_id,
                         )
                         near_dup_handled = True
                         logger.info(

@@ -11,7 +11,7 @@ import logging
 
 from aiogram import F, Router
 from aiogram.exceptions import TelegramBadRequest
-from aiogram.types import CallbackQuery, Message
+from aiogram.types import CallbackQuery, Message, ReactionTypeEmoji
 
 from .shared import (
     MSG_DUP_DELETED,
@@ -31,6 +31,23 @@ from .shared import (
 logger = logging.getLogger(__name__)
 
 router = Router()
+
+
+async def _react_src(bot, chat_id: int, src_msg_id, emoji: str) -> None:
+    """#10: вернуть реакцию на исходное сообщение юзера.
+
+    В silent-режиме near-dup снимает 👀 (worker processing.py). Без этого
+    после «сохрани как новую»/«обнови» юзер не видит вообще никакого
+    фидбэка — кажется, что ничего не сохранилось. Best-effort.
+    """
+    if not src_msg_id:
+        return
+    try:
+        await bot.set_message_reaction(
+            chat_id, src_msg_id, [ReactionTypeEmoji(emoji=emoji)],
+        )
+    except Exception as e:
+        logger.debug(f"_react_src failed for {src_msg_id}: {e}")
 
 
 # ───────────────────── Dedup: merge / keep ─────────────────────
@@ -347,6 +364,7 @@ async def _handle_general_dedup_reply(
     replied = message.reply_to_message
     new_bid = dedup["new_bid"]
     old_bid = dedup["old_bid"]
+    src_msg_id = dedup.get("src_msg_id")
     user_text = message.text or ""
     intent = parse_dedup_intent(user_text)
 
@@ -424,6 +442,8 @@ async def _handle_general_dedup_reply(
             asyncio.create_task(_delete_after(replied, 5.0))
         except TelegramBadRequest:
             pass
+        # #10: вернуть фидбэк на исходное сообщение (silent снял 👀)
+        await _react_src(message.bot, chat_id, src_msg_id, "\U0001f44d")
 
     elif intent == "update":
         # См. docs/bugs/2026-05-11-task-list-duplicates-and-merge-ui.md
@@ -431,6 +451,8 @@ async def _handle_general_dedup_reply(
         if old_bm is None:
             await _ephemeral(message, MSG_UPDATE_FAILED)
         else:
+            # #10: вернуть фидбэк на исходное сообщение (silent снял 👀)
+            await _react_src(message.bot, chat_id, src_msg_id, "\U0001f44d")
             from bot.handlers.settings import is_silent
             silent = await is_silent(api, token, message.from_user.id)
             rendered = await _show_updated_task_list_after_dedup_update(
@@ -490,6 +512,7 @@ async def handle_pending_dedup(
 
     new_bid = dedup["new_bid"]
     old_bid = dedup["old_bid"]
+    src_msg_id = dedup.get("src_msg_id")
     chat_id = message.chat.id
     bot = message.bot
 
@@ -528,6 +551,7 @@ async def handle_pending_dedup(
     elif intent == "save_new":
         await _edit_alert(MSG_SAVED_NEW)
         asyncio.create_task(_delete_after_by_id(bot, chat_id, alert_msg_id, 5.0))
+        await _react_src(bot, chat_id, src_msg_id, "\U0001f44d")
 
     elif intent == "update":
         # См. docs/bugs/2026-05-11-task-list-duplicates-and-merge-ui.md
@@ -535,6 +559,7 @@ async def handle_pending_dedup(
         if old_bm is None:
             await _edit_alert(MSG_UPDATE_FAILED)
         else:
+            await _react_src(bot, chat_id, src_msg_id, "\U0001f44d")
             from bot.handlers.settings import is_silent
             silent = await is_silent(api, token, message.from_user.id)
             rendered = await _show_updated_task_list_after_dedup_update(
