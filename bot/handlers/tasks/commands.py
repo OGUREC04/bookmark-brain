@@ -33,7 +33,7 @@ async def cmd_todo(message: Message, api):
     raw_text = f"сделай список: {content}"
 
     from bot.handlers.settings import is_silent
-    from bot.utils import safe_react, ephemeral_error
+    from bot.utils import ephemeral_error, safe_react
     silent = await is_silent(api, token, message.from_user.id)
 
     if silent:

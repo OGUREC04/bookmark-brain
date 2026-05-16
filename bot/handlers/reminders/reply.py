@@ -15,11 +15,11 @@ from aiogram.types import Message
 
 from bot.common import TIME_EXAMPLES, format_fire_at, get_user_tz_name, safe
 
+from .list import handle_reminders_list_reply
 from .shared import (
     _cap_text,
     extract_first_datetime_entity,
 )
-from .list import handle_reminders_list_reply
 
 logger = logging.getLogger(__name__)
 

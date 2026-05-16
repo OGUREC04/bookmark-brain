@@ -63,8 +63,8 @@ async def cb_dedup_merge(callback: CallbackQuery, api, store=None):
             pass
         return
 
-    from bot.handlers.start import _ensure_user
     from bot.handlers.settings import is_silent
+    from bot.handlers.start import _ensure_user
     token = await _ensure_user(callback, api)
     if not token:
         return

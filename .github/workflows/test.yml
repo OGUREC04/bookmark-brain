@@ -2,7 +2,7 @@ name: Tests
 
 on:
   push:
-    branches: [main, feat/*]
+    branches: [main, feat/*, refactor/*]
   pull_request:
     branches: [main]
 
@@ -25,13 +25,24 @@ jobs:
         run: pip install -r backend/requirements.txt
 
       - name: Install test dependencies
-        run: pip install pytest pytest-asyncio ruff mypy freezegun
+        run: pip install pytest pytest-asyncio ruff mypy freezegun import-linter
 
-      - name: Lint (ruff) — bugs only on PR-touched files
+      - name: Architecture contracts (import-linter) — HARD FAIL
+        # Enforces feature independence (reminders ⊥ tasks) and the
+        # handlers → common layering. Contracts live in pyproject.toml
+        # [tool.importlinter]; see ARCHITECTURE.md. A violation here means
+        # a lateral feature coupling / layer breach was reintroduced.
+        run: lint-imports
+
+      - name: Lint (ruff) — architecture surface, HARD FAIL
+        # bot/ is kept ruff-clean as part of the reference-grade refactor.
+        # Config (select rules, TID relative-import ban) is in pyproject.toml.
+        run: python -m ruff check bot/
+
+      - name: Lint (ruff) — bugs only on key backend files
         run: |
           python -m ruff check \
-            bot/onboarding.py bot/services/stt.py bot/handlers/start.py \
-            backend/app/worker.py backend/app/services/bookmark_processor.py \
+            backend/app/worker/ backend/app/services/bookmark_processor.py \
             backend/app/services/task_list_detector.py \
             --select=F,B,E711,E712,E721,E722
 

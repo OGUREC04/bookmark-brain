@@ -161,8 +161,8 @@ async def _process_audio(
     ext: str,
 ) -> None:
     """Download -> transcribe -> create bookmark."""
-    from bot.handlers.start import _ensure_user
     from bot.handlers.settings import is_silent
+    from bot.handlers.start import _ensure_user
 
     stt = _get_stt()
     if stt is None:

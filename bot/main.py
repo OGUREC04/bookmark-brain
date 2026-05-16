@@ -28,11 +28,17 @@ from bot.handlers import (
     media,
     random,
     reminder_choice,
-    reminders as reminders_handler,
     search,
-    settings as settings_handler,
     start,
     tasks,
+)
+from bot.handlers import (
+    reminders as reminders_handler,
+)
+from bot.handlers import (
+    settings as settings_handler,
+)
+from bot.handlers import (
     timezone as timezone_handler,
 )
 from bot.state_store import StateStore

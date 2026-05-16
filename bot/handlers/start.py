@@ -4,10 +4,16 @@ import time
 
 from aiogram import F, Router, types
 from aiogram.filters import Command, CommandStart
-from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message, WebAppInfo
+from aiogram.types import (
+    CallbackQuery,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    Message,
+    WebAppInfo,
+)
 
-from bot.config import get_settings
 from bot import onboarding
+from bot.config import get_settings
 from bot.utils import ephemeral_error, safe_react
 
 _settings = get_settings()
