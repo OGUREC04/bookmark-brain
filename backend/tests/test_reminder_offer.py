@@ -40,8 +40,8 @@ class TestMaybeOfferReminder:
         bm = _bookmark(has_intent=True)
         send_mock = AsyncMock(return_value={"message_id": 555})
 
-        with patch("app.worker._send_message", send_mock), \
-             patch("app.worker.aioredis_from_url", return_value=mock_redis):
+        with patch("app.worker.reminder_offer._send_message", send_mock), \
+             patch("app.worker.reminder_offer.aioredis_from_url", return_value=mock_redis):
             await _maybe_offer_reminder(
                 bookmark=bm, chat_id=999, silent=False,
             )
@@ -71,8 +71,8 @@ class TestMaybeOfferReminder:
         bm = _bookmark(has_intent=True)
         send_mock = AsyncMock(return_value={"message_id": 42})
 
-        with patch("app.worker._send_message", send_mock), \
-             patch("app.worker.aioredis_from_url", return_value=mock_redis):
+        with patch("app.worker.reminder_offer._send_message", send_mock), \
+             patch("app.worker.reminder_offer.aioredis_from_url", return_value=mock_redis):
             await _maybe_offer_reminder(
                 bookmark=bm, chat_id=999, silent=True,
             )
@@ -85,7 +85,7 @@ class TestMaybeOfferReminder:
         bm = _bookmark(has_intent=False)
         send_mock = AsyncMock()
 
-        with patch("app.worker._send_message", send_mock):
+        with patch("app.worker.reminder_offer._send_message", send_mock):
             await _maybe_offer_reminder(
                 bookmark=bm, chat_id=999, silent=False,
             )
@@ -100,7 +100,7 @@ class TestMaybeOfferReminder:
         bm.structured_data = None
         send_mock = AsyncMock()
 
-        with patch("app.worker._send_message", send_mock):
+        with patch("app.worker.reminder_offer._send_message", send_mock):
             await _maybe_offer_reminder(
                 bookmark=bm, chat_id=999, silent=False,
             )
@@ -113,7 +113,7 @@ class TestMaybeOfferReminder:
         bm = _bookmark(has_intent=True)
         send_mock = AsyncMock()
 
-        with patch("app.worker._send_message", send_mock):
+        with patch("app.worker.reminder_offer._send_message", send_mock):
             await _maybe_offer_reminder(
                 bookmark=bm, chat_id=None, silent=False,
             )
@@ -128,8 +128,8 @@ class TestMaybeOfferReminder:
         bm = _bookmark(has_intent=True)
         send_mock = AsyncMock(return_value=None)  # send failed
 
-        with patch("app.worker._send_message", send_mock), \
-             patch("app.worker.aioredis_from_url", return_value=mock_redis):
+        with patch("app.worker.reminder_offer._send_message", send_mock), \
+             patch("app.worker.reminder_offer.aioredis_from_url", return_value=mock_redis):
             await _maybe_offer_reminder(
                 bookmark=bm, chat_id=999, silent=False,
             )
@@ -154,8 +154,8 @@ class TestMaybeOfferReminder:
         mock_redis.set = AsyncMock(side_effect=Exception("Redis down"))
         send_mock = AsyncMock()
 
-        with patch("app.worker._send_message", send_mock), \
-             patch("app.worker.aioredis_from_url", return_value=mock_redis):
+        with patch("app.worker.reminder_offer._send_message", send_mock), \
+             patch("app.worker.reminder_offer.aioredis_from_url", return_value=mock_redis):
             await _maybe_offer_reminder(
                 bookmark=bm, chat_id=999, silent=False,
             )

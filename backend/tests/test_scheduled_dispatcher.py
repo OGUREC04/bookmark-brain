@@ -103,8 +103,8 @@ class TestScheduledDispatcher:
             _ExecResult(all_rows=[]),
         ])
 
-        with patch("app.worker.async_session") as mk_sess, \
-             patch("app.worker._send_message", AsyncMock()) as send:
+        with patch("app.worker.scheduled.async_session") as mk_sess, \
+             patch("app.worker.scheduled._send_message", AsyncMock()) as send:
             mk_sess.return_value.__aenter__.return_value = mock_session
             await scheduled_dispatcher({})
             send.assert_not_called()
@@ -118,8 +118,8 @@ class TestScheduledDispatcher:
             _ExecResult(all_rows=[]),    # SELECT due после recovery
         ])
 
-        with patch("app.worker.async_session") as mk_sess, \
-             patch("app.worker._send_message", AsyncMock()):
+        with patch("app.worker.scheduled.async_session") as mk_sess, \
+             patch("app.worker.scheduled._send_message", AsyncMock()):
             mk_sess.return_value.__aenter__.return_value = mock_session
             await scheduled_dispatcher({})  # не должен бросить
 
@@ -147,9 +147,9 @@ class TestScheduledDispatcher:
 
         send_mock = AsyncMock(return_value={"message_id": 12345})
 
-        with patch("app.worker.async_session") as mk_sess, \
-             patch("app.worker._send_message", send_mock), \
-             patch("app.worker.aioredis_from_url", return_value=mock_redis):
+        with patch("app.worker.scheduled.async_session") as mk_sess, \
+             patch("app.worker.scheduled._send_message", send_mock), \
+             patch("app.worker.scheduled.aioredis_from_url", return_value=mock_redis):
             mk_sess.return_value.__aenter__.return_value = mock_session
             await scheduled_dispatcher({})
 
@@ -178,8 +178,8 @@ class TestScheduledDispatcher:
             _ExecResult(scalar=None),  # CAS промазал — другой воркер захватил
         ])
 
-        with patch("app.worker.async_session") as mk_sess, \
-             patch("app.worker._send_message", AsyncMock()) as send:
+        with patch("app.worker.scheduled.async_session") as mk_sess, \
+             patch("app.worker.scheduled._send_message", AsyncMock()) as send:
             mk_sess.return_value.__aenter__.return_value = mock_session
             await scheduled_dispatcher({})
             send.assert_not_called()
@@ -199,9 +199,9 @@ class TestScheduledDispatcher:
 
         send_mock = AsyncMock(return_value=None)  # send failed
 
-        with patch("app.worker.async_session") as mk_sess, \
-             patch("app.worker._send_message", send_mock), \
-             patch("app.worker.aioredis_from_url", return_value=mock_redis):
+        with patch("app.worker.scheduled.async_session") as mk_sess, \
+             patch("app.worker.scheduled._send_message", send_mock), \
+             patch("app.worker.scheduled.aioredis_from_url", return_value=mock_redis):
             mk_sess.return_value.__aenter__.return_value = mock_session
             await scheduled_dispatcher({})
 
@@ -226,9 +226,9 @@ class TestScheduledDispatcher:
 
         send_mock = AsyncMock(return_value=None)
 
-        with patch("app.worker.async_session") as mk_sess, \
-             patch("app.worker._send_message", send_mock), \
-             patch("app.worker.aioredis_from_url", return_value=mock_redis):
+        with patch("app.worker.scheduled.async_session") as mk_sess, \
+             patch("app.worker.scheduled._send_message", send_mock), \
+             patch("app.worker.scheduled.aioredis_from_url", return_value=mock_redis):
             mk_sess.return_value.__aenter__.return_value = mock_session
             await scheduled_dispatcher({})
 
@@ -255,9 +255,9 @@ class TestScheduledDispatcher:
 
         send_mock = AsyncMock(return_value={"message_id": 100})
 
-        with patch("app.worker.async_session") as mk_sess, \
-             patch("app.worker._send_message", send_mock), \
-             patch("app.worker.aioredis_from_url", return_value=mock_redis):
+        with patch("app.worker.scheduled.async_session") as mk_sess, \
+             patch("app.worker.scheduled._send_message", send_mock), \
+             patch("app.worker.scheduled.aioredis_from_url", return_value=mock_redis):
             mk_sess.return_value.__aenter__.return_value = mock_session
             await scheduled_dispatcher({})
 
@@ -277,9 +277,9 @@ class TestScheduledDispatcher:
         ])
         send_mock = AsyncMock(return_value={"message_id": 1})
 
-        with patch("app.worker.async_session") as mk_sess, \
-             patch("app.worker._send_message", send_mock), \
-             patch("app.worker.aioredis_from_url", return_value=mock_redis):
+        with patch("app.worker.scheduled.async_session") as mk_sess, \
+             patch("app.worker.scheduled._send_message", send_mock), \
+             patch("app.worker.scheduled.aioredis_from_url", return_value=mock_redis):
             mk_sess.return_value.__aenter__.return_value = mock_session
             await scheduled_dispatcher({})
 
@@ -300,7 +300,7 @@ class TestAutoDoneReminders:
 
         mock_session.execute = AsyncMock(return_value=_ExecResult(rowcount=3))
 
-        with patch("app.worker.async_session") as mk_sess:
+        with patch("app.worker.scheduled.async_session") as mk_sess:
             mk_sess.return_value.__aenter__.return_value = mock_session
             await auto_done_reminders({})
 
@@ -314,7 +314,7 @@ class TestAutoDoneReminders:
 
         mock_session.execute = AsyncMock(return_value=_ExecResult(rowcount=0))
 
-        with patch("app.worker.async_session") as mk_sess:
+        with patch("app.worker.scheduled.async_session") as mk_sess:
             mk_sess.return_value.__aenter__.return_value = mock_session
             await auto_done_reminders({})  # не должен бросить
 
