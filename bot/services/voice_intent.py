@@ -9,7 +9,6 @@ Detection is purely heuristic (no LLM call) for speed.
 """
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
 from enum import Enum
 
