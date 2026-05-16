@@ -3,7 +3,8 @@ import { useCallback, useState } from "react";
 export type ViewMode = "feed" | "chats";
 
 const KEY = "bb_view_mode";
-const DEFAULT: ViewMode = "feed";
+// DS: reference_app uses chat-row as default (dense Telegram-familiar pattern).
+const DEFAULT: ViewMode = "chats";
 
 function read(): ViewMode {
   try {

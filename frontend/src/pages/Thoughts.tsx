@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useState } from "react";
-import { Inbox } from "lucide-react";
 import { AppHeader } from "../components/layout/AppHeader";
 import { ThoughtCard } from "../components/cards/ThoughtCard";
 import { SkeletonFeed, SkeletonChats } from "../components/ui/Skeleton";
@@ -135,6 +134,7 @@ export function ThoughtsPage() {
 
         {error && (
           <EmptyState
+            glyph="∅"
             title="Не удалось загрузить"
             description={error}
             action={
@@ -147,7 +147,7 @@ export function ThoughtsPage() {
 
         {!loading && !error && thoughts.length === 0 && (
           <EmptyState
-            icon={<Inbox size={48} strokeWidth={1.5} aria-hidden />}
+            glyph="¶"
             title="Пока пусто."
             description="Отправь что-нибудь боту — ссылку, мысль, голосовое. Появится здесь."
           />
@@ -155,8 +155,13 @@ export function ThoughtsPage() {
 
         {thoughts.length > 0 && (
           <div className={`thoughts-list thoughts-list--${viewMode}`} role="list">
-            {thoughts.map((t) => (
-              <ThoughtCard key={t.id} thought={t} variant={viewMode} />
+            {thoughts.map((t, i) => (
+              <ThoughtCard
+                key={t.id}
+                thought={t}
+                variant={viewMode}
+                isLast={i === thoughts.length - 1}
+              />
             ))}
             {loading && thoughts.length > 0 && (
               <p className="loading-more">Загружаем…</p>

@@ -41,7 +41,7 @@ export function AppHeader({ title, viewMode, onViewModeChange, remindersCount = 
               aria-label="Лента"
               onClick={() => onViewModeChange("feed")}
             >
-              <LayoutGrid size={16} strokeWidth={1.8} />
+              <LayoutGrid size={16} strokeWidth={1.5} />
             </button>
             <button
               type="button"
@@ -50,7 +50,7 @@ export function AppHeader({ title, viewMode, onViewModeChange, remindersCount = 
               aria-label="Список"
               onClick={() => onViewModeChange("chats")}
             >
-              <List size={16} strokeWidth={1.8} />
+              <List size={16} strokeWidth={1.5} />
             </button>
           </div>
         )}
@@ -62,7 +62,7 @@ export function AppHeader({ title, viewMode, onViewModeChange, remindersCount = 
             aria-label={`Напоминания, активных: ${remindersCount}`}
             onClick={handleNotif}
           >
-            <Clock size={14} strokeWidth={2} />
+            <Clock size={14} strokeWidth={1.5} />
             <span className="notif-pill__count">{remindersCount}</span>
           </button>
         )}

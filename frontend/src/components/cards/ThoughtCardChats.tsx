@@ -1,65 +1,98 @@
-import { Star, Clock, Pin } from "lucide-react";
-import type { Thought } from "../../lib/types";
-import { IconType, kindLabel } from "./IconType";
-import { formatRelativeDate, formatProgress } from "../../lib/formatters";
+import type { Thought, ThoughtKind } from "../../lib/types";
+import { Glyph } from "../ui/Glyph";
+import { Pulse } from "../ui/Pulse";
+import { kindLabel } from "./IconType";
+import { formatRelativeDate } from "../../lib/formatters";
 
 interface ThoughtCardChatsProps {
   thought: Thought;
   onMenuTap: () => void;
+  isLast?: boolean;
 }
 
 /**
- * Chats variant — плотный list-item «как в Telegram».
- * Avatar 48×48 (цветной по типу) + title + preview одной строкой + time + badge.
+ * Chat-row mode — Telegram-style dense row. Anatomy verbatim from
+ * docs/design-system/reference_app/ChatRow.jsx:
+ * avatar 46 (gradient by tone) · name Onest 14.5/500 · time JetBrains Mono 11 ·
+ * preview Lora italic 13.5 with mono <src> prefix · hairline 0.5px between rows.
  */
-export function ThoughtCardChats({ thought }: ThoughtCardChatsProps) {
+type Tone = "sage" | "honey" | "slate" | "plum" | "clay" | "moss";
+
+const KIND_TONE: Record<ThoughtKind, Tone> = {
+  idea: "sage",
+  voice: "honey",
+  article: "honey",
+  link: "slate",
+  task: "sage",
+  action: "moss",
+  other: "sage",
+};
+
+export function ThoughtCardChats({ thought, onMenuTap, isLast = false }: ThoughtCardChatsProps) {
   const t = thought;
-  // Counter badge:
-  //   tasklist → "3/5"
-  //   reminder в ближайшее → не используем здесь (он в preview)
-  //   иначе → нет
+  const processing = t.aiStatus !== "completed";
+  const isTask = t.kind === "task";
+  const tone = KIND_TONE[t.kind];
+  const letter = (t.title.trim()[0] || "•").toUpperCase();
+  const host = t.url ? safeHost(t.url) : null;
   const counter = t.taskProgress
-    ? formatProgress(t.taskProgress.done, t.taskProgress.total)
+    ? `${t.taskProgress.done}/${t.taskProgress.total}`
     : null;
 
   return (
-    <div className="card-chat" role="listitem">
-      <IconType kind={t.kind} avatar />
+    <div
+      className="chat-row"
+      onContextMenu={(e) => {
+        e.preventDefault();
+        onMenuTap();
+      }}
+    >
+      {isTask ? (
+        <span className="chat-avatar chat-avatar--task" aria-hidden="true">
+          <svg width={22} height={22} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round">
+            <rect x="3" y="3" width="18" height="18" rx="4" />
+            <path d="M8 12l3 3 5-6" />
+          </svg>
+        </span>
+      ) : (
+        <span className={`chat-avatar chat-avatar--${tone}`} aria-hidden="true">
+          {letter}
+        </span>
+      )}
 
-      <div className="card-chat__body">
-        <div className="card-chat__row1">
-          <div className="card-chat__title">
-            {t.isFavorite && (
-              <span className="icon-star" aria-label="избранное">
-                <Star size={12} strokeWidth={1.6} fill="currentColor" />
-              </span>
-            )}
-            <span className="card-chat__title-text">{t.title}</span>
-          </div>
-          <span className="card-chat__time">{formatRelativeDate(t.createdAt)}</span>
+      <div className={`chat-body ${isLast ? "is-last" : ""}`}>
+        <div className="chat-row1">
+          <span className="chat-name">{t.title}</span>
+          <span className="chat-time">{formatRelativeDate(t.createdAt)}</span>
         </div>
 
-        <div className="card-chat__row2">
-          <span className="card-chat__preview">
-            {t.summary || t.rawText.slice(0, 80)}
+        <div className="chat-row2">
+          <span className="chat-preview">
+            {host && <span className="chat-src">{host}</span>}
+            {t.summary || t.rawText.slice(0, 90)}
           </span>
-          <div className="card-chat__badges">
-            {t.hasReminder && (
-              <span className="badge-pin" aria-label="напоминание">
-                <Clock size={13} strokeWidth={1.8} />
-              </span>
-            )}
-            {counter && <span className="badge-counter">{counter}</span>}
-          </div>
+          <span className="chat-trailing">
+            {processing && <Pulse size={7} color="#C49454" />}
+            {counter && <span className="chat-badge">{counter}</span>}
+            {t.hasReminder && !counter && <Glyph ch="↺" size={15} />}
+            {t.isFavorite && <Glyph ch="★" size={15} />}
+          </span>
         </div>
-
-        {!counter && !t.hasReminder && t.tags.length === 0 && null}
       </div>
     </div>
   );
 }
 
-/** Compatibility: chat-style preview "tipe · text" — оставлен для возможного use в future */
+function safeHost(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return "";
+  }
+}
+
+/** preview "тип · текст" — exported for possible reuse */
 export function buildChatPreview(t: Thought): string {
   const label = kindLabel(t.kind);
   const body = t.summary || t.rawText.slice(0, 60);

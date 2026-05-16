@@ -35,7 +35,7 @@ export function BottomNav() {
         end
         className={({ isActive }) => `bottom-nav__btn ${isActive ? "is-active" : ""}`}
       >
-        <Home size={20} strokeWidth={1.9} />
+        <Home size={20} strokeWidth={1.5} />
         <span className="bottom-nav__label">Мысли</span>
       </NavLink>
 
@@ -43,7 +43,7 @@ export function BottomNav() {
         to="/search"
         className={({ isActive }) => `bottom-nav__btn ${isActive ? "is-active" : ""}`}
       >
-        <Search size={20} strokeWidth={1.9} />
+        <Search size={20} strokeWidth={1.5} />
         <span className="bottom-nav__label">Поиск</span>
       </NavLink>
 
@@ -53,14 +53,14 @@ export function BottomNav() {
         onClick={handleFabClick}
         aria-label="Создать мысль"
       >
-        <Plus size={22} strokeWidth={2.2} />
+        <Plus size={22} strokeWidth={1.4} />
       </button>
 
       <NavLink
         to="/spaces"
         className={({ isActive }) => `bottom-nav__btn ${isActive ? "is-active" : ""}`}
       >
-        <LayoutGrid size={20} strokeWidth={1.9} />
+        <LayoutGrid size={20} strokeWidth={1.5} />
         <span className="bottom-nav__label">Простр.</span>
       </NavLink>
 
@@ -68,7 +68,7 @@ export function BottomNav() {
         to="/me"
         className={({ isActive }) => `bottom-nav__btn ${isActive ? "is-active" : ""}`}
       >
-        <User size={20} strokeWidth={1.9} />
+        <User size={20} strokeWidth={1.5} />
         <span className="bottom-nav__label">Я</span>
       </NavLink>
     </nav>

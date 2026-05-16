@@ -1,7 +1,8 @@
-import { Star, Clock, MoreHorizontal } from "lucide-react";
 import type { Thought } from "../../lib/types";
-import { IconType, kindLabel } from "./IconType";
-import { formatDate, formatReminderDate, formatProgress } from "../../lib/formatters";
+import { Glyph } from "../ui/Glyph";
+import { Pulse } from "../ui/Pulse";
+import { tagStop } from "../../lib/tagPalette";
+import { formatDate } from "../../lib/formatters";
 
 interface ThoughtCardFeedProps {
   thought: Thought;
@@ -9,70 +10,88 @@ interface ThoughtCardFeedProps {
 }
 
 /**
- * Feed variant — full-width карточка с title/summary/tags/badges.
- * Один акцент на карточке: либо ⭐ (yellow), либо ⏰ (sage), не оба.
+ * Card mode — liquid-glass tile. Anatomy verbatim from
+ * docs/design-system/reference_app/BookmarkCard.jsx.
+ * Title Onest 15.5/500, summary Lora italic 14, meta JetBrains Mono 10.5.
  */
 export function ThoughtCardFeed({ thought, onMenuTap }: ThoughtCardFeedProps) {
   const t = thought;
-  return (
-    <article className="card-feed">
-      <header className="card-feed__top">
-        <span className="card-feed__type">
-          <IconType kind={t.kind} size={13} />
-          <span>{kindLabel(t.kind)}</span>
-        </span>
-        <div className="card-feed__meta">
-          {t.isFavorite && (
-            <span className="icon-star" aria-label="избранное">
-              <Star size={13} strokeWidth={1.6} fill="currentColor" />
-            </span>
-          )}
-          <span>{formatDate(t.createdAt)}</span>
-          <button
-            type="button"
-            className="card-feed__menu"
-            aria-label="Действия"
-            onClick={(e) => {
-              e.stopPropagation();
-              onMenuTap();
-            }}
-          >
-            <MoreHorizontal size={16} strokeWidth={1.8} />
-          </button>
-        </div>
-      </header>
+  const processing = t.aiStatus !== "completed";
+  const host = t.url ? safeHost(t.url) : null;
 
-      <h3 className="card-feed__title">{t.title}</h3>
+  return (
+    <article
+      className="card-feed"
+      onContextMenu={(e) => {
+        e.preventDefault();
+        onMenuTap();
+      }}
+    >
+      <h4 className="card-feed__title">{t.title}</h4>
+
       {t.summary && <p className="card-feed__summary">{t.summary}</p>}
 
       {t.taskProgress && (
         <div className="card-feed__task">
-          <div className="progress-bar">
+          <div className="card-feed__task-meta">
+            <span>
+              {t.taskProgress.done}/{t.taskProgress.total} готово
+            </span>
+          </div>
+          <div className="card-feed__task-bar">
             <div
-              className="progress-bar__fill"
-              style={{ width: `${(t.taskProgress.done / Math.max(t.taskProgress.total, 1)) * 100}%` }}
+              className="card-feed__task-fill"
+              style={{
+                width: `${(t.taskProgress.done / Math.max(t.taskProgress.total, 1)) * 100}%`,
+              }}
             />
           </div>
-          <span className="card-feed__task-count">{formatProgress(t.taskProgress.done, t.taskProgress.total)}</span>
         </div>
       )}
 
-      {(t.tags.length > 0 || t.hasReminder) && (
-        <footer className="card-feed__footer">
-          {t.tags.length > 0 && (
-            <span className="card-feed__tags">
-              {t.tags.slice(0, 3).map((tag) => `#${tag.name}`).join(" ")}
-              {t.tags.length > 3 && ` +${t.tags.length - 3}`}
+      <div className="card-feed__meta">
+        {host && <span className="card-feed__src">{host}</span>}
+        {host && <span className="card-feed__metadot" />}
+        <span>{formatDate(t.createdAt)}</span>
+        {processing && (
+          <>
+            <span className="card-feed__metadot" />
+            <span className="card-feed__ai">
+              <Pulse size={5} color="#C49454" />
+              ai…
+            </span>
+          </>
+        )}
+        {t.isFavorite && (
+          <>
+            <span className="card-feed__spacer" />
+            <Glyph ch="★" size={14} />
+          </>
+        )}
+      </div>
+
+      {t.tags.length > 0 && (
+        <div className="card-feed__tags">
+          {t.tags.slice(0, 4).map((tag) => (
+            <span key={tag.id} className="tag-chip" data-stop={tagStop(tag.name)}>
+              #{tag.name}
+            </span>
+          ))}
+          {t.tags.length > 4 && (
+            <span className="tag-chip" data-stop={8}>
+              +{t.tags.length - 4}
             </span>
           )}
-          {t.hasReminder && t.reminderAt && (
-            <span className="badge-reminder">
-              <Clock size={11} strokeWidth={2} />
-              {formatReminderDate(t.reminderAt)}
-            </span>
-          )}
-        </footer>
+        </div>
       )}
     </article>
   );
+}
+
+function safeHost(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return "";
+  }
 }

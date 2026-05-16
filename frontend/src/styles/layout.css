@@ -6,7 +6,9 @@
 /* ─── Shell ─── */
 
 .app-shell {
-  background: var(--bg-page);
+  /* DS signature backdrop — page-level light source (sage+apricot+blush+cream).
+     Fallback to --bg-page if --backdrop-gradient unset (Telegram bridge dark). */
+  background: var(--backdrop-gradient, var(--bg-page));
   min-height: 100vh;
   min-height: 100dvh;
   color: var(--fg-1);
@@ -121,26 +123,28 @@
 /* ─── Empty state ─── */
 
 .empty-state {
-  padding: 60px 24px;
+  padding: 48px 24px 64px;
   text-align: center;
   color: var(--fg-2);
 }
-.empty-state__icon {
-  display: inline-flex;
-  margin-bottom: 16px;
-  color: var(--fg-4);
+.empty-state__glyph {
+  line-height: 1;
+  margin-bottom: 18px;
 }
 .empty-state__title {
   font-size: 17px;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--fg-1);
   letter-spacing: -0.02em;
   margin: 0 0 6px;
 }
 .empty-state__desc {
+  font-family: var(--font-display);
+  font-style: italic;
   font-size: 14px;
   color: var(--fg-3);
-  line-height: 1.5;
+  line-height: 1.4;
+  letter-spacing: 0;
   margin: 0 0 16px;
   max-width: 280px;
   margin-left: auto;
@@ -150,28 +154,36 @@
   margin-top: 8px;
 }
 
-/* ─── Skeleton loaders ─── */
+/* ─── Pulse (DS replacement for spinners/progress bars) ─── */
 
-@keyframes bb-shimmer {
-  0% { background-position: -200px 0; }
-  100% { background-position: 200px 0; }
+@keyframes bb-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
 }
 
-.skeleton-list {
-  padding: 4px 0;
+@media (prefers-reduced-motion: reduce) {
+  [style*="bb-pulse"] { animation: none !important; }
 }
+
+/* Centered loading-dot block for first list load */
+.loading-dot {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 60px 0;
+}
+
+/* ─── Skeleton — STATIC layout placeholders (DS: no shimmer) ─── */
+
+.skeleton-list { padding: 4px 0; }
 
 .skeleton-card {
-  background: linear-gradient(90deg, var(--bg-surface) 0%, var(--bg-sunken) 50%, var(--bg-surface) 100%);
-  background-size: 400px 100%;
-  animation: bb-shimmer 1.5s ease-in-out infinite;
+  background: rgba(255, 252, 246, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.5);
   border-radius: 18px;
   margin-bottom: 10px;
 }
-
-.skeleton-card--feed {
-  height: 88px;
-}
+.skeleton-card--feed { height: 88px; }
 
 .skeleton-card--chats {
   display: flex;
@@ -180,20 +192,17 @@
   padding: 10px 16px;
   border-radius: 0;
   height: 68px;
-  margin-bottom: 1px;
-  border-bottom: 1px solid var(--border-1);
-  background: var(--bg-page);
-  animation: none;
+  margin-bottom: 0;
+  border: 0;
+  border-bottom: 0.5px solid var(--border-1);
+  background: transparent;
 }
 .skeleton-avatar {
-  width: 48px;
-  height: 48px;
+  width: 46px;
+  height: 46px;
   border-radius: 50%;
   background: var(--bg-sunken);
   flex-shrink: 0;
-  animation: bb-shimmer 1.5s ease-in-out infinite;
-  background: linear-gradient(90deg, var(--bg-sunken) 0%, var(--border-1) 50%, var(--bg-sunken) 100%);
-  background-size: 200px 100%;
 }
 .skeleton-lines {
   flex: 1;
@@ -204,21 +213,10 @@
 .skeleton-line {
   height: 10px;
   border-radius: 5px;
-  background: linear-gradient(90deg, var(--bg-sunken) 0%, var(--border-1) 50%, var(--bg-sunken) 100%);
-  background-size: 200px 100%;
-  animation: bb-shimmer 1.5s ease-in-out infinite;
+  background: var(--bg-sunken);
 }
 .skeleton-line--title { width: 60%; }
 .skeleton-line--text { width: 90%; height: 8px; }
-
-/* Reduced motion — disable shimmer */
-@media (prefers-reduced-motion: reduce) {
-  .skeleton-card,
-  .skeleton-line,
-  .skeleton-avatar {
-    animation: none;
-  }
-}
 
 /* ─── Buttons (minimal) ─── */
 

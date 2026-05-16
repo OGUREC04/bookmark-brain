@@ -7,6 +7,8 @@ import { ThoughtCardChats } from "./ThoughtCardChats";
 interface ThoughtCardProps {
   thought: Thought;
   variant: CardVariant;
+  /** chat-row: последний в группе → без hairline-разделителя. */
+  isLast?: boolean;
   /** Открыть детали мысли. По умолчанию навигация на /thought/:id. */
   onTap?: (id: string) => void;
   /** Открыть ActionSheet (T8). По умолчанию stub — TODO в T8 wire-up. */
@@ -21,7 +23,7 @@ interface ThoughtCardProps {
  *
  * `onLongPress` пока stub — wire-up с SheetContext.openSheet(ActionSheet) в T8.
  */
-export function ThoughtCard({ thought, variant, onTap, onLongPress }: ThoughtCardProps) {
+export function ThoughtCard({ thought, variant, isLast = false, onTap, onLongPress }: ThoughtCardProps) {
   const navigate = useNavigate();
 
   const handleLongPress = (pos: { x: number; y: number }) => {
@@ -64,7 +66,7 @@ export function ThoughtCard({ thought, variant, onTap, onLongPress }: ThoughtCar
       {isFeed ? (
         <ThoughtCardFeed thought={thought} onMenuTap={handleMenuTap} />
       ) : (
-        <ThoughtCardChats thought={thought} onMenuTap={handleMenuTap} />
+        <ThoughtCardChats thought={thought} onMenuTap={handleMenuTap} isLast={isLast} />
       )}
     </div>
   );
