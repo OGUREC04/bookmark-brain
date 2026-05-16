@@ -41,17 +41,23 @@
 
 ## Компоненты
 
-### Bot (`bot/`)
-aiogram 3.x на Python 3.14. В dev — long polling (`@bookmarkbrain_dev_bot`), в prod — long polling в Docker контейнере (`@N0teeBot`). Хэндлеры разбиты по типам:
+> Структурные правила и слои — в разделе ниже «Слои и import-контракты».
+> Карта репо для агентов/разработчиков — корневой `AGENTS.md`.
 
-- `start.py` — `/start`, forwarded messages, plain text → bookmark
-- `media.py` — voice / video_note / audio → STT pipeline
-- `documents.py` — PDF / DOCX / TXT / MD
-- `tasks.py` — task list rendering, reply-команды (NL edit)
-- `search.py` — `/search <query>`
-- `random.py` — `/random`, `/stats`
-- `settings.py` — `/silent`, прочие toggle
-- `clean.py` — `/clean` (но защищает task lists от удаления)
+### Bot (`bot/`)
+aiogram 3.x. Dev — long polling под `@bookmarkbrain_dev_bot` (локально Python 3.14); prod — long polling в Docker (`python:3.12-slim`, `@N0teeBot`).
+
+Хэндлеры — **package-by-feature**: крупные домены вынесены в пакеты с
+facade-`__init__.py` (агрегирует sub-роутеры через `include_router`,
+публичный API в `__all__`):
+
+- `handlers/start.py` — `/start`, forwarded, plain text → bookmark; orchestration-хаб
+- `handlers/reminders/` — пакет: `list` (`/reminders`), `explicit` (`/remind`+T8), `callbacks` (rsk/rsn/rdone/rsnz), `reply` (reply-парсинг), `strong` (T13 3-кнопки, отдельный `strong_router`), `shared`
+- `handlers/tasks/` — пакет: `task_callbacks`, `dedup`, `fast_edit`, `nl_edit`, `commands`, `shared`
+- `handlers/media.py` — voice / video_note / audio → STT
+- `handlers/documents.py` — PDF / DOCX / TXT / MD
+- `handlers/{search,random,settings,clean,timezone,reminder_choice}.py`
+- `common/` — **shared-слой** (самый низ): `text.safe`, `datetime.{format_fire_at,get_user_tz_name}`, `nl.{split_remind_text_and_time,extract_explicit_remind_body}`, `telegram.send_ephemeral`, `auth.ensure_user` (JWT-bootstrap + token-cache). Фичи делятся **только** через `bot.common` — латеральные reminders↔tasks импорты запрещены import-linter'ом.
 
 Бот не делает AI-вызовов сам — всё через REST API бэкенда (`api_client.py` + `BOT_SECRET` header).
 
@@ -59,28 +65,31 @@ aiogram 3.x на Python 3.14. В dev — long polling (`@bookmarkbrain_dev_bot`)
 FastAPI + async SQLAlchemy. Версионирование `/api/v1/`, healthcheck `/health`, CORS.
 
 - `main.py` — приложение, роутеры, CORS, startup hooks
-- `app/api/` — `users.py`, `bookmarks.py`, `search.py`, `feedback.py`
+- `app/api/` — `users.py`, `bookmarks.py`, `search.py`, `feedback.py`, `reminders.py`
 - `app/services/` — бизнес-логика (см. ниже)
 - `app/auth.py` — JWT, Telegram initData HMAC, X-Bot-Secret
-- `app/worker.py` — arq WorkerSettings (используется и run_worker.py)
+- `app/worker/` — **пакет** arq-воркера (см. ниже); `WorkerSettings` импортируется из `app.worker`
 
-### Worker (`backend/run_worker.py` + `app/worker.py`)
-arq на Redis. Запускается через `asyncio.run()` (CLI arq ломается на Python 3.14 — см. ADR не в этом списке, но в TROUBLESHOOTING). Один воркер процессит все типы задач:
+### Worker (`backend/run_worker.py` + `app/worker/`)
+arq на Redis. Запуск — `python run_worker.py` → `create_worker(WorkerSettings)` через `asyncio.run()` (CLI arq ломается на Python 3.14, см. TROUBLESHOOTING). `app/worker/` — пакет:
 
-- `process_bookmark_task` — основной AI pipeline
-- `embedding_retry_cron` — переобработка `ai_status=failed`
-- `stale_list_nudge` — крон для напоминаний по task lists
+- `processing.py` — `process_bookmark_task` (основной AI pipeline)
+- `reminder_decision.py` — Phase 2.6 three-form dispatch, CAS-идемпотентность
+- `reminder_offer.py` — weak-offer «🔔 Создать напоминание?»
+- `scheduled.py` — 5 cron: `scheduled_dispatcher`, `auto_done_reminders`, `retry_failed_task`, `retry_partial_embeddings`, `stale_list_nudge`
+- `dedup.py`, `telegram.py` — dedup-стораджи и low-level Telegram-хелперы
+- `__init__.py` — facade: собирает `WorkerSettings` (functions + cron_jobs)
 
 ### Services
-- `ai_classifier.py` — `BaseClassifier` → GigaChat / Claude (переключается через `AI_PROVIDER`)
+- `ai_classifier.py` — `BaseClassifier` → GigaChat (slot под DeepSeek/Claude, `AI_PROVIDER`)
 - `embeddings.py` — `BaseEmbeddingService` → Voyage AI / GigaChat (`EMBEDDING_PROVIDER`)
 - `bookmark_processor.py` — оркестратор пайплайна (classify → embed → tag → dedup → save)
 - `dedup_checker.py` — двухуровневая дедупликация (cosine + text overlap)
-- `search.py` — гибридный поиск (semantic + full-text)
-- `search_summary.py` — AI-обзор результатов поиска
+- `search.py` / `search_summary.py` — гибридный поиск + AI-обзор
 - `task_list_*` — детекция, рендеринг, NL-редактирование списков задач
-- `article_fetcher.py` — fetch+extract по URL для линков
-- `telegram_import.py` — импорт из Saved Messages
+- `reminder_*` (`router`/`creator`/`cascade`) — Phase 2.6 three-form reminders
+- `nl_date.py` — парсинг естественного времени («завтра в 9», NEEDS_HOUR)
+- `article_fetcher.py` / `telegram_import.py` — fetch по URL / импорт Saved Messages
 
 ## Data flow — основной сценарий «юзер пишет текст»
 
@@ -164,7 +173,7 @@ folders         -- зарезервировано под Smart Blocks (Phase 5)
 | Mini App (план) | Telegram initData → HMAC-SHA256 (BOT_TOKEN secret) → JWT |
 | iOS App (план) | Через Mini App → JWT |
 
-JWT короткоживущий (24h). `BOT_SECRET` — shared secret между ботом и backend, никогда не покидает сервер.
+JWT живёт 7 дней; бот кэширует токен в памяти `bot.common.auth` 6 дней (рефреш до истечения). `BOT_SECRET` — shared secret бота и backend, никогда не покидает сервер.
 
 ## Инфраструктура
 
