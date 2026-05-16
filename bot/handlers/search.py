@@ -32,9 +32,9 @@ def _format_result(item: dict, score: float) -> str:
 
 @router.message(Command("search"))
 async def cmd_search(message: types.Message, api):
-    from bot.handlers.start import _ensure_user
+    from bot.common.auth import ensure_user
 
-    token = await _ensure_user(message, api)
+    token = await ensure_user(message, api)
     if not token:
         return
 

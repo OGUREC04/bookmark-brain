@@ -107,7 +107,7 @@ async def test_exactly_2s_voice_not_rejected(mock_message, mock_api, mock_store)
     with (
         patch("bot.handlers.media.safe_react", new_callable=AsyncMock, return_value=True),
         patch("bot.handlers.media.ephemeral_error", new_callable=AsyncMock),
-        patch("bot.handlers.start._ensure_user", new_callable=AsyncMock, return_value="jwt"),
+        patch("bot.common.auth.ensure_user", new_callable=AsyncMock, return_value="jwt"),
         patch("bot.handlers.settings.is_silent", new_callable=AsyncMock, return_value=False),
     ):
         await _process_audio(
@@ -144,7 +144,7 @@ async def test_none_duration_not_rejected(mock_message, mock_api, mock_store):
     with (
         patch("bot.handlers.media.safe_react", new_callable=AsyncMock, return_value=True),
         patch("bot.handlers.media.ephemeral_error", new_callable=AsyncMock),
-        patch("bot.handlers.start._ensure_user", new_callable=AsyncMock, return_value="jwt"),
+        patch("bot.common.auth.ensure_user", new_callable=AsyncMock, return_value="jwt"),
         patch("bot.handlers.settings.is_silent", new_callable=AsyncMock, return_value=False),
     ):
         await _process_audio(
@@ -213,7 +213,7 @@ async def test_file_at_limit_not_rejected(mock_message, mock_api, mock_store):
     with (
         patch("bot.handlers.media.safe_react", new_callable=AsyncMock, return_value=True),
         patch("bot.handlers.media.ephemeral_error", new_callable=AsyncMock),
-        patch("bot.handlers.start._ensure_user", new_callable=AsyncMock, return_value="jwt"),
+        patch("bot.common.auth.ensure_user", new_callable=AsyncMock, return_value="jwt"),
         patch("bot.handlers.settings.is_silent", new_callable=AsyncMock, return_value=False),
     ):
         await _process_audio(
@@ -255,7 +255,7 @@ async def test_backend_fail_keeps_transcription(mock_message, mock_api, mock_sto
     with (
         patch("bot.handlers.media.safe_react", new_callable=AsyncMock, return_value=True),
         patch("bot.handlers.media.ephemeral_error", new_callable=AsyncMock) as mock_err,
-        patch("bot.handlers.start._ensure_user", new_callable=AsyncMock, return_value="jwt"),
+        patch("bot.common.auth.ensure_user", new_callable=AsyncMock, return_value="jwt"),
         patch("bot.handlers.settings.is_silent", new_callable=AsyncMock, return_value=False),
     ):
         await _process_audio(
@@ -321,7 +321,7 @@ async def test_group_fallback_when_reactions_fail(mock_message, mock_api, mock_s
         # safe_react returns False — reactions not available
         patch("bot.handlers.media.safe_react", new_callable=AsyncMock, return_value=False),
         patch("bot.handlers.media.ephemeral_error", new_callable=AsyncMock),
-        patch("bot.handlers.start._ensure_user", new_callable=AsyncMock, return_value="jwt"),
+        patch("bot.common.auth.ensure_user", new_callable=AsyncMock, return_value="jwt"),
         patch("bot.handlers.settings.is_silent", new_callable=AsyncMock, return_value=False),
     ):
         await _process_audio(
@@ -375,7 +375,7 @@ async def test_private_chat_uses_reaction_not_text(mock_message, mock_api, mock_
         # safe_react returns True — reactions work
         patch("bot.handlers.media.safe_react", new_callable=AsyncMock, return_value=True),
         patch("bot.handlers.media.ephemeral_error", new_callable=AsyncMock),
-        patch("bot.handlers.start._ensure_user", new_callable=AsyncMock, return_value="jwt"),
+        patch("bot.common.auth.ensure_user", new_callable=AsyncMock, return_value="jwt"),
         patch("bot.handlers.settings.is_silent", new_callable=AsyncMock, return_value=False),
     ):
         await _process_audio(
@@ -454,7 +454,7 @@ async def test_happy_path_voice(mock_message, mock_api, mock_store):
     with (
         patch("bot.handlers.media.safe_react", new_callable=AsyncMock, return_value=True),
         patch("bot.handlers.media.ephemeral_error", new_callable=AsyncMock) as mock_err,
-        patch("bot.handlers.start._ensure_user", new_callable=AsyncMock, return_value="jwt"),
+        patch("bot.common.auth.ensure_user", new_callable=AsyncMock, return_value="jwt"),
         patch("bot.handlers.settings.is_silent", new_callable=AsyncMock, return_value=False),
     ):
         await _process_audio(
@@ -506,7 +506,7 @@ async def test_happy_path_with_caption(mock_message, mock_api, mock_store):
     with (
         patch("bot.handlers.media.safe_react", new_callable=AsyncMock, return_value=True),
         patch("bot.handlers.media.ephemeral_error", new_callable=AsyncMock),
-        patch("bot.handlers.start._ensure_user", new_callable=AsyncMock, return_value="jwt"),
+        patch("bot.common.auth.ensure_user", new_callable=AsyncMock, return_value="jwt"),
         patch("bot.handlers.settings.is_silent", new_callable=AsyncMock, return_value=False),
     ):
         await _process_audio(

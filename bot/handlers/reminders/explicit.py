@@ -61,7 +61,7 @@ async def process_explicit_remind_args(
     Принимает уже извлечённые args (без префикса команды/триггера). Создаёт
     reminder если время есть, иначе просит Reply со временем.
     """
-    from bot.handlers.start import _ensure_user
+    from bot.common.auth import ensure_user
     from bot.services.nl_date import ParseStatus, parse
 
     args = args.strip()
@@ -69,7 +69,7 @@ async def process_explicit_remind_args(
         await message.answer(REMIND_HELP_TEXT, parse_mode="HTML")
         return
 
-    token = await _ensure_user(message, api)
+    token = await ensure_user(message, api)
     if not token:
         return
 

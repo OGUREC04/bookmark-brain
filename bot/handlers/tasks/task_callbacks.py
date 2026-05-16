@@ -32,8 +32,8 @@ async def cb_toggle_task(callback: CallbackQuery, api, store=None):
         await callback.answer("Сообщение устарело.", show_alert=True)
         return
 
-    from bot.handlers.start import _ensure_user
-    token = await _ensure_user(callback, api)
+    from bot.common.auth import ensure_user
+    token = await ensure_user(callback, api)
     if not token:
         return
 
@@ -94,8 +94,8 @@ async def cb_list_deadline_set(callback: CallbackQuery, api, store=None):
         await callback.answer("Сообщение устарело.", show_alert=True)
         return
 
-    from bot.handlers.start import _ensure_user
-    token = await _ensure_user(callback, api)
+    from bot.common.auth import ensure_user
+    token = await ensure_user(callback, api)
     if not token:
         return
 
@@ -135,8 +135,8 @@ async def cb_back(callback: CallbackQuery, api, store=None):
         await callback.answer("Сообщение устарело.", show_alert=True)
         return
 
-    from bot.handlers.start import _ensure_user
-    token = await _ensure_user(callback, api)
+    from bot.common.auth import ensure_user
+    token = await ensure_user(callback, api)
     if not token:
         return
 
@@ -160,8 +160,8 @@ async def cb_delete_list(callback: CallbackQuery, api, store=None):
         await callback.answer("Сообщение устарело.", show_alert=True)
         return
 
-    from bot.handlers.start import _ensure_user
-    token = await _ensure_user(callback, api)
+    from bot.common.auth import ensure_user
+    token = await ensure_user(callback, api)
     if not token:
         return
 
@@ -213,8 +213,8 @@ async def cb_not_a_list(callback: CallbackQuery, api):
         await callback.answer("Сообщение устарело.", show_alert=True)
         return
 
-    from bot.handlers.start import _ensure_user
-    token = await _ensure_user(callback, api)
+    from bot.common.auth import ensure_user
+    token = await ensure_user(callback, api)
     if not token:
         return
 

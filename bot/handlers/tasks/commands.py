@@ -16,8 +16,8 @@ router = Router()
 @router.message(Command("todo"))
 async def cmd_todo(message: Message, api):
     """`/todo пункт1, пункт2` — принудительно создать список."""
-    from bot.handlers.start import _ensure_user
-    token = await _ensure_user(message, api)
+    from bot.common.auth import ensure_user
+    token = await ensure_user(message, api)
     if not token:
         return
 

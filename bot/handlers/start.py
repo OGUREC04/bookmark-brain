@@ -13,6 +13,7 @@ from aiogram.types import (
 )
 
 from bot import onboarding
+from bot.common.auth import ensure_user
 from bot.config import get_settings
 from bot.utils import ephemeral_error, safe_react
 
@@ -21,11 +22,6 @@ _settings = get_settings()
 logger = logging.getLogger(__name__)
 
 router = Router()
-
-# Кэш токенов: telegram_id -> (JWT token, expires_at)
-_user_tokens: dict[int, tuple[str, float]] = {}
-
-_TOKEN_TTL = 6 * 24 * 3600  # 6 days (JWT is 7 days, refresh before expiry)
 
 # Временное хранилище коротких сообщений для подтверждения
 # Keyed by message_id (not user_id) to avoid overwriting on rapid sends
@@ -70,33 +66,6 @@ URL_PATTERN = re.compile(r"https?://[^\s<>\"']+")
 MIN_AUTO_SAVE_LENGTH = 15
 
 
-async def _ensure_user(message_or_callback, api) -> str | None:
-    """Получить JWT-токен юзера, создав его при необходимости."""
-    user = message_or_callback.from_user
-
-    tg_id = user.id
-    cached = _user_tokens.get(tg_id)
-    if cached:
-        token, expires_at = cached
-        if time.monotonic() < expires_at:
-            return token
-
-    try:
-        data = await api.get_or_create_user(
-            telegram_id=tg_id,
-            username=user.username,
-            first_name=user.first_name,
-        )
-        token = data["access_token"]
-        _user_tokens[tg_id] = (token, time.monotonic() + _TOKEN_TTL)
-        return token
-    except Exception as e:
-        logger.error(f"Failed to auth user {tg_id}: {e}")
-        if isinstance(message_or_callback, CallbackQuery):
-            await message_or_callback.answer("Ошибка подключения к серверу.", show_alert=True)
-        else:
-            await message_or_callback.answer("Ошибка подключения к серверу. Попробуй позже.", parse_mode=None)
-        return None
 
 
 def _extract_urls(message: types.Message) -> list[str]:
@@ -173,7 +142,7 @@ _HELP_TEXT = (
 
 @router.message(CommandStart())
 async def cmd_start(message: types.Message, api):
-    token = await _ensure_user(message, api)
+    token = await ensure_user(message, api)
     if not token:
         return
 
@@ -211,7 +180,7 @@ async def cmd_start(message: types.Message, api):
 @router.message(Command("help"))
 async def cmd_help(message: types.Message, api):
     """Полная справка по возможностям бота."""
-    token = await _ensure_user(message, api)
+    token = await ensure_user(message, api)
     if not token:
         return
     await message.answer(_HELP_TEXT, parse_mode=None, disable_web_page_preview=True)
@@ -220,7 +189,7 @@ async def cmd_help(message: types.Message, api):
 @router.message(Command("list"))
 async def cmd_list(message: types.Message, api):
     """Просмотр закладок с inline-кнопками."""
-    token = await _ensure_user(message, api)
+    token = await ensure_user(message, api)
     if not token:
         return
 
@@ -322,7 +291,7 @@ async def cb_page(callback: CallbackQuery, api):
         await callback.answer("Сообщение устарело.", show_alert=True)
         return
 
-    token = await _ensure_user(callback, api)
+    token = await ensure_user(callback, api)
     if not token:
         return
 
@@ -338,7 +307,7 @@ async def cb_view(callback: CallbackQuery, api):
         await callback.answer("Сообщение устарело.", show_alert=True)
         return
 
-    token = await _ensure_user(callback, api)
+    token = await ensure_user(callback, api)
     if not token:
         return
 
@@ -433,7 +402,7 @@ async def cb_delete_execute(callback: CallbackQuery, api):
         await callback.answer("Сообщение устарело.", show_alert=True)
         return
 
-    token = await _ensure_user(callback, api)
+    token = await ensure_user(callback, api)
     if not token:
         return
 
@@ -461,7 +430,7 @@ async def cb_save_confirm(callback: CallbackQuery, api):
         await callback.answer("Сообщение устарело.", show_alert=True)
         return
 
-    token = await _ensure_user(callback, api)
+    token = await ensure_user(callback, api)
     if not token:
         return
 
@@ -540,7 +509,7 @@ async def cb_save_cancel(callback: CallbackQuery):
 @router.message(F.forward_date)
 async def handle_forward(message: types.Message, api):
     """Обработка пересланных сообщений."""
-    token = await _ensure_user(message, api)
+    token = await ensure_user(message, api)
     if not token:
         return
 
@@ -639,7 +608,7 @@ async def handle_text(message: types.Message, api, store=None):
                         pass
                     return
 
-    token = await _ensure_user(message, api)
+    token = await ensure_user(message, api)
     if not token:
         return
 
@@ -746,7 +715,7 @@ async def handle_text(message: types.Message, api, store=None):
 @router.message(F.photo | F.video | F.sticker)
 async def handle_media(message: types.Message, api):
     """Обработка медиа-сообщений (фото, видео и т.д.)."""
-    token = await _ensure_user(message, api)
+    token = await ensure_user(message, api)
     if not token:
         return
 

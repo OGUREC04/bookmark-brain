@@ -56,9 +56,9 @@ def _format_reminder_short(rem: dict, tz_name: str) -> str:
 @router.message(Command("reminders"))
 async def cmd_reminders(message: Message, command: CommandObject, api, store):
     """T12: список активных reminder'ов или история (с аргументом «история»)."""
-    from bot.handlers.start import _ensure_user
+    from bot.common.auth import ensure_user
 
-    token = await _ensure_user(message, api)
+    token = await ensure_user(message, api)
     if not token:
         return
 
@@ -189,8 +189,8 @@ async def handle_reminders_list_reply(
             )
             return True
         rid = snapshot[idx]
-        from bot.handlers.start import _ensure_user
-        token = await _ensure_user(message, api)
+        from bot.common.auth import ensure_user
+        token = await ensure_user(message, api)
         if not token:
             return True
         try:
@@ -220,9 +220,9 @@ async def handle_reminders_list_reply(
             )
             return True
         rid = snapshot[idx]
-        from bot.handlers.start import _ensure_user
+        from bot.common.auth import ensure_user
         from bot.services.nl_date import ParseStatus, parse
-        token = await _ensure_user(message, api)
+        token = await ensure_user(message, api)
         if not token:
             return True
         user_tz_name = await get_user_tz_name(api, token)

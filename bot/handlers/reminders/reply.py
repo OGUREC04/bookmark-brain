@@ -99,9 +99,9 @@ async def handle_reminder_reply(message: Message, api, store) -> bool:
             return True
         return False
 
-    from bot.handlers.start import _ensure_user
+    from bot.common.auth import ensure_user
 
-    token = await _ensure_user(message, api)
+    token = await ensure_user(message, api)
     if not token:
         logger.warning(
             f"handle_reminder_reply: ensure_user returned None for "
@@ -265,14 +265,14 @@ async def _handle_fallback_confirm_reply(
     reply_to_id: int,
 ) -> bool:
     """F2: юзер reply'ит на «поставить на 11.05 22:00? да / уточни»."""
-    from bot.handlers.start import _ensure_user
+    from bot.common.auth import ensure_user
     from bot.services.nl_date import ParseStatus, parse
 
     chat_id = message.chat.id
     text = (message.text or "").strip()
     text_lower = text.lower()
 
-    token = await _ensure_user(message, api)
+    token = await ensure_user(message, api)
     if not token:
         return True
 
@@ -349,8 +349,8 @@ async def _apply_reminder_action(
     """Финальный create/update reminder + чистка fallback-state."""
     chat_id = message.chat.id
 
-    from bot.handlers.start import _ensure_user
-    token = await _ensure_user(message, api)
+    from bot.common.auth import ensure_user
+    token = await ensure_user(message, api)
     if not token:
         return True
 

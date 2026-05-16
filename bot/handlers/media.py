@@ -161,8 +161,8 @@ async def _process_audio(
     ext: str,
 ) -> None:
     """Download -> transcribe -> create bookmark."""
+    from bot.common.auth import ensure_user
     from bot.handlers.settings import is_silent
-    from bot.handlers.start import _ensure_user
 
     stt = _get_stt()
     if stt is None:
@@ -203,7 +203,7 @@ async def _process_audio(
         )
         return
 
-    token = await _ensure_user(message, api)
+    token = await ensure_user(message, api)
     if not token:
         return
 

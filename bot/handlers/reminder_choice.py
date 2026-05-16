@@ -93,7 +93,7 @@ async def cb_choice_dismiss(callback: CallbackQuery, api, store):
 
 async def _handle_choice(callback: CallbackQuery, api, store, *, form: str) -> None:
     """Общая обработка 📋/🔔 — читаем state, POST apply-decision, edit prompt."""
-    from bot.handlers.start import _ensure_user
+    from bot.common.auth import ensure_user
 
     if callback.message is None or callback.data is None:
         await callback.answer()
@@ -128,7 +128,7 @@ async def _handle_choice(callback: CallbackQuery, api, store, *, form: str) -> N
         return
 
     # Token + apply-decision
-    token = await _ensure_user(callback.message, api)
+    token = await ensure_user(callback.message, api)
     if not token:
         await callback.answer("Не получилось авторизоваться")
         return

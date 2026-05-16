@@ -120,8 +120,8 @@ async def handle_strong_intent_message(message: Message, api, store):
     # Pre-parse time из исходного текста (auto-detect).
     parsed_dt_iso = None
     try:
-        from bot.handlers.start import _ensure_user
-        token = await _ensure_user(message, api)
+        from bot.common.auth import ensure_user
+        token = await ensure_user(message, api)
         if token:
             user_tz_name = await get_user_tz_name(api, token)
             entity_dt = extract_first_datetime_entity(message)
@@ -169,7 +169,7 @@ def _strong_callback_data_kind(data: str) -> str | None:
 @strong_router.callback_query(F.data.startswith("rstrong_"))
 async def cb_strong_choice(callback: CallbackQuery, api, store):
     """3 callback'а strong-flow: 🔔 / 📝 / ✕."""
-    from bot.handlers.start import _ensure_user
+    from bot.common.auth import ensure_user
 
     kind = _strong_callback_data_kind(callback.data or "")
     if kind is None:
@@ -220,7 +220,7 @@ async def cb_strong_choice(callback: CallbackQuery, api, store):
             pass
         return
 
-    token = await _ensure_user(callback, api)
+    token = await ensure_user(callback, api)
     if not token:
         return
 

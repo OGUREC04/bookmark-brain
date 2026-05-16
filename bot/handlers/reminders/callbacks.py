@@ -73,7 +73,7 @@ async def cb_dismiss_reminder(callback: CallbackQuery, api, store):
 async def cb_done_reminder(callback: CallbackQuery, api, store):
     """«✅ Выполнено» на отправленном reminder — DELETE через API
     (status='cancelled') + edit message без кнопок."""
-    from bot.handlers.start import _ensure_user
+    from bot.common.auth import ensure_user
 
     chat_id = callback.message.chat.id
     msg_id = callback.message.message_id
@@ -87,7 +87,7 @@ async def cb_done_reminder(callback: CallbackQuery, api, store):
             pass
         return
 
-    token = await _ensure_user(callback, api)
+    token = await ensure_user(callback, api)
     if not token:
         return
 

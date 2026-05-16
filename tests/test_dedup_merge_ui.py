@@ -35,8 +35,8 @@ import pytest
 def patch_ensure_user(monkeypatch):
     async def _fake(*_a, **_k):
         return "fake-token"
-    import bot.handlers.start
-    monkeypatch.setattr(bot.handlers.start, "_ensure_user", _fake)
+    import bot.common.auth
+    monkeypatch.setattr(bot.common.auth, "ensure_user", _fake)
 
 
 @pytest.fixture(autouse=True)

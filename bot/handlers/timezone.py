@@ -42,9 +42,9 @@ HELP_TEXT = (
 @router.message(Command("tz"))
 async def cmd_tz(message: Message, api):
     """Показать или сменить часовой пояс юзера."""
-    from bot.handlers.start import _ensure_user
+    from bot.common.auth import ensure_user
 
-    token = await _ensure_user(message, api)
+    token = await ensure_user(message, api)
     if not token:
         return
 

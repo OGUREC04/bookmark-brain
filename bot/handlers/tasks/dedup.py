@@ -63,9 +63,9 @@ async def cb_dedup_merge(callback: CallbackQuery, api, store=None):
             pass
         return
 
+    from bot.common.auth import ensure_user
     from bot.handlers.settings import is_silent
-    from bot.handlers.start import _ensure_user
-    token = await _ensure_user(callback, api)
+    token = await ensure_user(callback, api)
     if not token:
         return
 
@@ -339,8 +339,8 @@ async def _handle_general_dedup_reply(
     message: Message, api, store, dedup: dict,
 ) -> None:
     """Обрабатывает reply на general dedup alert."""
-    from bot.handlers.start import _ensure_user
-    token = await _ensure_user(message, api)
+    from bot.common.auth import ensure_user
+    token = await ensure_user(message, api)
     if not token:
         return
 
@@ -483,8 +483,8 @@ async def handle_pending_dedup(
     В отличие от _handle_general_dedup_reply, у нас нет replied message,
     поэтому alert редактируем через bot.edit_message_text.
     """
-    from bot.handlers.start import _ensure_user
-    token = await _ensure_user(message, api)
+    from bot.common.auth import ensure_user
+    token = await ensure_user(message, api)
     if not token:
         return
 

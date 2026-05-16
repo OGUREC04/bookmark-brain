@@ -77,6 +77,8 @@ layers = [
 ]
 # bot.common is the lowest shared layer: it must never import a feature
 # handler or the composition root. Feature packages and start.py live in
-# the same `bot.handlers` layer (intra-layer imports such as the legacy
-# handler→start `_ensure_user` edge are allowed; that is tracked separately
-# as a code-quality follow-up, not an architecture-layer violation).
+# the same `bot.handlers` layer (intra-layer imports between them are
+# allowed by this contract). The auth-bootstrap seam that ~16 handlers
+# share now lives in `bot.common.auth` (public `ensure_user`), so it is a
+# downward import under this layers contract — fully enforced, no longer a
+# hidden intra-layer fan-in to the orchestration module.

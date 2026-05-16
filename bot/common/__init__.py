@@ -10,6 +10,7 @@ Public API only — no underscore-prefixed names are exported here.
 """
 from __future__ import annotations
 
+from .auth import ensure_user
 from .datetime import (
     DEFAULT_TZ,
     TIME_EXAMPLES,
@@ -28,6 +29,7 @@ __all__ = [
     "DEFAULT_TZ",
     "EXPLICIT_REMIND_PREFIX_RE",
     "TIME_EXAMPLES",
+    "ensure_user",
     "extract_explicit_remind_body",
     "format_fire_at",
     "get_user_tz_name",

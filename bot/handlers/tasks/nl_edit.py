@@ -61,9 +61,9 @@ async def _handle_nudge_reply(
     message: Message, api, store, nudge: dict, nudge_msg_id: int,
 ) -> None:
     """Обрабатывает reply на stale list nudge."""
+    from bot.common.auth import ensure_user
     from bot.handlers.settings import is_silent
-    from bot.handlers.start import _ensure_user
-    token = await _ensure_user(message, api)
+    token = await ensure_user(message, api)
     if not token:
         return
 
@@ -318,9 +318,9 @@ async def msg_nl_edit_on_reply(message: Message, api, store=None):
         )
         return
 
+    from bot.common.auth import ensure_user
     from bot.handlers.settings import is_silent
-    from bot.handlers.start import _ensure_user
-    token = await _ensure_user(message, api)
+    token = await ensure_user(message, api)
     if not token:
         return
 
