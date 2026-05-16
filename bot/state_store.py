@@ -439,6 +439,21 @@ class StateStore:
         r = await self._get()
         await r.delete(f"reminder_pending:{chat_id}:{msg_id}")
 
+    async def restore_reminder_pending(
+        self, chat_id: int, msg_id: int, pending: dict,
+    ) -> None:
+        """#7a: переложить уже снятый (GETDEL) pending под новое
+        сообщение-ошибку, чтобы reply со скорректированным временем
+        снова сработал. Пишем тот же envelope, что читает _decode_pending.
+        """
+        import json
+        r = await self._get()
+        await r.set(
+            f"reminder_pending:{chat_id}:{msg_id}",
+            json.dumps(pending),
+            ex=self._REMINDER_PENDING_TTL,
+        )
+
     # ── task-list confirmation offer ──────────────────────────
     #
     # | Key                                  | TTL | Writer                          | Reader                       |

@@ -29,6 +29,32 @@ router = Router()
 _FALLBACK_CONFIRM_YES = ("да", "ага", "ок", "окей", "yes", "y", "+", "подтверждаю")
 
 
+async def _resave_pending(
+    store, chat_id: int, new_msg_id, snooze_rid, pending_bid,
+) -> None:
+    """#7a: pending снимается GETDEL'ом ДО парсинга. Если время не
+    распозналось — перекладываем тот же pending под сообщение-ошибку,
+    чтобы reply со скорректированным временем на него снова сработал
+    (раньше юзер застревал: «Не нашёл этот список»).
+    """
+    if not new_msg_id:
+        return
+    try:
+        if snooze_rid:
+            await store.store_reminder_snooze(chat_id, new_msg_id, snooze_rid)
+        elif isinstance(pending_bid, dict):
+            if pending_bid.get("kind") == "explicit":
+                await store.store_reminder_pending_explicit(
+                    chat_id, new_msg_id, pending_bid.get("text", ""),
+                )
+            else:
+                await store.restore_reminder_pending(
+                    chat_id, new_msg_id, pending_bid,
+                )
+    except Exception as e:
+        logger.warning(f"_resave_pending failed: {e}")
+
+
 async def handle_reminder_reply(message: Message, api, store) -> bool:
     """Обработка reply'я когда чат ждёт время от юзера.
 
@@ -116,8 +142,12 @@ async def handle_reminder_reply(message: Message, api, store) -> bool:
 
     text = (message.text or "").strip()
     if not text:
-        await message.answer(
+        m = await message.answer(
             "Не понял время. " + TIME_EXAMPLES, parse_mode="HTML",
+        )
+        await _resave_pending(
+            store, chat_id, getattr(m, "message_id", None),
+            snooze_rid, pending_bid,
         )
         return True
 
@@ -126,8 +156,12 @@ async def handle_reminder_reply(message: Message, api, store) -> bool:
     if entity_dt is not None:
         now_utc = datetime.now(timezone.utc)
         if entity_dt < now_utc - timedelta(seconds=30):
-            await message.answer(
+            m = await message.answer(
                 "Это в прошлом. Назначь время в будущем.", parse_mode=None,
+            )
+            await _resave_pending(
+                store, chat_id, getattr(m, "message_id", None),
+                snooze_rid, pending_bid,
             )
             return True
         if snooze_rid:
@@ -153,20 +187,32 @@ async def handle_reminder_reply(message: Message, api, store) -> bool:
     result = parse(text, user_tz=user_tz_name)
 
     if result.status == ParseStatus.UNPARSEABLE:
-        await message.answer(
+        m = await message.answer(
             "Не понял время. " + TIME_EXAMPLES, parse_mode="HTML",
+        )
+        await _resave_pending(
+            store, chat_id, getattr(m, "message_id", None),
+            snooze_rid, pending_bid,
         )
         return True
     if result.status == ParseStatus.IN_PAST:
-        await message.answer(
+        m = await message.answer(
             "Это в прошлом. Назначь время в будущем.",
             parse_mode=None,
         )
+        await _resave_pending(
+            store, chat_id, getattr(m, "message_id", None),
+            snooze_rid, pending_bid,
+        )
         return True
     if result.status == ParseStatus.NEEDS_TIME:
-        await message.answer(
+        m = await message.answer(
             "Уточни время (например «в 9» или «в 18:30»). " + TIME_EXAMPLES,
             parse_mode="HTML",
+        )
+        await _resave_pending(
+            store, chat_id, getattr(m, "message_id", None),
+            snooze_rid, pending_bid,
         )
         return True
 
@@ -200,8 +246,12 @@ async def handle_reminder_reply(message: Message, api, store) -> bool:
         return True
 
     if result.dt is None:
-        await message.answer(
+        m = await message.answer(
             "Не понял время. " + TIME_EXAMPLES, parse_mode="HTML",
+        )
+        await _resave_pending(
+            store, chat_id, getattr(m, "message_id", None),
+            snooze_rid, pending_bid,
         )
         return True
 
