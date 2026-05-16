@@ -439,6 +439,28 @@ class StateStore:
         r = await self._get()
         await r.delete(f"reminder_pending:{chat_id}:{msg_id}")
 
+    # ── task-list confirmation offer ──────────────────────────
+    #
+    # | Key                                  | TTL | Writer                          | Reader                       |
+    # |--------------------------------------|-----|---------------------------------|------------------------------|
+    # | task_list_pending:{chat}:{offer_msg} | 1ч  | worker._maybe_offer_task_list   | bot cb_tasklist_* (pop)      |
+    #
+    # Значение — JSON {"bookmark_id","src_msg_id","silent"}.
+
+    async def pop_task_list_pending(
+        self, chat_id: int, msg_id: int,
+    ) -> dict | None:
+        """Атомарный GETDEL — защита от double-tap Да/Нет."""
+        import json
+        r = await self._get()
+        raw = await r.getdel(f"task_list_pending:{chat_id}:{msg_id}")
+        if not raw:
+            return None
+        try:
+            return json.loads(raw)
+        except (ValueError, TypeError):
+            return None
+
     async def get_reminder_id(
         self, chat_id: int, msg_id: int,
     ) -> str | None:

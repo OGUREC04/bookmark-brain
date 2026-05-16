@@ -202,6 +202,24 @@ async def process_bookmark_task(
                 and isinstance(bookmark.structured_data, dict)
                 and bookmark.structured_data.get("type") == "task_list"
             ):
+                # Подтверждение перед созданием+пином: вместо немедленного
+                # списка спрашиваем «Сделать список?». По «Да» bot создаёт
+                # и пинит (bot/handlers/tasks/confirm.py). Offer показан →
+                # ранний выход: создание/пин/dedup-alert/tip/reminder-хвост
+                # отрабатывает уже bot после подтверждения.
+                if can_notify:
+                    from .task_list_offer import _maybe_offer_task_list
+                    if await _maybe_offer_task_list(
+                        bookmark=bookmark, chat_id=chat_id,
+                        message_id=message_id, silent=silent,
+                    ):
+                        await session.commit()
+                        await embedding_service.close()
+                        logger.info(
+                            f"Task-list {bookmark_id}: awaiting user confirmation"
+                        )
+                        return
+
                 from app.services.task_list_renderer import (
                     build_task_list_keyboard,
                     render_task_list_text,

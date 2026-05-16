@@ -33,12 +33,16 @@ Callback схема (лимит 64 байта):
   tn:{id}         — (legacy) "не список" — откатить к обычной закладке
   dm:{id}         — dedup merge
   dk:{id}         — dedup keep
+  tlc:{id}        — подтвердить создание списка (Да)
+  tlx:{id}        — отказ: оставить обычной закладкой (Нет)
 """
 
 from aiogram import Router as _Router
 
 from .commands import cmd_todo
 from .commands import router as _commands_router
+from .confirm import cb_tasklist_confirm, cb_tasklist_decline
+from .confirm import router as _confirm_router
 from .dedup import (
     _apply_dedup_update,
     _handle_general_dedup_reply,
@@ -93,6 +97,7 @@ from .task_callbacks import router as _task_callbacks_router
 # Aggregate: each sub-file owns its Router; the package-level `router`
 # includes them all via the native aiogram 3.x mechanism.
 router = _Router()
+router.include_router(_confirm_router)
 router.include_router(_task_callbacks_router)
 router.include_router(_dedup_router)
 router.include_router(_nl_edit_router)
@@ -127,6 +132,8 @@ __all__ = [
     "cb_dedup_keep",
     "cb_dedup_merge",
     "cb_delete_list",
+    "cb_tasklist_confirm",
+    "cb_tasklist_decline",
     "cb_list_deadline_menu",
     "cb_list_deadline_set",
     "cb_not_a_list",
