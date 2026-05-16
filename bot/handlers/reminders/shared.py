@@ -10,7 +10,6 @@ Redis-key conventions (set by worker, read by bot):
 """
 from __future__ import annotations
 
-import html
 import logging
 from datetime import datetime, timezone
 from uuid import UUID
@@ -18,26 +17,18 @@ from zoneinfo import ZoneInfo
 
 from aiogram.types import Message
 
-logger = logging.getLogger(__name__)
+# Cross-package shared infra lives in bot.common (single source of truth).
+# Imported under their PUBLIC names — bot.common is the only public surface
+# for these helpers; this package re-exports nothing of them via its facade.
+from bot.common import DEFAULT_TZ, TIME_EXAMPLES, safe
 
-# Часовой пояс по умолчанию — если у юзера в users.timezone пусто или
-# зона не распарсилась.
-DEFAULT_TZ = "Europe/Moscow"
+logger = logging.getLogger(__name__)
 
 # Безопасные лимиты на пользовательский текст перед записью в Redis.
 # Защита от DoS-наполнения памяти Redis (H2 из security review).
 MAX_REMINDER_TEXT_LEN = 500
 # Максимальная длина reply-текста перед передачей в dateparser (M2 защитный).
 MAX_PARSE_INPUT_LEN = 200
-
-
-def _safe(s: str | None) -> str:
-    """HTML-escape для встраивания юзерского текста в parse_mode=HTML.
-
-    Telegram HTML mode допускает `<a>`, `<b>`, `<i>`, `<code>`, `<pre>` —
-    без экранирования юзер может вставить `<a href="tg://...">` (C-sec).
-    """
-    return html.escape(s or "", quote=False)
 
 
 def _cap_text(s: str | None, limit: int = MAX_REMINDER_TEXT_LEN) -> str:
@@ -91,7 +82,7 @@ async def _send_reminder_confirmation_with_chip(
     formatted_full = local.strftime("%d.%m.%Y %H:%M")
 
     await message.answer(
-        f"🔔 Напомню <b>{_safe(formatted_full)}</b> — «{_safe(short_text)}»",
+        f"🔔 Напомню <b>{safe(formatted_full)}</b> — «{safe(short_text)}»",
         parse_mode="HTML",
     )
 
@@ -118,16 +109,6 @@ def extract_first_datetime_entity(message: Message) -> datetime | None:
                     continue
     return None
 
-# Подсказка с примерами для reply'я (используется в rsk: и rsnz:)
-TIME_EXAMPLES = (
-    "Примеры:\n"
-    "• <code>через час</code>\n"
-    "• <code>завтра в 9</code>\n"
-    "• <code>в субботу в 18</code>\n"
-    "• <code>15 мая</code>"
-)
-
-
 def _reply_prompt(question: str) -> str:
     """Унифицированный текст prompt'а для ввода времени через reply.
 
@@ -144,37 +125,6 @@ def _reply_prompt(question: str) -> str:
     )
 
 
-# ──────────────────────────────────────────────────
-# Helpers
-# ──────────────────────────────────────────────────
-
-
-async def _get_user_tz_name(api, token: str) -> str:
-    """IANA-имя часового пояса юзера. Fallback Europe/Moscow если поле
-    пусто или невалидно. Возвращаем строку — `nl_date.parse()` сам
-    валидирует через ZoneInfo внутри."""
-    try:
-        user = await api.get_me(token)
-        tz_name = (user or {}).get("timezone") or DEFAULT_TZ
-    except Exception as e:
-        logger.warning(f"_get_user_tz_name: get_me failed, using {DEFAULT_TZ}: {e}")
-        return DEFAULT_TZ
-    try:
-        ZoneInfo(tz_name)  # валидируем
-        return tz_name
-    except Exception:
-        logger.warning(f"_get_user_tz_name: invalid tz {tz_name!r}, fallback {DEFAULT_TZ}")
-        return DEFAULT_TZ
-
-
-def _format_fire_at(fire_at: datetime, tz_name: str) -> str:
-    """Локализованное «11.05 09:00» для подтверждения юзеру."""
-    try:
-        tz = ZoneInfo(tz_name)
-    except Exception:
-        tz = ZoneInfo(DEFAULT_TZ)
-    local = fire_at.astimezone(tz)
-    return local.strftime("%d.%m %H:%M")
 
 
 

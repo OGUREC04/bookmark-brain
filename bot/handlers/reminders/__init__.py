@@ -5,8 +5,10 @@ Public facade. All historic external imports keep working:
     from bot.handlers.reminders import router, cmd_remind, strong_router, ...
 
 Internal layout:
-- ``shared.py``   — pure helpers (HTML-escape, uuid validation, tz / fire_at formatters,
-                    Telegram date_time entity extraction, MAX_* constants, TIME_EXAMPLES)
+- ``shared.py``   — reminders-internal helpers (uuid validation, reply-prompt,
+                    Telegram date_time entity extraction, MAX_* constants).
+                    Cross-package infra (HTML-escape, tz / fire_at formatters,
+                    NL splitters, TIME_EXAMPLES) lives in ``bot.common``.
 - ``list.py``     — ``/reminders`` command + NL-reply (cancel/reschedule/history)
 - ``explicit.py`` — ``/remind`` command + T8 inline trigger
 - ``callbacks.py``— inline-button callbacks (rsk / rsn / rdone / rsnz)
@@ -32,9 +34,7 @@ from .callbacks import (
 )
 from .callbacks import router as _callbacks_router
 from .explicit import (
-    _split_remind_text_and_time,
     cmd_remind,
-    extract_explicit_remind_body,
     process_explicit_remind_args,
 )
 from .explicit import router as _explicit_router
@@ -44,12 +44,8 @@ from .reply import handle_reminder_reply
 from .reply import router as _reply_router
 from .shared import (
     MAX_REMINDER_TEXT_LEN,
-    TIME_EXAMPLES,
     _cap_text,
-    _format_fire_at,
-    _get_user_tz_name,
     _is_valid_uuid,
-    _safe,
     extract_first_datetime_entity,
 )
 from .strong import (
@@ -72,13 +68,8 @@ router.include_router(_reply_router)
 
 __all__ = [
     "MAX_REMINDER_TEXT_LEN",
-    "TIME_EXAMPLES",
     "_cap_text",
-    "_format_fire_at",
-    "_get_user_tz_name",
     "_is_valid_uuid",
-    "_safe",
-    "_split_remind_text_and_time",
     "cb_create_reminder",
     "cb_dismiss_reminder",
     "cb_done_reminder",
@@ -86,7 +77,6 @@ __all__ = [
     "cb_strong_choice",
     "cmd_remind",
     "cmd_reminders",
-    "extract_explicit_remind_body",
     "extract_first_datetime_entity",
     "handle_reminder_reply",
     "handle_reminders_list_reply",

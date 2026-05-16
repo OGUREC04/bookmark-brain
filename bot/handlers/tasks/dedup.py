@@ -224,7 +224,7 @@ _DEDUP_DELETE = frozenset({
 # "обнови" / всё остальное → обновить оригинал
 
 
-def _parse_dedup_intent(text: str) -> str:
+def parse_dedup_intent(text: str) -> str:
     """Парсит намерение юзера из ответа на dedup-alert.
 
     Возвращает: 'open' | 'save_new' | 'delete' | 'update'
@@ -302,7 +302,7 @@ async def _apply_dedup_update(
     """Общая логика intent='update' для всех 3 dedup flow:
     1. cb_dedup_merge (callback кнопки)
     2. _handle_general_dedup_reply (reply на alert)
-    3. _handle_pending_dedup (следующее сообщение по ключевому слову)
+    3. handle_pending_dedup (следующее сообщение по ключевому слову)
 
     Семантика: переносит поля new → old, удаляет new, возвращает обновлённый old.
     None если что-то упало (вызывающий покажет error).
@@ -348,7 +348,7 @@ async def _handle_general_dedup_reply(
     new_bid = dedup["new_bid"]
     old_bid = dedup["old_bid"]
     user_text = message.text or ""
-    intent = _parse_dedup_intent(user_text)
+    intent = parse_dedup_intent(user_text)
 
     chat_id = message.chat.id
 
@@ -474,7 +474,7 @@ async def _handle_general_dedup_reply(
     await store.clear_pending_dedup(chat_id)
 
 
-async def _handle_pending_dedup(
+async def handle_pending_dedup(
     message: Message, api, store, dedup: dict,
     intent: str, alert_msg_id: int,
 ) -> None:

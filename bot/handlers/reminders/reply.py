@@ -13,12 +13,10 @@ from datetime import datetime, timedelta, timezone
 from aiogram import F, Router
 from aiogram.types import Message
 
+from bot.common import TIME_EXAMPLES, format_fire_at, get_user_tz_name, safe
+
 from .shared import (
-    TIME_EXAMPLES,
     _cap_text,
-    _format_fire_at,
-    _get_user_tz_name,
-    _safe,
     extract_first_datetime_entity,
 )
 from .list import handle_reminders_list_reply
@@ -123,7 +121,7 @@ async def handle_reminder_reply(message: Message, api, store) -> bool:
         )
         return True
 
-    user_tz_name = await _get_user_tz_name(api, token)
+    user_tz_name = await get_user_tz_name(api, token)
     entity_dt = extract_first_datetime_entity(message)
     if entity_dt is not None:
         now_utc = datetime.now(timezone.utc)
@@ -183,9 +181,9 @@ async def handle_reminder_reply(message: Message, api, store) -> bool:
                 pending_bid.get("bookmark_id")
                 if isinstance(pending_bid, dict) else None
             )
-        proposed = _format_fire_at(result.dt, user_tz_name)
+        proposed = format_fire_at(result.dt, user_tz_name)
         prompt = await message.answer(
-            f"Не понял точное время. Поставить на <b>{_safe(proposed)}</b>?\n"
+            f"Не понял точное время. Поставить на <b>{safe(proposed)}</b>?\n"
             f"<b>Reply «да»</b> — подтверждаю, или укажи время точнее "
             f"(например «через час», «завтра в 9»).",
             parse_mode="HTML",
@@ -221,7 +219,7 @@ async def handle_reminder_reply(message: Message, api, store) -> bool:
             return True
 
         await message.answer(
-            f"💤 Продлено до <b>{_safe(_format_fire_at(result.dt, user_tz_name))}</b>",
+            f"💤 Продлено до <b>{safe(format_fire_at(result.dt, user_tz_name))}</b>",
             parse_mode="HTML",
         )
         return True
@@ -255,7 +253,7 @@ async def handle_reminder_reply(message: Message, api, store) -> bool:
         return True
 
     await message.answer(
-        f"🔔 Напомню <b>{_safe(_format_fire_at(result.dt, user_tz_name))}</b>",
+        f"🔔 Напомню <b>{safe(format_fire_at(result.dt, user_tz_name))}</b>",
         parse_mode="HTML",
     )
     return True
@@ -289,7 +287,7 @@ async def _handle_fallback_confirm_reply(
             pass
         return True
 
-    user_tz_name = await _get_user_tz_name(api, token)
+    user_tz_name = await get_user_tz_name(api, token)
 
     is_confirm = any(text_lower == w or text_lower.startswith(w + " ") for w in _FALLBACK_CONFIRM_YES)
 
@@ -318,9 +316,9 @@ async def _handle_fallback_confirm_reply(
         return True
 
     if result.status == ParseStatus.FALLBACK_DEFAULT and result.dt is not None:
-        proposed = _format_fire_at(result.dt, user_tz_name)
+        proposed = format_fire_at(result.dt, user_tz_name)
         prompt = await message.answer(
-            f"Снова не понял. Поставить на <b>{_safe(proposed)}</b>?\n"
+            f"Снова не понял. Поставить на <b>{safe(proposed)}</b>?\n"
             f"<b>Reply «да»</b> или укажи точнее.",
             parse_mode="HTML",
         )
@@ -391,9 +389,9 @@ async def _apply_reminder_action(
     except Exception:
         dt = None
 
-    when = _format_fire_at(dt, user_tz_name) if dt else fire_at_iso
+    when = format_fire_at(dt, user_tz_name) if dt else fire_at_iso
     label = "💤 Продлено до" if kind == "snooze" else "🔔 Напомню"
-    await message.answer(f"{label} <b>{_safe(when)}</b>", parse_mode="HTML")
+    await message.answer(f"{label} <b>{safe(when)}</b>", parse_mode="HTML")
     return True
 
 

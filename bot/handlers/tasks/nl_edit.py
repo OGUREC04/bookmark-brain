@@ -187,16 +187,16 @@ async def _handle_remind_on_task_list(
     «<текст> <время>» — text игнорируется, потому что reminder привязан к
     task_list'у, источник текста = title/summary списка).
     """
-    from bot.handlers.reminders import (
-        _get_user_tz_name,
-        _split_remind_text_and_time,
-        _format_fire_at,
-        _safe,
+    from bot.common import (
         TIME_EXAMPLES,
+        format_fire_at,
+        get_user_tz_name,
+        safe,
+        split_remind_text_and_time,
     )
     from bot.services.nl_date import ParseStatus, parse
 
-    user_tz_name = await _get_user_tz_name(api, token)
+    user_tz_name = await get_user_tz_name(api, token)
     body_clean = body.strip()
     if not body_clean:
         await message.answer(
@@ -209,7 +209,7 @@ async def _handle_remind_on_task_list(
     # Разделяем body на (текст, время). Для task_list текст игнорим, нужно
     # только время. Если время не нашли — всё тело = время (юзер написал
     # просто «в пятницу в 9»).
-    _text_part, time_part = _split_remind_text_and_time(body_clean, user_tz_name)
+    _text_part, time_part = split_remind_text_and_time(body_clean, user_tz_name)
     if time_part is None:
         time_part = body_clean
 
@@ -225,7 +225,7 @@ async def _handle_remind_on_task_list(
         return
     if pr.status == ParseStatus.UNPARSEABLE or pr.dt is None:
         await message.answer(
-            f"Не понял время «{_safe(time_part)}». " + TIME_EXAMPLES,
+            f"Не понял время «{safe(time_part)}». " + TIME_EXAMPLES,
             parse_mode="HTML",
         )
         return
@@ -266,9 +266,9 @@ async def _handle_remind_on_task_list(
         )
         return
 
-    fire_str = _format_fire_at(pr.dt, user_tz_name)
+    fire_str = format_fire_at(pr.dt, user_tz_name)
     await message.answer(
-        f"🔔 Напомню про список <b>{_safe(reminder_text)}</b> — {_safe(fire_str)}",
+        f"🔔 Напомню про список <b>{safe(reminder_text)}</b> — {safe(fire_str)}",
         parse_mode="HTML",
     )
 
@@ -333,7 +333,7 @@ async def msg_nl_edit_on_reply(message: Message, api, store=None):
     # Phase 2.6 T7: explicit remind trigger в reply на task_list.
     # «сделай напоминание завтра в 9» / «напомни в пятницу» / «напомни через час»
     # → создаём composite reminder привязанный к этому task_list.
-    from bot.handlers.reminders import extract_explicit_remind_body
+    from bot.common import extract_explicit_remind_body
     explicit_body = extract_explicit_remind_body(message.text or "")
     if explicit_body is not None:
         await _handle_remind_on_task_list(message, api, token, bid, explicit_body)

@@ -368,8 +368,8 @@ class TestDedupUpdateRerendersTaskList:
         # (поведение не регрессировано)
 
     async def test_pending_dedup_update_shows_updated_list(self):
-        """Тот же кейс для _handle_pending_dedup (без reply, по ключевому слову)."""
-        from bot.handlers.tasks import _handle_pending_dedup
+        """Тот же кейс для handle_pending_dedup (без reply, по ключевому слову)."""
+        from bot.handlers.tasks import handle_pending_dedup
 
         msg = _make_pending_message("обнови")
         api = AsyncMock()
@@ -387,13 +387,13 @@ class TestDedupUpdateRerendersTaskList:
 
         with patch("bot.handlers.tasks.dedup._rerender_at_bottom") as rerender_mock:
             rerender_mock.return_value = None
-            await _handle_pending_dedup(
+            await handle_pending_dedup(
                 msg, api, store, dedup, intent="update", alert_msg_id=555,
             )
 
         rendered = rerender_mock.called or msg.bot.send_message.called
         assert rendered, (
-            "_handle_pending_dedup intent=update task_list не показал список"
+            "handle_pending_dedup intent=update task_list не показал список"
         )
 
     async def test_user_source_message_deleted_on_update(self):

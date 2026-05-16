@@ -609,18 +609,19 @@ async def handle_text(message: types.Message, api, store=None):
     if store and not message.reply_to_message:
         pending_mid = await store.get_pending_dedup(message.chat.id)
         if pending_mid:
-            from bot.handlers.tasks import _parse_dedup_intent, _handle_pending_dedup, _ephemeral
+            from bot.common import send_ephemeral
+            from bot.handlers.tasks import handle_pending_dedup, parse_dedup_intent
             dedup = await store.get_general_dedup(message.chat.id, pending_mid)
             if dedup:
-                intent = _parse_dedup_intent(message.text or "")
+                intent = parse_dedup_intent(message.text or "")
                 if intent != "unknown":
-                    await _handle_pending_dedup(
+                    await handle_pending_dedup(
                         message, api, store, dedup, intent, pending_mid,
                     )
                     return
                 else:
                     # Неизвестное — переспрашиваем, не пускаем в обычный flow
-                    await _ephemeral(
+                    await send_ephemeral(
                         message,
                         "Не понял. Напиши или ответь reply:\n"
                         "открой / удали / обнови / сохрани как новую",
@@ -647,10 +648,8 @@ async def handle_text(message: types.Message, api, store=None):
     # Note: «срочно напомни...» / «надо напомни...» перехватываются strong_router
     # раньше (matches /^(надо|нужно|срочно|…)/i) — это намеренное поведение,
     # urgency-маркер сильнее T8 trigger'а. См. ADR 0008 / 0009.
-    from bot.handlers.reminders import (
-        extract_explicit_remind_body,
-        process_explicit_remind_args,
-    )
+    from bot.common import extract_explicit_remind_body
+    from bot.handlers.reminders import process_explicit_remind_args
     explicit_body = extract_explicit_remind_body(text)
     if explicit_body is not None:
         if not explicit_body:

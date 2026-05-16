@@ -42,11 +42,11 @@ from .commands import router as _commands_router
 from .dedup import (
     _apply_dedup_update,
     _handle_general_dedup_reply,
-    _handle_pending_dedup,
-    _parse_dedup_intent,
     _show_updated_task_list_after_dedup_update,
     cb_dedup_keep,
     cb_dedup_merge,
+    handle_pending_dedup,
+    parse_dedup_intent,
 )
 from .dedup import router as _dedup_router
 from .fast_edit import (
@@ -75,7 +75,6 @@ from .shared import (
     _build_keyboard,
     _delete_after,
     _delete_after_by_id,
-    _ephemeral,
     _render_text,
     _rerender_at_bottom,
     send_and_autodelete,
@@ -112,15 +111,12 @@ __all__ = [
     "_cleanup_failed_attempts",
     "_delete_after",
     "_delete_after_by_id",
-    "_ephemeral",
     "_handle_delete_via_reply",
     "_handle_general_dedup_reply",
     "_handle_nudge_reply",
-    "_handle_pending_dedup",
     "_handle_remind_on_task_list",
     "_is_delete_command",
     "_parse_date",
-    "_parse_dedup_intent",
     "_parse_indices",
     "_parse_nudge_intent",
     "_render_text",
@@ -136,8 +132,10 @@ __all__ = [
     "cb_not_a_list",
     "cb_toggle_task",
     "cmd_todo",
+    "handle_pending_dedup",
     "msg_nl_edit_on_reply",
     "on_pin_service_message",
+    "parse_dedup_intent",
     "router",
     "send_and_autodelete",
 ]

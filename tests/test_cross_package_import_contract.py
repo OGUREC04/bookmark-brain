@@ -1,16 +1,20 @@
 """Cross-package import-contract guard.
 
 Why this exists: the reminders/tasks/worker monoliths were split into
-packages with facade re-exports. Several call sites import symbols from a
-*sibling* package via **lazy in-function imports** (e.g.
-`bot/handlers/tasks/nl_edit.py` does `from bot.handlers.reminders import
-_get_user_tz_name, ...` inside `_handle_remind_on_task_list`).
+packages with facade re-exports. The orchestration layer (`start.py`)
+imports the public cross-package API of a *sibling* package via **lazy
+in-function imports** (e.g. `bot/handlers/start.py` does
+`from bot.handlers.tasks import handle_pending_dedup, parse_dedup_intent`
+inside `handle_text`).
 
 Such imports execute only when that code path runs. The unit suite does
-NOT exercise those paths, so a missing facade re-export passes 479 tests
-green and then `ImportError`s in production (this exact bug shipped in the
-q21 split — `_get_user_tz_name/_format_fire_at/TIME_EXAMPLES` were not
-re-exported; caught only in code review).
+NOT always exercise those paths, so a missing facade re-export can pass
+the suite green and then `ImportError` in production (this exact class of
+bug shipped in the q21 split — shared infra helpers were not re-exported;
+caught only in code review). The de-leak refactor moved that shared infra
+into the public `bot.common` package, so reminders↔tasks no longer import
+each other laterally; the remaining guarded seams are start.py → the
+reminders / tasks facades.
 
 This test statically scans every source file for `from <split-package>
 import (...)` (module-level AND nested), then asserts each imported name
@@ -36,7 +40,13 @@ if _BACKEND_DIR.is_dir() and str(_BACKEND_DIR) not in sys.path:
 
 # Packages that were split monolith -> package with a facade __init__.
 # Any symbol imported from these by sibling code MUST be re-exported.
+# `bot.common` is the lowest shared layer: the de-leak refactor routed all
+# cross-package infra (HTML-escape, tz/fire_at formatters, NL splitters,
+# send_ephemeral) through its public facade so reminders/tasks no longer
+# import each other laterally. Its facade __all__ and re-exports are now the
+# load-bearing contract every feature package depends on — guard it here too.
 _SPLIT_PACKAGES = {
+    "bot.common",
     "bot.handlers.reminders",
     "bot.handlers.tasks",
     "app.worker",
@@ -102,11 +112,12 @@ def test_scan_found_cross_package_imports():
     assertion below would vacuously pass.
     """
     assert _IMPORTS, "import scanner found nothing — scan logic is broken"
-    # The known critical seam must be present in the scan.
+    # The known critical seam must be present in the scan: start.py pulls the
+    # public cross-package dedup API from the tasks facade lazily.
     assert any(
-        f.endswith("nl_edit.py") and name == "_get_user_tz_name"
+        f.endswith("start.py") and name == "handle_pending_dedup"
         for f, _mod, name, _ln in _IMPORTS
-    ), "expected nl_edit.py -> reminders._get_user_tz_name seam not detected"
+    ), "expected start.py -> tasks.handle_pending_dedup seam not detected"
 
 
 @pytest.mark.parametrize(

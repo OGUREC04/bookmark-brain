@@ -14,6 +14,12 @@ from datetime import datetime, timedelta, timezone
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import CallbackQuery, Message
 
+# Single source of truth for the ephemeral helper lives in bot.common.
+# Kept under the historic private name purely so the ~15 internal call
+# sites in this package stay untouched; NOT re-exported to siblings via
+# the package facade (only bot.common is the public surface).
+from bot.common import send_ephemeral as _ephemeral
+
 logger = logging.getLogger(__name__)
 
 # ──────────────────────────────────────────────────
@@ -267,19 +273,9 @@ async def _rerender_at_bottom_inner(
 EPHEMERAL_DELAY = 8.0
 
 
-async def _ephemeral(message: Message, text: str, delay: float = EPHEMERAL_DELAY) -> None:
-    """Раньше автоудаляло сообщение через `delay` секунд. Теперь — НЕТ.
-
-    Юзеру важно видеть что бот ответил, даже если это «не понял». Предыдущая
-    эфемерность создавала впечатление что бот молчит. Имя и сигнатура
-    сохранены для обратной совместимости со всеми вызовами.
-    """
-    await message.answer(text, parse_mode=None)
-
-
 async def send_and_autodelete(message: Message, text: str, delay: float = EPHEMERAL_DELAY) -> None:
     """Backwards-compat для других модулей."""
-    await _ephemeral(message, text, delay)
+    await _ephemeral(message, text)
 
 
 async def _delete_after(msg: Message, delay: float) -> None:

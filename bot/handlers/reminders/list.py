@@ -3,9 +3,10 @@
 Extracted from ``_legacy.py`` as part of q21 Step 1.
 
 Owns its own ``Router()``; aggregated by the package ``__init__`` via
-``include_router``. Shared helpers (``_safe``, ``_format_fire_at``,
-``_get_user_tz_name``, ``MAX_PARSE_INPUT_LEN``, ``TIME_EXAMPLES``) are still
-imported from ``._legacy`` and will move to ``shared.py`` in a later step.
+``include_router``. Cross-package shared infra (``safe``, ``format_fire_at``,
+``get_user_tz_name``, ``TIME_EXAMPLES``) comes from the public ``bot.common``
+package; reminders-internal constants (``MAX_PARSE_INPUT_LEN``) stay in
+``shared.py``.
 """
 from __future__ import annotations
 
@@ -18,13 +19,14 @@ from aiogram import Router
 from aiogram.filters import Command, CommandObject
 from aiogram.types import Message
 
-from .shared import (
-    MAX_PARSE_INPUT_LEN,
+from bot.common import (
     TIME_EXAMPLES,
-    _format_fire_at,
-    _get_user_tz_name,
-    _safe,
+    format_fire_at,
+    get_user_tz_name,
+    safe,
 )
+
+from .shared import MAX_PARSE_INPUT_LEN
 
 logger = logging.getLogger(__name__)
 
@@ -45,10 +47,10 @@ def _format_reminder_short(rem: dict, tz_name: str) -> str:
     when = ""
     try:
         dt = datetime.fromisoformat(fire_at_iso.replace("Z", "+00:00"))
-        when = _format_fire_at(dt, tz_name)
+        when = format_fire_at(dt, tz_name)
     except Exception:
         when = fire_at_iso
-    return f"{_safe(text)} — {_safe(when)}"
+    return f"{safe(text)} — {safe(when)}"
 
 
 @router.message(Command("reminders"))
@@ -63,7 +65,7 @@ async def cmd_reminders(message: Message, command: CommandObject, api, store):
     arg = (command.args or "").strip().lower()
     show_history = arg in ("история", "history")
 
-    user_tz_name = await _get_user_tz_name(api, token)
+    user_tz_name = await get_user_tz_name(api, token)
 
     if show_history:
         try:
@@ -223,14 +225,14 @@ async def handle_reminders_list_reply(
         token = await _ensure_user(message, api)
         if not token:
             return True
-        user_tz_name = await _get_user_tz_name(api, token)
+        user_tz_name = await get_user_tz_name(api, token)
         result = parse(time_part, user_tz=user_tz_name)
         if result.status == ParseStatus.IN_PAST:
             await message.answer("Это в прошлом.", parse_mode=None)
             return True
         if result.status not in (ParseStatus.OK, ParseStatus.FALLBACK_DEFAULT) or result.dt is None:
             await message.answer(
-                f"Не понял время «{_safe(time_part)}». " + TIME_EXAMPLES,
+                f"Не понял время «{safe(time_part)}». " + TIME_EXAMPLES,
                 parse_mode="HTML",
             )
             return True
@@ -239,9 +241,9 @@ async def handle_reminders_list_reply(
         except Exception:
             await message.answer("Не получилось перенести.", parse_mode=None)
             return True
-        when = _format_fire_at(result.dt, user_tz_name)
+        when = format_fire_at(result.dt, user_tz_name)
         await message.answer(
-            f"💤 Перенесено на <b>{_safe(when)}</b>",
+            f"💤 Перенесено на <b>{safe(when)}</b>",
             parse_mode="HTML",
         )
         return True

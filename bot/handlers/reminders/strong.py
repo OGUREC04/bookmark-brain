@@ -19,15 +19,13 @@ from datetime import datetime, timezone
 from aiogram import F, Router
 from aiogram.types import CallbackQuery, Message
 
+from bot.common import format_fire_at, get_user_tz_name, safe, split_remind_text_and_time
+
 from .shared import (
     _cap_text,
-    _format_fire_at,
-    _get_user_tz_name,
     _reply_prompt,
-    _safe,
     extract_first_datetime_entity,
 )
-from .explicit import _split_remind_text_and_time
 
 logger = logging.getLogger(__name__)
 
@@ -125,13 +123,13 @@ async def handle_strong_intent_message(message: Message, api, store):
         from bot.handlers.start import _ensure_user
         token = await _ensure_user(message, api)
         if token:
-            user_tz_name = await _get_user_tz_name(api, token)
+            user_tz_name = await get_user_tz_name(api, token)
             entity_dt = extract_first_datetime_entity(message)
             if entity_dt is not None and entity_dt > datetime.now(timezone.utc):
                 parsed_dt_iso = entity_dt.isoformat()
             else:
                 from bot.services.nl_date import ParseStatus, parse
-                split_text, split_time = _split_remind_text_and_time(text, user_tz_name)
+                split_text, split_time = split_remind_text_and_time(text, user_tz_name)
                 if split_time:
                     pr = parse(split_time, user_tz=user_tz_name)
                     if pr.status == ParseStatus.OK and pr.dt is not None:
@@ -292,13 +290,13 @@ async def cb_strong_choice(callback: CallbackQuery, api, store):
 
         try:
             dt = datetime.fromisoformat(parsed_dt_iso)
-            user_tz_name = await _get_user_tz_name(api, token)
-            when = _format_fire_at(dt, user_tz_name)
+            user_tz_name = await get_user_tz_name(api, token)
+            when = format_fire_at(dt, user_tz_name)
         except Exception:
             when = parsed_dt_iso
         try:
             await callback.message.edit_text(
-                f"🔔 Напомню <b>{_safe(when)}</b> — «{_safe(text)}»", parse_mode="HTML",
+                f"🔔 Напомню <b>{safe(when)}</b> — «{safe(text)}»", parse_mode="HTML",
             )
         except Exception:
             pass
@@ -311,7 +309,7 @@ async def cb_strong_choice(callback: CallbackQuery, api, store):
     # Времени нет → просим reply со временем (используя explicit-marker)
     try:
         new_prompt = await callback.message.edit_text(
-            _reply_prompt(f"🔔 Когда напомнить «<b>{_safe(text)}</b>»?"),
+            _reply_prompt(f"🔔 Когда напомнить «<b>{safe(text)}</b>»?"),
             parse_mode="HTML",
         )
     except Exception:

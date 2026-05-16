@@ -5,29 +5,32 @@ Extracted from ``_legacy.py``. Owns its own ``Router()``.
 Public API (re-exported via package ``__init__``):
 - ``cmd_remind`` — /remind aiogram handler
 - ``process_explicit_remind_args`` — shared body (Phase 2.6 T8 inline trigger)
-- ``extract_explicit_remind_body`` — detects «сделай напоминание ...» prefix
-- ``_split_remind_text_and_time`` — heuristic splitter
 - ``REMIND_HELP_TEXT``
-- ``_EXPLICIT_REMIND_PREFIX_RE``
+
+NL helpers (``split_remind_text_and_time``, ``extract_explicit_remind_body``,
+``EXPLICIT_REMIND_PREFIX_RE``) now live in ``bot.common.nl`` — the single
+public source. Imported here, not redefined.
 """
 from __future__ import annotations
 
 import logging
-import re
 from datetime import datetime, timedelta, timezone
 
 from aiogram import Router
 from aiogram.filters import Command, CommandObject
 from aiogram.types import Message
 
-from .shared import (
-    DEFAULT_TZ,
+from bot.common import (
     TIME_EXAMPLES,
+    format_fire_at,
+    get_user_tz_name,
+    safe,
+    split_remind_text_and_time,
+)
+
+from .shared import (
     _cap_text,
-    _format_fire_at,
-    _get_user_tz_name,
     _reply_prompt,
-    _safe,
     _send_reminder_confirmation_with_chip,
     extract_first_datetime_entity,
 )
@@ -50,78 +53,6 @@ REMIND_HELP_TEXT = (
 )
 
 
-def _split_remind_text_and_time(
-    args: str, user_tz: str = DEFAULT_TZ,
-) -> tuple[str, str | None]:
-    """Разделяет аргументы /remind на текст напоминания и временную часть.
-
-    Стратегия: пробуем парсить ВСЁ как время — если ParseStatus.OK,
-    значит времени нет (всё - время). Иначе ищем временную фразу с конца:
-    последние 2-5 токенов отдаём парсеру, если OK — это время, остальное
-    — текст. Если ничего не парсится — весь ввод считается текстом без
-    времени.
-
-    Возвращает (text, time_part_or_None).
-    """
-    from bot.services.nl_date import ParseStatus, parse
-
-    args = args.strip()
-    if not args:
-        return "", None
-
-    tokens = args.split()
-    n = len(tokens)
-
-    # Эвристика: пробуем БÓЛЬШЕЕ окно с конца (5..1 токенов).
-    # Учитываем OK И IN_PAST как «time match» — иначе «вчера в 9» (3 токена)
-    # пропускается потому что «в 9» (2 токена) парсится в OK раньше.
-    # IN_PAST потом ловится в cmd_remind с осмысленным сообщением юзеру.
-    valid_statuses = (ParseStatus.OK, ParseStatus.IN_PAST)
-    for window in range(min(5, n), 0, -1):
-        time_part = " ".join(tokens[n - window:])
-        text_part = " ".join(tokens[: n - window])
-        result = parse(time_part, user_tz=user_tz)
-        if result.status in valid_statuses and text_part:
-            return text_part.strip(), time_part.strip()
-
-    # Время не найдено — весь ввод как текст.
-    return args, None
-
-
-# Phase 2.6 T8: префикс explicit-команды «сделай напоминание <body>» / «напомни <body>».
-# Используется и start.handle_text (inline trigger), и могут быть будущие
-# точки входа. Капчуем сам префикс с группой 'body' через extract_explicit_body().
-#
-# Принципы:
-# - Только начало строки (^) — слово в середине предложения НЕ триггер
-# - После триггера требуем whitespace или конец строки — «напомни-ка» НЕ матчится
-#   (защита от частицы «-ка» которая иначе попала бы в body)
-# - «напомнить/напоминаешь/напоминалось» (другие формы глагола) — не матчятся
-#   потому что после «напомни» стоит word-char, граница \b не срабатывает
-_EXPLICIT_REMIND_PREFIX_RE = re.compile(
-    r"^(?:сделай\s+напомин\w+|поставь\s+(?:напомин\w+|reminder)|"
-    r"напомни(?:\s+мне)?|создай\s+напомин\w+)"
-    r"(?=\s|$|[:,.])"   # дальше пробел/конец/допустимая пунктуация — НЕ дефис/буква
-    r"[\s:,.]*",        # съедаем разделитель (без дефиса)
-    re.IGNORECASE,
-)
-
-
-def extract_explicit_remind_body(text: str) -> str | None:
-    """Если text начинается с «сделай напоминание …» — возвращает «...» (что напомнить).
-
-    Возвращает None если префикс не матчится.
-    Возвращает пустую строку если префикс есть, но body пустой («напомни») —
-    caller сам спросит юзера что напомнить.
-    """
-    if not text:
-        return None
-    m = _EXPLICIT_REMIND_PREFIX_RE.match(text.strip())
-    if m is None:
-        return None
-    return text.strip()[m.end():].strip()
-
-
 async def process_explicit_remind_args(
     message: Message, args: str, api, store,
 ) -> None:
@@ -142,13 +73,13 @@ async def process_explicit_remind_args(
     if not token:
         return
 
-    user_tz_name = await _get_user_tz_name(api, token)
-    text_part, time_part = _split_remind_text_and_time(args, user_tz_name)
+    user_tz_name = await get_user_tz_name(api, token)
+    text_part, time_part = split_remind_text_and_time(args, user_tz_name)
 
     if time_part is None:
         display_text = _cap_text(text_part or args, limit=200)
         prompt = await message.answer(
-            _reply_prompt(f"🔔 Когда напомнить «<b>{_safe(display_text)}</b>»?"),
+            _reply_prompt(f"🔔 Когда напомнить «<b>{safe(display_text)}</b>»?"),
             parse_mode="HTML",
         )
         if prompt is not None and getattr(prompt, "message_id", None) is not None:
@@ -208,16 +139,16 @@ async def process_explicit_remind_args(
 
     if parse_result.status == ParseStatus.UNPARSEABLE or parse_result.dt is None:
         await message.answer(
-            f"Не понял время «{_safe(time_part)}». " + TIME_EXAMPLES,
+            f"Не понял время «{safe(time_part)}». " + TIME_EXAMPLES,
             parse_mode="HTML",
         )
         return
 
     if parse_result.status == ParseStatus.FALLBACK_DEFAULT:
-        proposed = _format_fire_at(parse_result.dt, user_tz_name)
+        proposed = format_fire_at(parse_result.dt, user_tz_name)
         prompt = await message.answer(
-            f"Не понял точное время. Поставить «<b>{_safe(text_part)}</b>» на "
-            f"<b>{_safe(proposed)}</b>?\n<b>Reply «да»</b> или укажи точнее.",
+            f"Не понял точное время. Поставить «<b>{safe(text_part)}</b>» на "
+            f"<b>{safe(proposed)}</b>?\n<b>Reply «да»</b> или укажи точнее.",
             parse_mode="HTML",
         )
         if prompt is not None and getattr(prompt, "message_id", None) is not None:
