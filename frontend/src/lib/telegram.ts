@@ -125,33 +125,15 @@ export function hapticSelection(): void {
  * Idempotent: safe to call multiple times.
  */
 export function applyTheme(): void {
-  const app = getTelegramWebApp();
   const root = document.documentElement;
-  const dark = app?.colorScheme === "dark";
-  // Lock direction = echo (Sage). Dark = echo-dark. Other tokens.css directions not used by Mini App.
-  root.setAttribute("data-theme", dark ? "echo-dark" : "echo");
-  root.setAttribute("data-tg-bridge", app ? "true" : "false");
-  if (app) {
-    if (dark) {
-      root.classList.add("theme-dark");
-      root.setAttribute("data-color-scheme", "dark");
-    } else {
-      root.classList.remove("theme-dark");
-      root.setAttribute("data-color-scheme", "light");
-    }
-    // Expose tg-theme-* vars under stable names (used by tokens.css [data-tg-bridge="true"]).
-    const t = app.themeParams ?? {};
-    const set = (k: string, v: string | undefined): void => {
-      if (v) root.style.setProperty(k, v);
-    };
-    set("--tg-theme-bg-color", t.bg_color);
-    set("--tg-theme-secondary-bg-color", t.secondary_bg_color);
-    set("--tg-theme-text-color", t.text_color);
-    set("--tg-theme-hint-color", t.hint_color);
-    set("--tg-theme-link-color", t.link_color);
-    set("--tg-theme-button-color", t.button_color);
-    set("--tg-theme-button-text-color", t.button_text_color);
-  }
+  // DS is a LOCKED paper-warm light theme. Dark mode was never adapted and
+  // the heavy backdrop-filter stack tanks performance on dark backgrounds,
+  // so we hard-pin to the light "echo" direction regardless of Telegram's
+  // colorScheme. The tg-theme bridge stays disabled (sage brand is locked).
+  root.setAttribute("data-theme", "echo");
+  root.setAttribute("data-color-scheme", "light");
+  root.classList.remove("theme-dark");
+  root.setAttribute("data-tg-bridge", "disabled-locked-brand");
 }
 
 /**
