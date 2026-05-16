@@ -559,7 +559,11 @@ hr {
    Apply with [data-tg-bridge="true"] on root.
    ========================================================================== */
 
-[data-tg-bridge="true"] {
+/* DISABLED 2026-05-16: DS is a LOCKED paper-warm direction with sage as the
+   single accent. Bridging Telegram's theme (button_color=blue, bg=white/dark)
+   destroyed the brand (sage→blue, cream→white). Light/dark handled solely via
+   data-theme="echo" / "echo-dark" (colorScheme), NOT tg color injection. */
+[data-tg-bridge="disabled-locked-brand"] {
   --bg-page: var(--tg-theme-bg-color, var(--bg-page));
   --bg-surface: var(--tg-theme-secondary-bg-color, var(--bg-surface));
   --fg-1: var(--tg-theme-text-color, var(--fg-1));
