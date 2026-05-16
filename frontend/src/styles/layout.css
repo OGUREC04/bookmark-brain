@@ -166,6 +166,12 @@
   50% { opacity: 0.35; }
 }
 
+/* DS bottom-sheet slide-up */
+@keyframes sheetUp {
+  from { transform: translateY(20%); opacity: 0; }
+  to   { transform: translateY(0); opacity: 1; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   [style*="bb-pulse"] { animation: none !important; }
 }

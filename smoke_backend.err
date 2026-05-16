@@ -1,0 +1,84 @@
+INFO:     Started server process [21716]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+--- Logging error ---
+Traceback (most recent call last):
+  File "C:\Users\nicha\AppData\Local\Programs\Python\Python313\Lib\logging\__init__.py", line 1154, in emit
+    stream.write(msg + self.terminator)
+    ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\nicha\AppData\Local\Programs\Python\Python313\Lib\encodings\cp1251.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode character '\u2610' in position 158: character maps to <undefined>
+Call stack:
+  File "C:\Users\nicha\AppData\Local\bookmark-brain\venv\Lib\site-packages\sqlalchemy\orm\session.py", line 4352, in flush
+    self._flush(objects)
+  File "C:\Users\nicha\AppData\Local\bookmark-brain\venv\Lib\site-packages\sqlalchemy\orm\session.py", line 4448, in _flush
+    flush_context.execute()
+  File "C:\Users\nicha\AppData\Local\bookmark-brain\venv\Lib\site-packages\sqlalchemy\orm\unitofwork.py", line 466, in execute
+    rec.execute(self)
+  File "C:\Users\nicha\AppData\Local\bookmark-brain\venv\Lib\site-packages\sqlalchemy\orm\unitofwork.py", line 642, in execute
+    util.preloaded.orm_persistence.save_obj(
+  File "C:\Users\nicha\AppData\Local\bookmark-brain\venv\Lib\site-packages\sqlalchemy\orm\persistence.py", line 93, in save_obj
+    _emit_insert_statements(
+  File "C:\Users\nicha\AppData\Local\bookmark-brain\venv\Lib\site-packages\sqlalchemy\orm\persistence.py", line 1233, in _emit_insert_statements
+    result = connection.execute(
+  File "C:\Users\nicha\AppData\Local\bookmark-brain\venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1418, in execute
+    return meth(
+  File "C:\Users\nicha\AppData\Local\bookmark-brain\venv\Lib\site-packages\sqlalchemy\sql\elements.py", line 515, in _execute_on_connection
+    return connection._execute_clauseelement(
+  File "C:\Users\nicha\AppData\Local\bookmark-brain\venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1640, in _execute_clauseelement
+    ret = self._execute_context(
+  File "C:\Users\nicha\AppData\Local\bookmark-brain\venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1846, in _execute_context
+    return self._exec_single_context(
+  File "C:\Users\nicha\AppData\Local\bookmark-brain\venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1904, in _exec_single_context
+    self._log_info(
+  File "C:\Users\nicha\AppData\Local\bookmark-brain\venv\Lib\site-packages\sqlalchemy\engine\base.py", line 190, in _log_info
+    self.engine.logger.info(message, *arg, **kw)
+  File "C:\Users\nicha\AppData\Local\bookmark-brain\venv\Lib\site-packages\sqlalchemy\log.py", line 159, in info
+    self.log(logging.INFO, msg, *args, **kwargs)
+  File "C:\Users\nicha\AppData\Local\bookmark-brain\venv\Lib\site-packages\sqlalchemy\log.py", line 210, in log
+    self.logger._log(level, msg, args, **kwargs)
+Message: '[%s] %r'
+Arguments: ('cached since 124s ago', (UUID('d96f6183-3a00-4201-989f-27bd18ddadb6'), 'bot_message', 488, None, None, '\u2610 1. купить молоко\n\u2610 2. позвонить маме\n\u2610 3. оплатить счёт', None, 'other', None, None, None, None, None, None, None, None, None, None, None, None, 'pending', None, None, 0, 0, None, None, False, False, None))
+--- Logging error ---
+Traceback (most recent call last):
+  File "C:\Users\nicha\AppData\Local\Programs\Python\Python313\Lib\logging\__init__.py", line 1154, in emit
+    stream.write(msg + self.terminator)
+    ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\nicha\AppData\Local\Programs\Python\Python313\Lib\encodings\cp1251.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode character '\u2610' in position 160: character maps to <undefined>
+Call stack:
+  File "C:\Users\nicha\AppData\Local\bookmark-brain\venv\Lib\site-packages\sqlalchemy\orm\session.py", line 4352, in flush
+    self._flush(objects)
+  File "C:\Users\nicha\AppData\Local\bookmark-brain\venv\Lib\site-packages\sqlalchemy\orm\session.py", line 4448, in _flush
+    flush_context.execute()
+  File "C:\Users\nicha\AppData\Local\bookmark-brain\venv\Lib\site-packages\sqlalchemy\orm\unitofwork.py", line 466, in execute
+    rec.execute(self)
+  File "C:\Users\nicha\AppData\Local\bookmark-brain\venv\Lib\site-packages\sqlalchemy\orm\unitofwork.py", line 642, in execute
+    util.preloaded.orm_persistence.save_obj(
+  File "C:\Users\nicha\AppData\Local\bookmark-brain\venv\Lib\site-packages\sqlalchemy\orm\persistence.py", line 93, in save_obj
+    _emit_insert_statements(
+  File "C:\Users\nicha\AppData\Local\bookmark-brain\venv\Lib\site-packages\sqlalchemy\orm\persistence.py", line 1233, in _emit_insert_statements
+    result = connection.execute(
+  File "C:\Users\nicha\AppData\Local\bookmark-brain\venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1418, in execute
+    return meth(
+  File "C:\Users\nicha\AppData\Local\bookmark-brain\venv\Lib\site-packages\sqlalchemy\sql\elements.py", line 515, in _execute_on_connection
+    return connection._execute_clauseelement(
+  File "C:\Users\nicha\AppData\Local\bookmark-brain\venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1640, in _execute_clauseelement
+    ret = self._execute_context(
+  File "C:\Users\nicha\AppData\Local\bookmark-brain\venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1846, in _execute_context
+    return self._exec_single_context(
+  File "C:\Users\nicha\AppData\Local\bookmark-brain\venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1904, in _exec_single_context
+    self._log_info(
+  File "C:\Users\nicha\AppData\Local\bookmark-brain\venv\Lib\site-packages\sqlalchemy\engine\base.py", line 190, in _log_info
+    self.engine.logger.info(message, *arg, **kw)
+  File "C:\Users\nicha\AppData\Local\bookmark-brain\venv\Lib\site-packages\sqlalchemy\log.py", line 159, in info
+    self.log(logging.INFO, msg, *args, **kwargs)
+  File "C:\Users\nicha\AppData\Local\bookmark-brain\venv\Lib\site-packages\sqlalchemy\log.py", line 210, in log
+    self.logger._log(level, msg, args, **kwargs)
+Message: '[%s] %r'
+Arguments: ('cached since 184.3s ago', (UUID('d96f6183-3a00-4201-989f-27bd18ddadb6'), 'bot_message', 491, None, None, '\u2610 1. купить молоко\n\u2610 2. позвонить маме\n\u2610 3. оплатить счёт', None, 'other', None, None, None, None, None, None, None, None, None, None, None, None, 'pending', None, None, 0, 0, None, None, False, False, None))

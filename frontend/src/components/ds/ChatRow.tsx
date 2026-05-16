@@ -21,12 +21,13 @@ export interface AvatarSpec {
   letter?: string;
   glyph?: string;
   icon?: ReactNode;
+  size?: number;
 }
 
-export function Avatar({ kind = "letter", tone = "sage", letter = "B", glyph, icon }: AvatarSpec) {
+export function Avatar({ kind = "letter", tone = "sage", letter = "B", glyph, icon, size = 46 }: AvatarSpec) {
   const base: React.CSSProperties = {
-    width: 46,
-    height: 46,
+    width: size,
+    height: size,
     borderRadius: "50%",
     flexShrink: 0,
     display: "flex",
