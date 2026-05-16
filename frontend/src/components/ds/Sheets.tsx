@@ -21,7 +21,7 @@ export function BottomSheet({
       <div
         onClick={onDismiss}
         style={{
-          position: "absolute",
+          position: "fixed",
           inset: 0,
           background: "var(--bg-overlay, rgba(28,22,18,0.32))",
           backdropFilter: "blur(2px)",
@@ -31,7 +31,7 @@ export function BottomSheet({
       />
       <div
         style={{
-          position: "absolute",
+          position: "fixed",
           left: 0,
           right: 0,
           bottom: 0,
@@ -41,6 +41,8 @@ export function BottomSheet({
         }}
       >
         <div
+          role="dialog"
+          aria-modal="true"
           style={{
             background: "rgba(255,252,246,0.92)",
             backdropFilter: "blur(32px) saturate(160%)",

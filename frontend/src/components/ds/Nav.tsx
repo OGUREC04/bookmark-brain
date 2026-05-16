@@ -23,10 +23,11 @@ export function BottomNav({
   return (
     <div
       style={{
-        position: "absolute",
+        position: "fixed",
         left: 14,
         right: 14,
-        bottom: 24,
+        bottom: "calc(24px + env(safe-area-inset-bottom, 0px))",
+        zIndex: 50,
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
@@ -57,6 +58,8 @@ export function BottomNav({
             <button
               key={t.id}
               onClick={() => onChange(t.id)}
+              aria-label={t.label}
+              aria-current={active ? "page" : undefined}
               style={{
                 background: active ? "var(--brand-primary)" : "transparent",
                 border: "none",

@@ -1,6 +1,5 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
-import { HashRouter } from "react-router-dom";
 import { App } from "./App";
 import { initTelegramApp, onThemeChanged } from "./lib/telegram";
 import "./styles.css";
@@ -15,9 +14,7 @@ onThemeChanged(() => {
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    {/* HashRouter — safer than BrowserRouter in Telegram WebView (no 404 on reload, no popstate quirks on iOS). */}
-    <HashRouter>
-      <App />
-    </HashRouter>
+    {/* Navigation is state-driven (DS single-frame + sheets); no router needed. */}
+    <App />
   </React.StrictMode>
 );

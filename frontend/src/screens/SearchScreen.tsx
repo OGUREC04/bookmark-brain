@@ -1,6 +1,6 @@
 /* ЭКРАН 2 — Поиск. Ported from docs/design-system-miniapp/app/Search.jsx,
    wired to the real /search API. */
-import { useState, cloneElement } from "react";
+import { useRef, useState, cloneElement } from "react";
 import { Icons } from "../components/ds/icons";
 import { Glyph, EmptyState } from "../components/ds/atoms";
 import { api, type SearchResult as ApiResult } from "../lib/api";
@@ -94,6 +94,7 @@ export function SearchScreen({ onBack, onOpen }: { onBack: () => void; onOpen: (
   const [summary, setSummary] = useState<string | null>(null);
   const [searched, setSearched] = useState(false);
   const [loading, setLoading] = useState(false);
+  const reqId = useRef(0);
 
   const run = async (query: string) => {
     if (!query.trim()) {
@@ -102,14 +103,21 @@ export function SearchScreen({ onBack, onOpen }: { onBack: () => void; onOpen: (
       setSearched(false);
       return;
     }
+    const id = ++reqId.current;
     setLoading(true);
     try {
       const r = await api.search(query.trim(), 20);
+      if (id !== reqId.current) return; // stale response — a newer search superseded it
       setResults(r.results);
       setSummary(r.summary);
       setSearched(true);
+    } catch {
+      if (id !== reqId.current) return;
+      setResults([]);
+      setSummary(null);
+      setSearched(true);
     } finally {
-      setLoading(false);
+      if (id === reqId.current) setLoading(false);
     }
   };
 

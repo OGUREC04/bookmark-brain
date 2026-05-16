@@ -19,7 +19,7 @@ import {
 import { api, type Bookmark, type Folder } from "./lib/api";
 import { hostOf } from "./lib/adapters";
 import { formatRelativeDate } from "./lib/formatters";
-import { hapticImpact, hapticNotify } from "./lib/telegram";
+import { hapticImpact, hapticNotify, getBackButton } from "./lib/telegram";
 
 type Sheet =
   | { type: "action"; target: SheetTarget; bookmark: Bookmark }
@@ -77,15 +77,59 @@ export function App() {
   const reload = useCallback(() => setReloadKey((k) => k + 1), []);
   const closeSheet = useCallback(() => setSheet(null), []);
 
-  // Lazily load reminders / folders when a sheet needs them.
+  /**
+   * Runs a mutating API action with uniform error handling: on success →
+   * success haptic; on failure → error haptic (the sheet stays open so the
+   * user can retry). Without this every handler swallowed rejections and
+   * left the UI silently stuck (flagged by code review).
+   */
+  const runAction = useCallback(async (fn: () => Promise<void>) => {
+    try {
+      await fn();
+      hapticNotify("success");
+    } catch {
+      hapticNotify("error");
+    }
+  }, []);
+
+  // Lazily load reminders / folders when a sheet needs them (race-guarded).
   useEffect(() => {
+    let alive = true;
     if (sheet?.type === "reminders") {
-      api.reminders.upcoming(50).then((r) => setReminders(r.items)).catch(() => setReminders([]));
+      api.reminders
+        .upcoming(50)
+        .then((r) => alive && setReminders(r.items))
+        .catch(() => alive && setReminders([]));
     }
     if (sheet?.type === "moveToSpace") {
-      api.getFolders().then(setFolders).catch(() => setFolders([]));
+      api.getFolders()
+        .then((f) => alive && setFolders(f))
+        .catch(() => alive && setFolders([]));
     }
+    return () => {
+      alive = false;
+    };
   }, [sheet]);
+
+  // Telegram BackButton: native back closes search / any open sheet.
+  useEffect(() => {
+    const back = getBackButton();
+    if (!back) return;
+    const overlayOpen = searchOpen || sheet !== null;
+    if (overlayOpen) {
+      back.show();
+      const onBack = () => {
+        if (sheet !== null) setSheet(null);
+        else setSearchOpen(false);
+      };
+      back.onClick(onBack);
+      return () => {
+        back.offClick(onBack);
+        back.hide();
+      };
+    }
+    back.hide();
+  }, [searchOpen, sheet]);
 
   const onLongPress = useCallback((b: Bookmark) => {
     hapticImpact("medium");
@@ -136,19 +180,21 @@ export function App() {
           target={sheet.target}
           onDismiss={closeSheet}
           onRemind={() => setSheet({ type: "reminderPicker", bookmark: sheet.bookmark })}
-          onStar={async () => {
-            await api.toggleFavorite(sheet.bookmark.id, !sheet.bookmark.is_favorite);
-            hapticNotify("success");
-            closeSheet();
-            reload();
-          }}
+          onStar={() =>
+            runAction(async () => {
+              await api.toggleFavorite(sheet.bookmark.id, !sheet.bookmark.is_favorite);
+              closeSheet();
+              reload();
+            })
+          }
           onMove={() => setSheet({ type: "moveToSpace", bookmark: sheet.bookmark })}
-          onDelete={async () => {
-            await api.deleteBookmark(sheet.bookmark.id);
-            hapticNotify("success");
-            closeSheet();
-            reload();
-          }}
+          onDelete={() =>
+            runAction(async () => {
+              await api.deleteBookmark(sheet.bookmark.id);
+              closeSheet();
+              reload();
+            })
+          }
         />
       )}
 
@@ -156,18 +202,23 @@ export function App() {
         <RemindersSheet
           groups={groupReminders(reminders)}
           onDismiss={closeSheet}
-          onCancel={async (id) => {
-            await api.reminders.cancel(id);
-            const r = await api.reminders.upcoming(50);
-            setReminders(r.items);
-            reload();
-          }}
-          onSnooze={async (id) => {
-            const next = new Date(Date.now() + 3600_000).toISOString();
-            await api.reminders.snooze(id, next);
-            const r = await api.reminders.upcoming(50);
-            setReminders(r.items);
-          }}
+          onCancel={(id) =>
+            runAction(async () => {
+              await api.reminders.cancel(id);
+              const r = await api.reminders.upcoming(50);
+              setReminders(r.items);
+              reload();
+            })
+          }
+          onSnooze={(id) =>
+            runAction(async () => {
+              const next = new Date(Date.now() + 3600_000).toISOString();
+              await api.reminders.snooze(id, next);
+              const r = await api.reminders.upcoming(50);
+              setReminders(r.items);
+              reload();
+            })
+          }
         />
       )}
 
@@ -175,11 +226,12 @@ export function App() {
         <ReminderPickerSheet
           contextText={sheet.bookmark.title || sheet.bookmark.raw_text.slice(0, 60)}
           onDismiss={closeSheet}
-          onConfirm={async (iso) => {
-            await api.reminders.create(sheet.bookmark.id, iso);
-            hapticNotify("success");
-            closeSheet();
-          }}
+          onConfirm={(iso) =>
+            runAction(async () => {
+              await api.reminders.create(sheet.bookmark.id, iso);
+              closeSheet();
+            })
+          }
         />
       )}
 
@@ -187,12 +239,13 @@ export function App() {
         <MoveToSpaceSheet
           spaces={folders.map<SpaceOption>((f) => ({ id: f.id, name: f.name, count: f.bookmarks_count, glyph: f.emoji || "·" }))}
           onDismiss={closeSheet}
-          onPick={async (folderId) => {
-            await api.addBookmarkToFolder(folderId, sheet.bookmark.id);
-            hapticNotify("success");
-            closeSheet();
-            reload();
-          }}
+          onPick={(folderId) =>
+            runAction(async () => {
+              await api.addBookmarkToFolder(folderId, sheet.bookmark.id);
+              closeSheet();
+              reload();
+            })
+          }
           onCreate={() => {}}
         />
       )}
@@ -200,12 +253,13 @@ export function App() {
       {sheet?.type === "quickCreate" && (
         <QuickCreateSheet
           onDismiss={closeSheet}
-          onSave={async (text) => {
-            await api.createThought(text);
-            hapticNotify("success");
-            closeSheet();
-            reload();
-          }}
+          onSave={(text) =>
+            runAction(async () => {
+              await api.createThought(text);
+              closeSheet();
+              reload();
+            })
+          }
         />
       )}
     </div>
