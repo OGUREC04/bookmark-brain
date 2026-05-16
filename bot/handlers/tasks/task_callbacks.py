@@ -12,11 +12,9 @@ from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import CallbackQuery, Message
 
 from .shared import (
-    _build_keyboard,
     _deadline_from_code,
     _list_deadline_menu,
     _redraw,
-    _render_text,
     _rerender_at_bottom,
 )
 
