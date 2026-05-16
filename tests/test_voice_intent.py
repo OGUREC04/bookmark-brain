@@ -97,10 +97,11 @@ class TestNoteDetection:
         result = detect_intent(text, duration=30.0)
         assert result.intent == VoiceIntent.NOTE
 
-    def test_ambiguous_defaults_to_note(self):
-        # "напомни" is a todo trigger but alone it's weird
+    def test_bare_napomni_is_reminder(self):
+        # skf/kjo: «напомни» теперь детерминированно reminder, не todo
+        # (раньше уходило в TODO → инжект «список задач:» → 2 напоминания).
         result = detect_intent("напомни", duration=2.0)
-        assert result.intent == VoiceIntent.TODO  # prefix match
+        assert result.intent == VoiceIntent.REMINDER
 
     def test_short_text_without_triggers(self):
         result = detect_intent("привет", duration=1.5)

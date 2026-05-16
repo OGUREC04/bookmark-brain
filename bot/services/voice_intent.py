@@ -1,9 +1,10 @@
 """Voice intent detection — determines what to do with a transcribed voice message.
 
 Intents:
-  - "todo"   — user dictated a task list (triggers task_list creation)
-  - "search" — user asked a search query (short, question-like)
-  - "note"   — regular voice note (default, saved as bookmark)
+  - "reminder" — user dictated «напомни …» (deterministic → reminder flow)
+  - "todo"     — user dictated a task list (triggers task_list creation)
+  - "search"   — user asked a search query (short, question-like)
+  - "note"     — regular voice note (default, saved as bookmark)
 
 Detection is purely heuristic (no LLM call) for speed.
 """
@@ -14,6 +15,7 @@ from enum import Enum
 
 
 class VoiceIntent(str, Enum):
+    REMINDER = "reminder"
     TODO = "todo"
     SEARCH = "search"
     NOTE = "note"
@@ -43,7 +45,30 @@ _TODO_PREFIXES = (
     "чек-лист",
     "надо сделать",
     "нужно сделать",
+)
+
+# ── Reminder triggers (skf/kjo) ────────────────────────────────
+# «напомни …» — детерминированно в reminder-флоу (как /remind), НЕ в
+# task_list. Исключение: «напомни что/какие/где …» — это поисковый
+# вопрос («напомни что я покупал»), уходит в search ниже.
+
+_REMINDER_PREFIXES = (
     "напомни",
+    "напоминание",
+    "поставь напоминание",
+    "сделай напоминание",
+    "поставь напоминалку",
+)
+
+_REMINDER_SEARCH_GUARD = (
+    "напомни что",
+    "напомни о ",
+    "напомни про",
+    "напомни какие",
+    "напомни какая",
+    "напомни какой",
+    "напомни где",
+    "напомни сколько",
 )
 
 _TODO_ANYWHERE = (
@@ -84,6 +109,21 @@ def detect_intent(text: str, duration: float | None = None) -> IntentResult:
         return IntentResult(intent=VoiceIntent.NOTE, cleaned_text=text or "")
 
     normalized = text.strip().lower()
+
+    # ── Check reminder intent (skf/kjo) ──
+    # «напомни …» → детерминированно reminder, кроме поисковых
+    # «напомни что/какие/где …».
+    if not normalized.startswith(_REMINDER_SEARCH_GUARD):
+        for prefix in _REMINDER_PREFIXES:
+            if normalized.startswith(prefix):
+                cleaned = text.strip()[len(prefix):].lstrip(" :-—,.\n")
+                # «напомни мне …» → срезаем и «мне»
+                if cleaned.lower().startswith("мне "):
+                    cleaned = cleaned[4:].lstrip(" :-—,.\n")
+                return IntentResult(
+                    intent=VoiceIntent.REMINDER,
+                    cleaned_text=cleaned or text.strip(),
+                )
 
     # ── Check todo intent ──
     for prefix in _TODO_PREFIXES:

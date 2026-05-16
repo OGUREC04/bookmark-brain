@@ -291,6 +291,12 @@ async def _process_audio(
         await _handle_voice_search(message, api, token, text, intent_result.cleaned_text)
         return
 
+    if intent_result.intent == VoiceIntent.REMINDER:
+        await _handle_voice_reminder(
+            message, api, token, text, intent_result.cleaned_text, store,
+        )
+        return
+
     if intent_result.intent == VoiceIntent.TODO:
         await _handle_voice_todo(
             message, api, token, text, intent_result.cleaned_text,
@@ -393,6 +399,32 @@ async def _handle_voice_search(
         parts.append(f"\n...и ещё {total - 5}. Уточни запрос.")
 
     await message.answer("\n\n".join(parts), parse_mode="HTML", disable_web_page_preview=True)
+
+
+async def _handle_voice_reminder(
+    message: types.Message, api, token: str,
+    full_text: str, cleaned_text: str, store,
+) -> None:
+    """Voice «напомни …» (skf/kjo): детерминированно в reminder-флоу.
+
+    Раньше «напомни» попадало в VoiceIntent.TODO → инжект «список задач:»
+    → AI-галлюцинация заголовка с «утром/вечером» → 2 напоминания на 1
+    пункт. Теперь — тот же путь, что текстовый /remind
+    (`process_explicit_remind_args`): есть время → создаём, нет →
+    спрашиваем reply.
+    """
+    from bot.handlers.reminders.explicit import process_explicit_remind_args
+
+    # Показываем что распознали (как voice-search) — прозрачность STT.
+    await message.reply(f"🔔 {full_text}", parse_mode=None)
+
+    args = (cleaned_text or "").strip()
+    if not args:
+        await ephemeral_error(
+            message, "Не разобрал, о чём напомнить. Попробуй ещё раз.",
+        )
+        return
+    await process_explicit_remind_args(message, args, api, store)
 
 
 async def _handle_voice_todo(
