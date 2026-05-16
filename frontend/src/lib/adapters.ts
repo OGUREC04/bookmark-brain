@@ -109,6 +109,74 @@ export function bookmarkToCard(b: Bookmark): CardData {
   };
 }
 
+/* ── Sheet adapters (used by App shell) ───────────────────────────────
+   Kept here so ALL Bookmark→UI mapping lives behind one seam. Return
+   types are structural (no React import) — compatible with the Sheets
+   component props by shape. */
+
+export interface SheetTargetData {
+  id: string;
+  title: string;
+  src: string;
+  letter: string;
+}
+
+/** Bookmark → mini-context shown at the top of ActionSheet. */
+export function targetOf(b: Bookmark): SheetTargetData {
+  const title = b.title || b.raw_text.slice(0, 80);
+  return {
+    id: b.id,
+    title,
+    src: b.url
+      ? `${hostOf(b.url)} · ${formatRelativeDate(b.created_at)}`
+      : formatRelativeDate(b.created_at),
+    letter: (title.trim()[0] || "·").toUpperCase(),
+  };
+}
+
+export interface RemItem {
+  id: string;
+  fire_at: string;
+  bookmark_title: string | null;
+  bookmark_raw_text: string | null;
+}
+
+export interface ReminderGroupRow {
+  id: string;
+  avatar: { kind: "letter"; letter: string };
+  name: string;
+  time: string;
+  preview: string;
+}
+
+/** Reminders list → groups (сегодня/завтра/на неделе/позже) for RemindersSheet. */
+export function groupReminders(items: RemItem[]): { label: string; rows: ReminderGroupRow[] }[] {
+  const buckets: Record<string, ReminderGroupRow[]> = {
+    сегодня: [],
+    завтра: [],
+    "на неделе": [],
+    позже: [],
+  };
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  for (const r of items) {
+    const d = new Date(r.fire_at);
+    const tgt = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    const diff = Math.round((tgt.getTime() - today.getTime()) / 86_400_000);
+    const label = diff <= 0 ? "сегодня" : diff === 1 ? "завтра" : diff < 7 ? "на неделе" : "позже";
+    buckets[label].push({
+      id: r.id,
+      avatar: { kind: "letter", letter: ((r.bookmark_title || "·").trim()[0] || "·").toUpperCase() },
+      name: r.bookmark_title || "напоминание",
+      time: `${d.getHours()}:${String(d.getMinutes()).padStart(2, "0")}`,
+      preview: r.bookmark_raw_text || "",
+    });
+  }
+  return Object.entries(buckets)
+    .filter(([, rows]) => rows.length > 0)
+    .map(([label, rows]) => ({ label, rows }));
+}
+
 /** Соответствует ли bookmark фильтр-чипу (все/fav/task/voice). */
 export function matchesFilter(b: Bookmark, filter: string): boolean {
   if (filter === "all") return true;

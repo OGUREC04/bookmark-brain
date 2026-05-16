@@ -14,12 +14,10 @@ import {
   MoveToSpaceSheet,
   QuickCreateSheet,
   type SheetTarget,
-  type ReminderRowData,
   type SpaceOption,
 } from "./components/ds/Sheets";
 import { api, type Bookmark, type Folder } from "./lib/api";
-import { hostOf } from "./lib/adapters";
-import { formatRelativeDate } from "./lib/formatters";
+import { targetOf, groupReminders } from "./lib/adapters";
 import { hapticImpact, hapticNotify, getBackButton } from "./lib/telegram";
 
 type Sheet =
@@ -29,40 +27,6 @@ type Sheet =
   | { type: "moveToSpace"; bookmark: Bookmark }
   | { type: "quickCreate" }
   | null;
-
-function targetOf(b: Bookmark): SheetTarget {
-  const title = b.title || b.raw_text.slice(0, 80);
-  return {
-    id: b.id,
-    title,
-    src: b.url ? `${hostOf(b.url)} · ${formatRelativeDate(b.created_at)}` : formatRelativeDate(b.created_at),
-    letter: (title.trim()[0] || "·").toUpperCase(),
-  };
-}
-
-type RemItem = { id: string; fire_at: string; bookmark_title: string | null; bookmark_raw_text: string | null };
-
-function groupReminders(items: RemItem[]): { label: string; rows: ReminderRowData[] }[] {
-  const buckets: Record<string, ReminderRowData[]> = { сегодня: [], завтра: [], "на неделе": [], позже: [] };
-  const now = new Date();
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  for (const r of items) {
-    const d = new Date(r.fire_at);
-    const tgt = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-    const diff = Math.round((tgt.getTime() - today.getTime()) / 86_400_000);
-    const label = diff <= 0 ? "сегодня" : diff === 1 ? "завтра" : diff < 7 ? "на неделе" : "позже";
-    buckets[label].push({
-      id: r.id,
-      avatar: { kind: "letter", letter: ((r.bookmark_title || "·").trim()[0] || "·").toUpperCase() },
-      name: r.bookmark_title || "напоминание",
-      time: `${d.getHours()}:${String(d.getMinutes()).padStart(2, "0")}`,
-      preview: r.bookmark_raw_text || "",
-    });
-  }
-  return Object.entries(buckets)
-    .filter(([, rows]) => rows.length > 0)
-    .map(([label, rows]) => ({ label, rows }));
-}
 
 export function App() {
   const [tab, setTab] = useState<NavTab>("mysli");
