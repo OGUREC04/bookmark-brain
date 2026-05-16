@@ -1,75 +1,64 @@
 import { NavLink, useLocation } from "react-router-dom";
-import { Home, Search, Plus, LayoutGrid, User } from "lucide-react";
+import { Home, Search, Plus, Tag, User } from "lucide-react";
 import { hapticImpact } from "../../lib/telegram";
 
 /**
- * Floating liquid-glass bottom nav with 5 items:
- *   Мысли · Поиск · [+ FAB центр] · Простр. · Я
+ * Bottom nav — OUR IA (5 cells: Мысли/Поиск/+/Простр./Я, central FAB),
+ * DS STYLING (frosted-pill container, sage-pill active w/ label,
+ * icon-only idle). Anatomy from docs/design-system/reference_app/MiniApp.jsx
+ * BottomTab — adapted to keep our central FAB.
  *
- * - FAB центральный 46x46, тёмный rgba(44,40,37,0.92), без brand-цвета.
- * - Active item gets rgba(0,0,0,0.05) bg.
- * - backdrop-filter blur 28px + saturate 180% для liquid-glass effect.
- * - На detail-роутах (e.g. /bookmark/:id) скрывается через CSS class.
+ * Idle tab  : icon only, --fg-3, transparent.
+ * Active tab : sage bg + white text + label, padding 8/16, primary shadow.
+ * FAB        : central, our addition (DS deviation kept per C1).
  */
 export function BottomNav() {
   const location = useLocation();
 
-  // Hide on detail screens — same convention as legacy.
   const hide =
-    location.pathname.startsWith("/bookmark/") ||
-    location.pathname.startsWith("/folder/") ||
     location.pathname.startsWith("/thought/") ||
-    location.pathname.startsWith("/space/");
+    location.pathname.startsWith("/space/") ||
+    location.pathname.startsWith("/bookmark/") ||
+    location.pathname.startsWith("/folder/");
   if (hide) return null;
 
   const handleFabClick = () => {
     hapticImpact("medium");
-    // T13: open QuickCreateSheet. Stub for now.
-    window.location.hash = "#/create";
+    window.location.hash = "#/create"; // T13: QuickCreateSheet
   };
+
+  const cls = ({ isActive }: { isActive: boolean }) =>
+    `nav-tab ${isActive ? "is-active" : ""}`;
 
   return (
     <nav className="bottom-nav" aria-label="Главная навигация">
-      <NavLink
-        to="/"
-        end
-        className={({ isActive }) => `bottom-nav__btn ${isActive ? "is-active" : ""}`}
-      >
-        <Home size={20} strokeWidth={1.5} />
-        <span className="bottom-nav__label">Мысли</span>
+      <NavLink to="/" end className={cls}>
+        <Home size={18} strokeWidth={1.6} aria-hidden />
+        <span className="nav-tab__label">Мысли</span>
       </NavLink>
 
-      <NavLink
-        to="/search"
-        className={({ isActive }) => `bottom-nav__btn ${isActive ? "is-active" : ""}`}
-      >
-        <Search size={20} strokeWidth={1.5} />
-        <span className="bottom-nav__label">Поиск</span>
+      <NavLink to="/search" className={cls}>
+        <Search size={18} strokeWidth={1.6} aria-hidden />
+        <span className="nav-tab__label">Поиск</span>
       </NavLink>
 
       <button
         type="button"
-        className="bottom-nav__btn bottom-nav__fab"
+        className="nav-fab"
         onClick={handleFabClick}
         aria-label="Создать мысль"
       >
-        <Plus size={22} strokeWidth={1.4} />
+        <Plus size={22} strokeWidth={1.6} aria-hidden />
       </button>
 
-      <NavLink
-        to="/spaces"
-        className={({ isActive }) => `bottom-nav__btn ${isActive ? "is-active" : ""}`}
-      >
-        <LayoutGrid size={20} strokeWidth={1.5} />
-        <span className="bottom-nav__label">Простр.</span>
+      <NavLink to="/spaces" className={cls}>
+        <Tag size={18} strokeWidth={1.6} aria-hidden />
+        <span className="nav-tab__label">Простр.</span>
       </NavLink>
 
-      <NavLink
-        to="/me"
-        className={({ isActive }) => `bottom-nav__btn ${isActive ? "is-active" : ""}`}
-      >
-        <User size={20} strokeWidth={1.5} />
-        <span className="bottom-nav__label">Я</span>
+      <NavLink to="/me" className={cls}>
+        <User size={18} strokeWidth={1.6} aria-hidden />
+        <span className="nav-tab__label">Я</span>
       </NavLink>
     </nav>
   );
