@@ -42,7 +42,7 @@ class TestVoiceTodo:
         transcribed_text = "список задач купить молоко, хлеб, сыр"
 
         with patch("bot.handlers.media._get_stt") as mock_stt_fn, \
-             patch("bot.handlers.start._ensure_user", return_value="test-jwt"), \
+             patch("bot.common.auth.ensure_user", return_value="test-jwt"), \
              patch("bot.handlers.settings.is_silent", return_value=False):
 
             stt = AsyncMock()
@@ -84,7 +84,7 @@ class TestVoiceTodo:
         transcribed_text = "надо сделать ревью кода и деплой"
 
         with patch("bot.handlers.media._get_stt") as mock_stt_fn, \
-             patch("bot.handlers.start._ensure_user", return_value="test-jwt"), \
+             patch("bot.common.auth.ensure_user", return_value="test-jwt"), \
              patch("bot.handlers.settings.is_silent", return_value=False):
 
             stt = AsyncMock()
@@ -127,7 +127,7 @@ class TestVoiceSearch:
         })
 
         with patch("bot.handlers.media._get_stt") as mock_stt_fn, \
-             patch("bot.handlers.start._ensure_user", return_value="test-jwt"), \
+             patch("bot.common.auth.ensure_user", return_value="test-jwt"), \
              patch("bot.handlers.settings.is_silent", return_value=False):
 
             stt = AsyncMock()
@@ -170,7 +170,7 @@ class TestVoiceSearch:
         mock_api.search_bookmarks = AsyncMock(return_value={"results": [], "total": 0})
 
         with patch("bot.handlers.media._get_stt") as mock_stt_fn, \
-             patch("bot.handlers.start._ensure_user", return_value="test-jwt"), \
+             patch("bot.common.auth.ensure_user", return_value="test-jwt"), \
              patch("bot.handlers.settings.is_silent", return_value=False):
 
             stt = AsyncMock()
@@ -207,7 +207,7 @@ class TestVoiceAutoTag:
         transcribed_text = "Сегодня обсудили архитектуру нового сервиса"
 
         with patch("bot.handlers.media._get_stt") as mock_stt_fn, \
-             patch("bot.handlers.start._ensure_user", return_value="test-jwt"), \
+             patch("bot.common.auth.ensure_user", return_value="test-jwt"), \
              patch("bot.handlers.settings.is_silent", return_value=False):
 
             stt = AsyncMock()
@@ -245,7 +245,7 @@ class TestVoiceTimestamps:
         transcribed_text = " ".join(["слово"] * 225)
 
         with patch("bot.handlers.media._get_stt") as mock_stt_fn, \
-             patch("bot.handlers.start._ensure_user", return_value="test-jwt"), \
+             patch("bot.common.auth.ensure_user", return_value="test-jwt"), \
              patch("bot.handlers.settings.is_silent", return_value=False):
 
             stt = AsyncMock()
@@ -278,7 +278,7 @@ class TestVoiceTimestamps:
         transcribed_text = "Короткое ��ообщение без таймстемпов"
 
         with patch("bot.handlers.media._get_stt") as mock_stt_fn, \
-             patch("bot.handlers.start._ensure_user", return_value="test-jwt"), \
+             patch("bot.common.auth.ensure_user", return_value="test-jwt"), \
              patch("bot.handlers.settings.is_silent", return_value=False):
 
             stt = AsyncMock()

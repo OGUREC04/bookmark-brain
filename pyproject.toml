@@ -1,0 +1,84 @@
+# Project tooling config. The codebase itself is run via requirements.txt
+# (bot/requirements.txt, backend/requirements.txt) — this file is for
+# lint/architecture tooling only, not packaging.
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+extend-exclude = [
+    ".claude",
+    "frontend",
+    "tools/mockups",
+    "**/__pycache__",
+]
+
+[tool.ruff.lint]
+# Scoped to the architecture/navigability goal — NOT a legacy style sweep:
+# F  — pyflakes (unused imports/names, undefined — real bugs)
+# I  — isort (deterministic import order; helps humans AND agents read the
+#      dependency graph — the import graph IS the architecture map)
+# TID— flake8-tidy-imports (ban relative cross-package imports → the graph
+#      stays explicit/greppable; this is the enforced architecture rule)
+# Broader style families (E/W/B/UP) are deliberately NOT in the hard gate:
+# gold-plating untested legacy handlers risks behaviour drift for zero
+# architectural value (YAGNI). They can be adopted incrementally later.
+select = ["F", "I", "TID"]
+
+[tool.ruff.lint.flake8-tidy-imports]
+# Cross-feature code MUST use absolute imports so the dependency graph is
+# explicit and greppable (key for AI-agent navigation). Relative imports
+# stay allowed *within* a package (parents="warn" not "all").
+ban-relative-imports = "parents"
+
+[tool.ruff.lint.per-file-ignores]
+# Tests use function-scoped imports + monkeypatch fixtures by design.
+"tests/**" = ["E402", "F401"]
+"backend/tests/**" = ["E402", "F401"]
+# Package facades re-export public API; that is their job.
+"**/__init__.py" = ["F401"]
+
+# ──────────────────────────────────────────────────────────────────────────
+# Architecture contract — enforced in CI (hard fail). See ARCHITECTURE.md.
+# Run locally: lint-imports
+# ──────────────────────────────────────────────────────────────────────────
+[tool.importlinter]
+root_packages = ["bot"]
+include_external_packages = true
+
+[[tool.importlinter.contracts]]
+name = "Feature packages are independent (no DIRECT lateral handler↔handler imports)"
+type = "independence"
+modules = [
+    "bot.handlers.reminders",
+    "bot.handlers.tasks",
+]
+# Rationale: a 1600-LOC monolith split shipped a CRITICAL bug because
+# tasks/nl_edit reached into reminders' private internals. Shared infra now
+# lives in bot.common; this contract makes that regression impossible to
+# reintroduce — reminders and tasks may only share via bot.common.
+#
+# ignore_imports: bot.handlers.start is the legitimate ORCHESTRATION hub —
+# it composes both features (e.g. routing a reply to dedup vs reminder).
+# Independence is about features not importing EACH OTHER directly; the
+# transitive path tasks → start → reminders is start doing its job, not a
+# lateral feature coupling. These two edges are the only allowed bridge.
+ignore_imports = [
+    "bot.handlers.start -> bot.handlers.reminders",
+    "bot.handlers.start -> bot.handlers.tasks",
+]
+
+[[tool.importlinter.contracts]]
+name = "Layered architecture: handlers → common → clients (no upward imports)"
+type = "layers"
+layers = [
+    "bot.main",
+    "bot.handlers",
+    "bot.common",
+]
+# bot.common is the lowest shared layer: it must never import a feature
+# handler or the composition root. Feature packages and start.py live in
+# the same `bot.handlers` layer (intra-layer imports between them are
+# allowed by this contract). The auth-bootstrap seam that ~16 handlers
+# share now lives in `bot.common.auth` (public `ensure_user`), so it is a
+# downward import under this layers contract — fully enforced, no longer a
+# hidden intra-layer fan-in to the orchestration module.

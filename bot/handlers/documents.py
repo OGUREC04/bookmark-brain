@@ -52,7 +52,7 @@ def _is_supported_document(message: types.Message) -> bool:
 @router.message(F.document, _is_supported_document)
 async def handle_document(message: types.Message, api, store=None):
     """Document → text extraction → bookmark."""
-    from bot.handlers.start import _ensure_user
+    from bot.common.auth import ensure_user
     from bot.handlers.settings import is_silent
 
     doc = message.document
@@ -70,7 +70,7 @@ async def handle_document(message: types.Message, api, store=None):
         )
         return
 
-    token = await _ensure_user(message, api)
+    token = await ensure_user(message, api)
     if not token:
         return
 

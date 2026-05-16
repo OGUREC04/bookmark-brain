@@ -24,27 +24,27 @@ import pytest
 
 class TestSafeHtmlEscape:
     def test_escapes_lt_gt(self):
-        from bot.handlers.reminders import _safe
+        from bot.common import safe as _safe
         assert _safe("<script>alert(1)</script>") == "&lt;script&gt;alert(1)&lt;/script&gt;"
 
     def test_escapes_anchor_injection(self):
-        from bot.handlers.reminders import _safe
+        from bot.common import safe as _safe
         # tg-deeplink phishing
         out = _safe('<a href="tg://resolve?domain=evil">click</a>')
         assert "<a " not in out
         assert "&lt;a" in out
 
     def test_passes_plain_text(self):
-        from bot.handlers.reminders import _safe
+        from bot.common import safe as _safe
         assert _safe("купить хлеб") == "купить хлеб"
 
     def test_handles_none(self):
-        from bot.handlers.reminders import _safe
+        from bot.common import safe as _safe
         assert _safe(None) == ""
         assert _safe("") == ""
 
     def test_escapes_ampersand(self):
-        from bot.handlers.reminders import _safe
+        from bot.common import safe as _safe
         assert _safe("AT&T") == "AT&amp;T"
 
 
@@ -93,8 +93,8 @@ class TestUuidValidation:
 def patch_ensure_user(monkeypatch):
     async def _fake(*_a, **_k):
         return "fake-token"
-    import bot.handlers.start
-    monkeypatch.setattr(bot.handlers.start, "_ensure_user", _fake)
+    import bot.common.auth
+    monkeypatch.setattr(bot.common.auth, "ensure_user", _fake)
 
 
 class TestCbDoneRejectsInvalidUuid:

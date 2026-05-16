@@ -5,7 +5,6 @@
 """
 from __future__ import annotations
 
-import asyncio
 import logging
 import tempfile
 from pathlib import Path
@@ -162,7 +161,7 @@ async def _process_audio(
     ext: str,
 ) -> None:
     """Download -> transcribe -> create bookmark."""
-    from bot.handlers.start import _ensure_user
+    from bot.common.auth import ensure_user
     from bot.handlers.settings import is_silent
 
     stt = _get_stt()
@@ -204,7 +203,7 @@ async def _process_audio(
         )
         return
 
-    token = await _ensure_user(message, api)
+    token = await ensure_user(message, api)
     if not token:
         return
 

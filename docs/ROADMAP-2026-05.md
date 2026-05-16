@@ -6,7 +6,12 @@
 
 **Готово к запуску на реальных юзерах:** ❌ нет. Не хватает Smart Blocks + Mini App.
 
-**Следующее действие:** перед Phase 5 — закрыть `pre-phase-3` pool (2 бада: split tasks.py + reminders.py). См. `bd list --label pre-phase-3`. После — Phase 5 Smart Blocks.
+**Следующее действие (новый порядок, 2026-05-14):**
+1. **Bugfix базовых функций** — другой чат (классификация / dedup / task lists / reminders)
+2. **Mini App MVP** — этот чат, параллельно
+3. **Phase 5 Smart Spaces** — отложен ПОСЛЕ Mini App. PRD готов: `docs/prd/SMART-SPACES-MVP.md`
+
+Причина переноса: в юзер-тесте всплыло много багов в core flow. Smart Spaces поверх неустойчивой базы = усиление проблем. PRD сохраняет весь контекст брейншторма для возврата к фазе.
 
 ---
 
@@ -32,13 +37,13 @@
 ├─ Phase R2   Documentation          ✅ (API docs остались)
 └─ Phase 2.5  Reminders MVP          ✅ (PR #10 merged + PR #11 фиксы + ADR 0008)
 
-В РАБОТЕ:
-└─ (пусто — готовы к Phase 5)
+В РАБОТЕ (параллельно):
+├─ Bugfix     base functions         ← другой чат (классификация/dedup/tasks/reminders)
+└─ Mini App   доделка UI             ← этот чат
 
-ОЧЕРЕДЬ (новый порядок):
-├─ Phase 5    Smart Blocks           ← следующее (2-3 дня)
-├─ Mini App   Доделать UI            ← после 5 (2-4 дня)
-├─ User test  Запуск на 5-10 юзеров  ← 1-2 недели live
+ОЧЕРЕДЬ (новый порядок после пересмотра 2026-05-14):
+├─ User test  Запуск на 5-10 юзеров  ← после Mini App (1-2 недели live)
+├─ Phase 5    Smart Spaces (PRD ✅)  ← отложен ПОСЛЕ Mini App (4-7 дней)
 ├─ Phase 4.5  DeepSeek (если нужно)  ← по фидбеку (0.5 дня)
 ├─ Phase 4    Learning Mechanisms    ← по реальным данным (1-2 дня)
 ├─ Phase 6    Proactivity 1.0        ← после данных (3-5 дней)
@@ -130,36 +135,36 @@ VPS Beget Cloud, Docker Compose prod, CI test.yml. Yandex SpeechKit sync на п
 
 ## ОЧЕРЕДЬ (по новому порядку)
 
-### Phase 5 — Smart Blocks MVP (2-3 дня) ← СЛЕДУЮЩЕЕ
+### Phase 5 — Smart Spaces MVP (4-7 дней) ⏸ ОТЛОЖЕН ПОСЛЕ Mini App
 
-**Цель:** умные коллекции = папка + AI-поведение + авто-роутинг. Юзер создаёт блоки, бот сам раскладывает закладки по смыслу.
+**Статус:** PRD v1 готов — `docs/prd/SMART-SPACES-MVP.md`. Брейншторм пройден (4 блока), ресёрч 2 агентов сделан, 7 User Stories + 15 edge cases + декомпозиция T1-T20 зафиксированы. Фаза отложена до завершения bugfix + Mini App.
 
-**Что даёт юзеру:**
-- Сразу видишь структуру вместо кучи
-- 5 готовых шаблонов: Goals, Ideas, Read Later, Do Someday, Insights
-- Можно создать кастомный блок с инструкцией для AI («сюда всё про инвестиции»)
-- Auto-routing после классификации — без ручной правки тегов
+**Цель:** тематические пространства с auto-routing, типизированным членством и связями. Юзер создаёт «пространство Идеи стартапов», бот сам собирает релевантное + строит связи между пространствами.
 
-**Декомпозиция (черновая, утвердим перед стартом):**
-- T1: Schema — `smart_blocks` таблица, миграция
-- T2: CRUD API — `POST/PATCH/DELETE/GET /api/v1/blocks/`
-- T3: `BlockRouter` — auto-routing после classification + embedding
-- T4: 5 шаблонов с дефолтными prompt-ами
-- T5: Bot — `/blocks list`, `/blocks setup`, `/blocks <name>`
-- T6: E2E + code-reviewer
+**Терминология (финал):** называется **«пространство»** (space) — не «блок», не «коллекция». Bot commands: `/spaces *`.
 
-**Открытые вопросы (решить ДО старта через CCPM brainstorm + planner):**
-1. Один блок на закладку или несколько?
-2. Auto-routing — детерминированные правила или AI prompt?
-3. «Не подошёл ни один блок» — default block / отдельный bucket / без блока?
-4. UI: блоки = папки или фильтры?
-5. Что делать с уже сохранёнными закладками — миграция или только новые?
+**Ключевые решения брейншторма (для возврата к фазе):**
+- Архитектура 3 слоя: теги (keywords) + папки (отложены) + spaces (главное)
+- Membership: D-cascade (LLM-setup → embedding-runtime → LLM-fallback)
+- Один primary + N auto/manual + rejected как negative signal
+- 5 шаблонов (Goals/Ideas/Read Later/Do Someday/Insights), 2 по дефолту (Goals + Ideas)
+- Cross-space surfacing через precomputed auto memberships
+- Feedback channel = Mini App (удаление неподходящих) → bot UI без confirm/reject
+- ADR 0006: топики в DM не работают, идём через БД-only архитектуру
+- Split: 5A connections (1-2д) → 5B core (2-3д) → 5C proactivity (1д)
 
-**Регламент работы (по CCPM + planner):**
-1. CCPM brainstorm — Claude задаёт вопросы по open questions
-2. Spec PRD → `docs/prd/SMART-BLOCKS-MVP.md`
-3. GitHub Issues sync (опционально, если нужна трассируемость)
-4. Planner agent → декомпозиция T1-T6
+**Что в backlog от Phase 5:**
+- `bookmark-brain-???` — proactive insights / mini-research (Phase 6+, P3)
+- Шаблоны >5 (юзер хочет подумать после первого запуска)
+- Папки внутри пространства (отложены до user feedback)
+
+**Зависит от:** Phase 2.5 ✅ + Bugfix base ⏳ + Mini App ⏳
+
+**При возврате к фазе:**
+1. Прочитать `docs/prd/SMART-SPACES-MVP.md` целиком — там весь контекст
+2. **Не запускать брейншторм заново**
+3. Пересмотреть только: реальные UX-патерны из Mini App user-test, выбор LLM (GigaChat vs DeepSeek после Phase 4.5)
+4. Planner agent → формализовать T1-T20 → bd create
 5. Beads с зависимостями
 6. TDD: тесты до кода
 7. Code-reviewer + security-reviewer на финале

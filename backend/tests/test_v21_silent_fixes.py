@@ -91,7 +91,7 @@ class TestF5AutoDoneGuard:
         mock_result = MagicMock(rowcount=0)
         mock_session.execute = AsyncMock(return_value=mock_result)
 
-        with patch("app.worker.async_session") as mk:
+        with patch("app.worker.scheduled.async_session") as mk:
             mk.return_value.__aenter__.return_value = mock_session
             await auto_done_reminders({})
 
@@ -152,9 +152,9 @@ class TestF1PermanentFailureNotify:
         mock_redis.set = AsyncMock()
         mock_redis.aclose = AsyncMock()
 
-        with patch("app.worker.async_session") as mk_sess, \
-             patch("app.worker._send_message", send_mock), \
-             patch("app.worker.aioredis_from_url", return_value=mock_redis):
+        with patch("app.worker.scheduled.async_session") as mk_sess, \
+             patch("app.worker.scheduled._send_message", send_mock), \
+             patch("app.worker.scheduled.aioredis_from_url", return_value=mock_redis):
             mk_sess.return_value.__aenter__.return_value = mock_session
             await scheduled_dispatcher({})
 
@@ -236,8 +236,8 @@ class TestF2FallbackConfirm:
     def patch_ensure_user(self, monkeypatch):
         async def _fake(*_a, **_k):
             return "fake-token"
-        import bot.handlers.start
-        monkeypatch.setattr(bot.handlers.start, "_ensure_user", _fake)
+        import bot.common.auth
+        monkeypatch.setattr(bot.common.auth, "ensure_user", _fake)
 
     @pytest.fixture
     def api(self):

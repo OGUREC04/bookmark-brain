@@ -194,6 +194,16 @@ class SearchResponse(BaseModel):
 # ──────────────────── AI (internal) ────────────────────
 
 
+class ReminderItem(BaseModel):
+    """Один распознанный пункт сообщения для возможного reminder'а (Phase 2.6).
+
+    AI разбивает входной текст на pieces; worker потом прогоняет
+    `raw_date_phrase` через `nl_date.parse()` чтобы получить UTC datetime.
+    """
+    text: str  # текст пункта без даты, пригодный для отображения юзеру
+    raw_date_phrase: str | None = None  # «завтра», «в пятницу в 18», None если даты нет
+
+
 class AIClassification(BaseModel):
     """Результат глубокого AI-анализа закладки (Phase 1).
 
@@ -214,6 +224,15 @@ class AIClassification(BaseModel):
     entities: list[str] = Field(default_factory=list)
     open_questions: list[str] = Field(default_factory=list)
     takeaway: str = ""
+
+    # Phase 2.6 — Reminders × Task Lists.
+    # Все поля опциональны: на короткой/обычной заметке AI вернёт пустой список
+    # и single_statement=true, worker применит обычный bookmark-flow.
+    # Worker (T3) решает финальный reminder_form по правилам PRD 2.6 —
+    # AI отдаёт только сырой разбор, не финальное решение.
+    reminder_items: list[ReminderItem] = Field(default_factory=list)
+    single_statement: bool = True  # true для одного утверждения/задачи; false для multi-item
+    reminder_form_hint: str | None = None  # AI's guess: task_list_with_reminders / single_reminder / composite_reminder / task_list_no_reminders / none
 
 
 # ──────────────────── Reminders (Phase 2.5) ────────────────────
@@ -247,6 +266,11 @@ class ReminderResponse(BaseModel):
     payload: dict
     created_at: datetime
     sent_at: datetime | None = None
+
+    # B1 (2026-05-15): Mini App рендерит title в RemindersSheet — без этих полей
+    # пришлось бы делать N+1 запросов к /bookmarks/{id}.
+    bookmark_title: str | None = None
+    bookmark_raw_text: str | None = None
 
 
 class ReminderListResponse(BaseModel):

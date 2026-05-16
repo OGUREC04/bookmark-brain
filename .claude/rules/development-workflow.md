@@ -30,3 +30,11 @@
 
 5. **Pre-Review Checks**
    - All CI/CD passing, conflicts resolved, branch up to date
+
+6. **Post-Phase Docs Sync** _(after deploying a phase / changing architecture)_
+   - Re-check evergreen docs against the shipped code: `docs/ARCHITECTURE.md`,
+     `docs/SPEC.md`, `docs/API.md` (and `BOT-COMMANDS.md` if commands changed)
+   - Update each touched doc's `Проверено: YYYY-MM-DD` header to today
+   - Follow the doc-class convention in `docs/README.md` (evergreen stays in
+     root & current; dated point-in-time snapshots move to `docs/archive/`)
+   - A stale `Проверено:` older than the last phase deploy = doc drift signal

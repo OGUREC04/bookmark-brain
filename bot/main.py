@@ -27,11 +27,18 @@ from bot.handlers import (
     documents,
     media,
     random,
-    reminders as reminders_handler,
+    reminder_choice,
     search,
-    settings as settings_handler,
     start,
     tasks,
+)
+from bot.handlers import (
+    reminders as reminders_handler,
+)
+from bot.handlers import (
+    settings as settings_handler,
+)
+from bot.handlers import (
     timezone as timezone_handler,
 )
 from bot.state_store import StateStore
@@ -92,6 +99,9 @@ async def main():
     # 3. tasks — reply на task_list ДО catch-all в start.
     dp.include_router(reminders_handler.strong_router)
     dp.include_router(reminders_handler.router)
+    # Phase 2.6 T4: 3-button «📋/🔔/✕» callbacks (rch_*) — отдельный
+    # router т.к. не конфликтует с reminders_handler по prefix'ам.
+    dp.include_router(reminder_choice.router)
     dp.include_router(tasks.router)
     dp.include_router(settings_handler.router)
     dp.include_router(timezone_handler.router)

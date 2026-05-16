@@ -10,9 +10,9 @@ router = Router()
 
 @router.message(Command("random"))
 async def cmd_random(message: types.Message, api):
-    from bot.handlers.start import _ensure_user
+    from bot.common.auth import ensure_user
 
-    token = await _ensure_user(message, api)
+    token = await ensure_user(message, api)
     if not token:
         return
 
@@ -47,9 +47,9 @@ async def cmd_random(message: types.Message, api):
 
 @router.message(Command("stats"))
 async def cmd_stats(message: types.Message, api):
-    from bot.handlers.start import _ensure_user
+    from bot.common.auth import ensure_user
 
-    token = await _ensure_user(message, api)
+    token = await ensure_user(message, api)
     if not token:
         return
 
@@ -82,9 +82,9 @@ async def cmd_stats(message: types.Message, api):
 @router.message(Command("reprocess"))
 async def cmd_reprocess(message: types.Message, api):
     """Переобработать старые закладки новым AI-пайплайном (Phase 1)."""
-    from bot.handlers.start import _ensure_user
+    from bot.common.auth import ensure_user
 
-    token = await _ensure_user(message, api)
+    token = await ensure_user(message, api)
     if not token:
         return
 

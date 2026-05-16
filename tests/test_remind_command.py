@@ -22,8 +22,8 @@ import pytest
 def patch_ensure_user(monkeypatch):
     async def _fake(*_a, **_k):
         return "fake-token"
-    import bot.handlers.start
-    monkeypatch.setattr(bot.handlers.start, "_ensure_user", _fake)
+    import bot.common.auth
+    monkeypatch.setattr(bot.common.auth, "ensure_user", _fake)
 
 
 @pytest.fixture
@@ -74,32 +74,32 @@ def _make_command(args: str | None = None):
 
 class TestSplitTextAndTime:
     def test_text_with_relative_time(self):
-        from bot.handlers.reminders import _split_remind_text_and_time
-        text, time = _split_remind_text_and_time("купить хлеб через час")
+        from bot.common import split_remind_text_and_time
+        text, time = split_remind_text_and_time("купить хлеб через час")
         assert text == "купить хлеб"
         assert time == "через час"
 
     def test_text_with_tomorrow_morning(self):
-        from bot.handlers.reminders import _split_remind_text_and_time
-        text, time = _split_remind_text_and_time("позвонить маме завтра утром")
+        from bot.common import split_remind_text_and_time
+        text, time = split_remind_text_and_time("позвонить маме завтра утром")
         assert text == "позвонить маме"
         assert "завтра" in time and "утром" in time
 
     def test_text_with_specific_time(self):
-        from bot.handlers.reminders import _split_remind_text_and_time
-        text, time = _split_remind_text_and_time("купить хлеб завтра в 9")
+        from bot.common import split_remind_text_and_time
+        text, time = split_remind_text_and_time("купить хлеб завтра в 9")
         assert text == "купить хлеб"
         assert "завтра" in time
 
     def test_no_time_returns_full_text(self):
-        from bot.handlers.reminders import _split_remind_text_and_time
-        text, time = _split_remind_text_and_time("просто заметка без времени")
+        from bot.common import split_remind_text_and_time
+        text, time = split_remind_text_and_time("просто заметка без времени")
         assert text == "просто заметка без времени"
         assert time is None
 
     def test_empty_input(self):
-        from bot.handlers.reminders import _split_remind_text_and_time
-        text, time = _split_remind_text_and_time("")
+        from bot.common import split_remind_text_and_time
+        text, time = split_remind_text_and_time("")
         assert text == ""
         assert time is None
 

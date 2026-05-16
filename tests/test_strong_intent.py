@@ -61,8 +61,8 @@ class TestIsStrongIntent:
 def patch_ensure_user(monkeypatch):
     async def _fake(*_a, **_k):
         return "fake-token"
-    import bot.handlers.start
-    monkeypatch.setattr(bot.handlers.start, "_ensure_user", _fake)
+    import bot.common.auth
+    monkeypatch.setattr(bot.common.auth, "ensure_user", _fake)
 
 
 @pytest.fixture
@@ -274,8 +274,8 @@ class TestAntiDoubleOfferFlag:
         mock_redis.set = AsyncMock()
         mock_redis.aclose = AsyncMock()
 
-        with patch("app.worker._send_message", send_mock), \
-             patch("app.worker.aioredis_from_url", return_value=mock_redis):
+        with patch("app.worker.reminder_offer._send_message", send_mock), \
+             patch("app.worker.reminder_offer.aioredis_from_url", return_value=mock_redis):
             await _maybe_offer_reminder(
                 bookmark=bm, chat_id=100, silent=False,
             )

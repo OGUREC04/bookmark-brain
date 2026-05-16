@@ -7,7 +7,7 @@ TDD: тесты сначала (RED), потом реализация (GREEN).
 - Абсолютные («15 мая в 18:00»)
 - Дни недели («в субботу в 18»)
 - Прошлое («вчера», «вчера в 18») → IN_PAST
-- День без времени («завтра», «в субботу») → NEEDS_TIME
+- День без времени («завтра», «в субботу») → NEEDS_HOUR
 - Размытое («не знаю», «потом») → FALLBACK_DEFAULT
 - Невнятный мусор → UNPARSEABLE
 - Timezones — Europe/Moscow vs Europe/Kaliningrad
@@ -95,7 +95,7 @@ class TestRelativeInterval:
         assert result.status == ParseStatus.OK
 
 
-# HIGH-2 regression — интервал «через N дней» при now.hour=0 не должен возвращать NEEDS_TIME.
+# HIGH-2 regression — интервал «через N дней» при now.hour=0 не должен возвращать NEEDS_HOUR.
 def test_cherez_3_dnya_at_midnight() -> None:
     """Если сейчас полночь, «через 3 дня» без часа — это всё равно интервал, OK."""
     midnight_msk = datetime(2026, 5, 13, 0, 0, tzinfo=ZoneInfo("Europe/Moscow"))
@@ -126,7 +126,7 @@ class TestWeekday:
 
     def test_v_subbotu_no_time(self) -> None:
         result = parse("в субботу", user_tz="Europe/Moscow", now=NOW_UTC)
-        assert result.status == ParseStatus.NEEDS_TIME
+        assert result.status == ParseStatus.NEEDS_HOUR
         assert result.dt is None
 
 
@@ -145,7 +145,7 @@ class TestAbsoluteDate:
 
     def test_15_maya_no_time(self) -> None:
         result = parse("15 мая", user_tz="Europe/Moscow", now=NOW_UTC)
-        assert result.status == ParseStatus.NEEDS_TIME
+        assert result.status == ParseStatus.NEEDS_HOUR
         assert result.dt is None
 
 
@@ -253,3 +253,34 @@ class TestTimezone:
 def test_invalid_timezone_raises() -> None:
     with pytest.raises((ValueError, KeyError)):
         parse("завтра в 9", user_tz="NotARealZone/Foo", now=NOW_UTC)
+
+
+# ──────────────────────────────────────────────────
+# Группа 10: Phase 2.6 — NEEDS_HOUR rename + backward-compat alias
+# ──────────────────────────────────────────────────
+
+
+def test_needs_hour_is_alias_for_needs_time() -> None:
+    """NEEDS_TIME (старое имя) и NEEDS_HOUR (новое в Phase 2.6) — один и тот же член Enum."""
+    assert ParseStatus.NEEDS_TIME is ParseStatus.NEEDS_HOUR
+    assert ParseStatus.NEEDS_HOUR.value == "needs_hour"
+
+
+@freeze_time(NOW_UTC)
+def test_v_pyatnitsu_returns_needs_hour() -> None:
+    """«в пятницу» без часа — возвращаем NEEDS_HOUR (хендлер просит Reply со временем).
+
+    Примечание: «завтра» без часа dateparser возвращает с текущим часом (12:00) — это OK.
+    А вот именованный день недели / абсолютная дата возвращаются с 00:00 → NEEDS_HOUR.
+    """
+    result = parse("в пятницу", user_tz="Europe/Moscow", now=NOW_UTC)
+    assert result.status == ParseStatus.NEEDS_HOUR
+    assert result.dt is None
+
+
+@freeze_time(NOW_UTC)
+def test_zavtra_utrom_returns_ok_default_9() -> None:
+    """«завтра утром» → OK с дефолтным временем 9:00 (universal time rule)."""
+    result = parse("завтра утром", user_tz="Europe/Moscow", now=NOW_UTC)
+    assert result.status == ParseStatus.OK
+    assert result.dt == _expect_msk(2026, 5, 14, 9, 0).astimezone(timezone.utc)

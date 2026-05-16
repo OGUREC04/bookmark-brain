@@ -46,9 +46,9 @@ def invalidate_cache(telegram_id: int) -> None:
 @router.message(Command("silent"))
 async def cmd_silent(message: Message, api):
     """Переключить тихий/обычный режим."""
-    from bot.handlers.start import _ensure_user
+    from bot.common.auth import ensure_user
 
-    token = await _ensure_user(message, api)
+    token = await ensure_user(message, api)
     if not token:
         return
 

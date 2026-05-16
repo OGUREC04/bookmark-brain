@@ -3,10 +3,13 @@
 AI-инструмент для организации сохранённого контента. Telegram-бот → AI классификация/теги/саммари → быстрый поиск через бота, Mini App, iOS.
 
 > **Где искать детали (читай on-demand, НЕ авто):**
+> - 🧭 Карта репо, команды, dependency-контракт (читать ПЕРВЫМ) — `AGENTS.md`
 > - 🚀 Запуск проекта (Docker / Backend / Worker / Bot / ngrok) — `.claude/STARTUP.md`
 > - 📐 Архитектура, data model, auth, env vars, статус — `docs/ARCHITECTURE.md`
-> - 🤖 Команды бота, clean chat, task list UX, AI pipeline — `docs/BOT-UX.md`
+> - 🤖 Справочник команд бота (полный) — `docs/BOT-COMMANDS.md`
+> - 🎨 UX-принципы бота (clean chat, тон, task list UX) — `docs/BOT-UX.md`
 > - 🩹 Известные проблемы и решения — `docs/TROUBLESHOOTING.md`
+> - 🗂 Карта и конвенция документации — `docs/README.md`
 
 ---
 

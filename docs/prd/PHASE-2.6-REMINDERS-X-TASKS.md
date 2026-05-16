@@ -1,6 +1,6 @@
 # PRD: Phase 2.6 — Reminders × Task Lists
 
-**Статус:** v2 — все open Q закрыты, готов к T1+T2
+**Статус:** v3 — Shipped (T1–T12 закрыты 2026-05-15, ADR 0009)
 **Дата:** 2026-05-14
 **Фаза:** Phase 2.6
 **Зависит от:** Phase 2.5 Reminders MVP (мержен, в проде)
@@ -214,18 +214,18 @@ Worker берёт `raw_date_phrase`, прогоняет через `nl_date.pars
 
 | # | Phase | Описание | Status | Parallel | Depends | PRP |
 |---|-------|----------|--------|----------|---------|------|
-| 1 | AI Classifier extend | `ai_classifier.py` + промпт: возвращать items[], confidence, reminder_form | pending | with 2 | - | - |
-| 2 | DB migration | `reminders.payload` schema: task_list_id, item_index, confidence | pending | with 1 | - | - |
-| 3 | Save-flow router | worker.\_post_save определяет reminder_form, маршрутизирует | pending | - | 1, 2 | - |
-| 4 | 3-button «1 дата + multi-item» | UI + callbacks в `bot/handlers/save_buttons.py` | pending | with 5 | 3 | - |
-| 5 | Per-item reminders create | для task_list_with_reminders — auto-create reminders на dated items | pending | with 4 | 3 | - |
-| 6 | Composite reminder create | для composite_reminder — один reminder с full text | pending | - | 3 | - |
-| 7 | «Сделай напоминание» reply | `tasks.py::msg_nl_edit_on_reply` ловит «напомни» — Case a | pending | with 8 | 3 | - |
-| 8 | «Сделай напоминание» inline | `start.py::handle_text` ловит «сделай напоминание <текст>» — Case c | pending | with 7 | 3 | - |
-| 9 | Task_list edit cascade | NL-edit обновляет связанные reminders (add/delete/update_date) | pending | - | 5 | - |
-| 10 | Confidence threshold UX | Кнопка подтверждения если confidence < 0.7 | pending | - | 5, 6 | - |
-| 11 | Tests + integration smoke | Unit + integration на реальной Postgres | pending | - | 4,5,6,7,8,9,10 | - |
-| 12 | ADR + docs update | ADR 0009 (3-form reminders), BOT-COMMANDS, TROUBLESHOOTING | pending | - | 11 | - |
+| 1 | AI Classifier extend | `ai_classifier.py` + промпт: возвращать items[], confidence, reminder_form | done | with 2 | - | - |
+| 2 | DB migration | `reminders.payload` schema: task_list_id, item_index, confidence | done | with 1 | - | - |
+| 3 | Save-flow router | worker.\_post_save определяет reminder_form, маршрутизирует | done | - | 1, 2 | - |
+| 4 | 3-button «1 дата + multi-item» | UI + callbacks в `bot/handlers/save_buttons.py` | done | with 5 | 3 | - |
+| 5 | Per-item reminders create | для task_list_with_reminders — auto-create reminders на dated items | done | with 4 | 3 | - |
+| 6 | Composite reminder create | для composite_reminder — один reminder с full text | done | - | 3 | - |
+| 7 | «Сделай напоминание» reply | `tasks.py::msg_nl_edit_on_reply` ловит «напомни» — Case a | done | with 8 | 3 | - |
+| 8 | «Сделай напоминание» inline | `start.py::handle_text` ловит «сделай напоминание <текст>» — Case c | done | with 7 | 3 | - |
+| 9 | Task_list edit cascade | NL-edit обновляет связанные reminders (add/delete/update_date) | done | - | 5 | - |
+| 10 | Confidence threshold UX | Кнопка подтверждения если confidence < 0.7 | done | - | 5, 6 | - |
+| 11 | Tests + integration smoke | Unit + integration на реальной Postgres | done | - | 4,5,6,7,8,9,10 | - |
+| 12 | ADR + docs update | ADR 0009 (3-form reminders), BOT-COMMANDS, TROUBLESHOOTING | done | - | 11 | - |
 
 ### Parallelism Notes
 

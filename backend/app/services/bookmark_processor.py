@@ -10,6 +10,7 @@ from app.services.ai_classifier import BaseClassifier, ClassificationError, Retr
 from app.services.article_fetcher import fetch_article
 from app.services.embeddings import BaseEmbeddingService, EmbeddingError, RetryableEmbeddingError
 from app.services.reminder_intent import detect_reminder_intent
+from app.services.reminder_router import ReminderForm, route as route_reminder
 from app.services.task_list_detector import build_structured_data, detect as detect_task_list
 
 logger = logging.getLogger(__name__)
@@ -231,11 +232,50 @@ class BookmarkProcessor:
         # старое значение не залипало.
         intent_text = " ".join(filter(None, [bookmark.raw_text, bookmark.summary]))
         intent = detect_reminder_intent(intent_text)
-        structured = bookmark.structured_data or {}
+        # ВАЖНО: dict(...) делает копию — иначе SQLAlchemy не видит мутацию
+        # JSONB по тому же id объекта (см. ниже Phase 2.6 фикс).
+        structured = dict(bookmark.structured_data or {})
         structured["reminder_intent"] = intent.has_intent
         bookmark.structured_data = structured
         if intent.has_intent:
             logger.info(f"Reminder intent detected for bookmark {bookmark_id}")
+
+        # Phase 2.6: Save-flow router.
+        # Если AI вернул reminder_items — резолвим даты через nl_date.parse и
+        # принимаем финальное решение про reminder_form. Хендлеры T4-T8 читают
+        # `structured_data.reminder_decision` чтобы среагировать соответствующим
+        # образом (3-button UI / per-item create / composite / strong-flow).
+        # Best-effort: любая ошибка не валит классификацию.
+        try:
+            # Загружаем timezone юзера. По умолчанию Europe/Moscow если null
+            # (например, у legacy юзеров до миграции).
+            user_result = await self.session.execute(
+                select(User.timezone).where(User.id == bookmark.user_id)
+            )
+            user_tz = user_result.scalar_one_or_none() or "Europe/Moscow"
+
+            decision = route_reminder(
+                text=bookmark.raw_text or "",
+                classification=classification,
+                user_tz=user_tz,
+            )
+            if decision.form != ReminderForm.NONE:
+                # Мерджим в structured_data, не перезатирая task_list если он есть.
+                # `dict(...)` создаёт КОПИЮ — присваивание new-dict-object меняет
+                # identity, SQLAlchemy помечает поле dirty и flush'ит JSONB.
+                # Без копии: structured = bookmark.structured_data возвращает ту же
+                # ссылку, мутация in-place ORM не замечает (тест-баг 2026-05-15).
+                structured = dict(bookmark.structured_data or {})
+                structured["reminder_decision"] = decision.to_dict()
+                bookmark.structured_data = structured
+                logger.info(
+                    f"Reminder router for {bookmark_id}: form={decision.form.value}, "
+                    f"dated_items={len(decision.dated_items)}, "
+                    f"needs_hour={len(decision.needs_hour_items)}, "
+                    f"strong={decision.strong_intent}, explicit={decision.explicit_trigger}"
+                )
+        except Exception as e:
+            logger.warning(f"Reminder router failed for {bookmark_id}: {e}")
 
         await self.session.flush()
 
