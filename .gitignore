@@ -72,3 +72,4 @@ logs/
 
 # Claude plan files
 streamed-*.md
+.claude/worktrees/
