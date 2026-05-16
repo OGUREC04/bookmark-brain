@@ -367,9 +367,13 @@ async def msg_nl_edit_on_reply(message: Message, api, store=None):
         except TelegramBadRequest:
             pass
 
+        # #4: НЕ форсим last_seen на сообщение списка — иначе
+        # _rerender_at_bottom всегда идёт fast-path (edit на месте) и
+        # список не уезжает вниз, даже когда он уехал вверх. Без форса
+        # _rerender сам решит: список реально последний → edit;
+        # уехал вверх → пересоздать внизу.
         if store:
             await _cleanup_failed_attempts(message.bot, message.chat.id, replied.message_id, store)
-            await store.force_last_seen(message.chat.id, replied.message_id)
 
         await _rerender_with_autounpin(
             message.bot, message.chat.id, replied.message_id,
@@ -441,15 +445,12 @@ async def msg_nl_edit_on_reply(message: Message, api, store=None):
     except TelegramBadRequest:
         pass
 
-    # После удаления reply реальное "последнее" сообщение в чате — снова
-    # сам список. Откатываем last_seen чтобы _rerender_at_bottom пошёл по
-    # fast-path (edit-in-place) и не дёргал delete+send+pin зря.
+    # #4: подчищаем «хвосты» неудачных попыток, но НЕ форсим last_seen
+    # на список — иначе _rerender_at_bottom всегда edit-на-месте и
+    # список не уезжает вниз когда уехал вверх. _rerender решит сам.
     if store is not None:
         try:
-            # Подчищаем «хвосты» предыдущих неудачных попыток (failed user
-            # replies + bot help messages) — они трекаются в fail-path.
             await _cleanup_failed_attempts(message.bot, message.chat.id, replied.message_id, store)
-            await store.force_last_seen(message.chat.id, replied.message_id)
         except Exception:
             pass
 

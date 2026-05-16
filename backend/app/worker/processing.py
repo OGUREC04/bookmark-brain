@@ -203,12 +203,32 @@ async def process_bookmark_task(
                 and isinstance(bookmark.structured_data, dict)
                 and bookmark.structured_data.get("type") == "task_list"
             ):
-                # Подтверждение перед созданием+пином: вместо немедленного
-                # списка спрашиваем «Сделать список?». По «Да» bot создаёт
-                # и пинит (bot/handlers/tasks/confirm.py). Offer показан →
-                # ранний выход: создание/пин/dedup-alert/tip/reminder-хвост
-                # отрабатывает уже bot после подтверждения.
-                if can_notify:
+                # #5/bd-86g: подтверждение-флоу делает ранний выход и
+                # пропускает Phase 1.5A dedup-alert. Поэтому СНАЧАЛА ищем
+                # похожий незакрытый список. Если он есть — НЕ спрашиваем
+                # «Сделать список?», а идём прямым путём (создаём+пин+
+                # dedup-alert как раньше), чтобы фича «похожий список» не
+                # отваливалась при включённом подтверждении. Результат
+                # переиспользуется ниже (без повторного vector-запроса).
+                similar: dict | None = None
+                if bookmark.embedding is not None:
+                    try:
+                        from app.services.dedup_checker import (
+                            find_similar_unclosed_task_list,
+                        )
+                        similar = await find_similar_unclosed_task_list(
+                            session, bookmark.id, bookmark.user_id,
+                            bookmark.embedding.tolist()
+                            if hasattr(bookmark.embedding, 'tolist')
+                            else list(bookmark.embedding),
+                        )
+                    except Exception as e:
+                        logger.debug(f"pre-offer similar check failed: {e}")
+
+                # Подтверждение перед созданием+пином только для НОВЫХ
+                # (не-дублирующих) списков. Offer показан → ранний выход:
+                # создание/пин/tip/reminder-хвост отрабатывает bot.
+                if can_notify and not similar:
                     from .task_list_offer import _maybe_offer_task_list
                     if await _maybe_offer_task_list(
                         bookmark=bookmark, chat_id=chat_id,
@@ -264,14 +284,10 @@ async def process_bookmark_task(
                         await _bind_task_list_message(chat_id, message_id, bookmark_id)
                         await _pin_message(chat_id, message_id)
 
-                    # Phase 1.5A: Dedup-alert — ищем похожий незакрытый список
-                    if bookmark.embedding is not None and task_list_msg_id is not None:
+                    # Phase 1.5A: Dedup-alert. similar уже посчитан выше
+                    # (pre-offer) — переиспользуем, без повторного запроса.
+                    if similar is not None and task_list_msg_id is not None:
                         try:
-                            from app.services.dedup_checker import find_similar_unclosed_task_list
-                            similar = await find_similar_unclosed_task_list(
-                                session, bookmark.id, bookmark.user_id,
-                                bookmark.embedding.tolist() if hasattr(bookmark.embedding, 'tolist') else list(bookmark.embedding),
-                            )
                             if similar:
                                 alert_text, alert_buttons = _build_dedup_alert(similar, bookmark_id)
                                 alert_resp = await _send_message(chat_id, alert_text, alert_buttons)
