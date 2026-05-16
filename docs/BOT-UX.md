@@ -1,6 +1,6 @@
 # Bot UX — детали
 
-> Проверено: 2026-05-06 · класс: evergreen · конвенция обновления: `docs/README.md`
+> Проверено: 2026-05-16 · класс: evergreen · конвенция обновления: `docs/README.md`
 
 ## Команды
 
@@ -30,7 +30,9 @@
   LLM (GigaChat через `POST /api/bookmarks/{id}/nl-edit`) применяет изменения к JSON: добавить/удалить/переименовать/проставить deadline/добавить note.
   Примеры: «добавь хлеб», «удали 2», «3 до пятницы», «к 1: нужен бездрожжевой».
 - Клавиатура минимальна: чекбоксы-toggle + ряд `[⏰ Срок] [🗑 Удалить]`. Никаких «Дополнить» / «Не список» — всё через NL-reply.
-- Авто-pin + авто-favorite при создании списка.
+- **Подтверждение перед созданием:** worker не создаёт/пинит список сразу — шлёт offer «Сделать список? ✅ Да / ✕ Нет» (зеркало reminder-offer). «Да» → bot создаёт+пинит+favorite; «Нет» → остаётся обычной закладкой (`structured_data=None`). Callbacks `tlc:`/`tlx:`, Redis `task_list_pending:{chat}:{offer_msg}` TTL 1ч.
+- Шапка списка — нейтральная `📋 Список` (без AI-заголовка: галлюцинировал и шумел) + тег общего срока. Константа `LIST_HEADER`, синхронна в bot/backend рендерерах.
+- Авто-pin + авто-favorite — по подтверждению. **Авто-unpin когда все пункты выполнены** (кнопкой и reply); slow-path rerender не перепинивает.
 - Redis-map `task_list_msg:{chat_id}:{msg_id} → bookmark_id` (TTL 14 дней) разделяется между worker (пишет при создании) и bot (читает в reply-handler). См. `bot/state_store.py` и `_bind_task_list_message` в `backend/app/worker.py`.
 
 ## Clean chat mechanics
