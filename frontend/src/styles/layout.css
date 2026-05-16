@@ -160,6 +160,11 @@
   0%, 100% { opacity: 1; }
   50% { opacity: 0.35; }
 }
+/* DS reference Pulse uses mPulse — alias same curve */
+@keyframes mPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
 
 @media (prefers-reduced-motion: reduce) {
   [style*="bb-pulse"] { animation: none !important; }
