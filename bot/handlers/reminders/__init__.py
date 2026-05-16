@@ -44,7 +44,10 @@ from .reply import handle_reminder_reply
 from .reply import router as _reply_router
 from .shared import (
     MAX_REMINDER_TEXT_LEN,
+    TIME_EXAMPLES,
     _cap_text,
+    _format_fire_at,
+    _get_user_tz_name,
     _is_valid_uuid,
     _safe,
     extract_first_datetime_entity,
@@ -69,7 +72,10 @@ router.include_router(_reply_router)
 
 __all__ = [
     "MAX_REMINDER_TEXT_LEN",
+    "TIME_EXAMPLES",
     "_cap_text",
+    "_format_fire_at",
+    "_get_user_tz_name",
     "_is_valid_uuid",
     "_safe",
     "_split_remind_text_and_time",
