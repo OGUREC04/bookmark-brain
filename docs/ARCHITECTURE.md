@@ -202,8 +202,34 @@ YANDEX_FOLDER_ID=...
 ENVIRONMENT=production
 ```
 
+## Слои и import-контракты (living contract)
+
+Структурные правила кодовой базы — **машинно-enforced**, не «по договорённости».
+Источник истины: `pyproject.toml [tool.importlinter]` + `[tool.ruff]`;
+hard-fail в CI (`.github/workflows/test.yml`).
+
+| Правило | Что запрещает | Чем enforced |
+|---|---|---|
+| **Feature independence** | `bot.handlers.reminders` ↔ `bot.handlers.tasks` прямые импорты друг друга | import-linter `independence` |
+| **Layering** | `bot.common` импортит handler/composition root (upward) | import-linter `layers` |
+| **No relative cross-package** | relative-импорт между пакетами | ruff `TID` |
+| **File size** | новый код в файл > 800 LOC | `~/.claude/rules` + review |
+
+Слои (сверху вниз): `bot.main` → `bot.handlers` (features + `start.py`
+оркестратор в одном слое) → `bot.common` (shared инфра, самый низ).
+Общий код фич живёт в `bot.common` (публичные имена, `__all__`); фичи
+делятся **только** через него или через `start.py`-оркестрацию.
+
+Почему: split трёх 1600–1900-LOC монолитов однажды зашипил CRITICAL-баг
+из-за латеральной связи (`tasks/nl_edit` лез в приватные внутренности
+`reminders`). Контракты делают регресс невозможным. Полная карта,
+команды и правила добавления кода — в корневом **`AGENTS.md`** (читать
+первым). Guard-тесты: `tests/test_architecture_contracts.py`,
+`tests/test_cross_package_import_contract.py`.
+
 ## Связанные документы
 
+- `AGENTS.md` — карта репо, команды, dependency-контракт (entrypoint).
 - `docs/SPEC.md` — что строит этот стек.
 - `docs/decisions/` — почему именно эти технологии.
 - `docs/BOT-UX.md` — детали бот-логики, clean chat, task lists.
