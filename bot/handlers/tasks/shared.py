@@ -54,6 +54,10 @@ def _release_rerender_lock(chat_id: int, bookmark_id: str) -> None:
 # ───────────────────── UI helpers ─────────────────────
 
 
+# Нейтральная шапка без AI-заголовка — синхронизирована с
+# backend/task_list_renderer.py:LIST_HEADER. Меняешь — меняй там тоже.
+LIST_HEADER = "📋 <b>Список</b>"
+
 HINT_LINE = "💬 <i>Ответь на это сообщение чтобы изменить список</i>"
 # Компактная подсказка — синхронизирована с backend/task_list_renderer.py.
 # Если меняешь — меняй там тоже, оба рендерера обязаны давать одинаковый HTML.
@@ -65,7 +69,7 @@ HINT_LINE_SILENT = (
 
 def _render_text(title: str | None, structured_data: dict, silent: bool = False) -> str:
     tasks = structured_data.get("tasks", [])
-    header = f"📋 <b>{title or 'Список задач'}</b>"
+    header = LIST_HEADER
 
     common_deadline = structured_data.get("common_deadline")
     if common_deadline:
@@ -265,6 +269,49 @@ async def _rerender_at_bottom_inner(
             logger.debug(f"store rebind failed: {e}")
 
     return new_msg.message_id
+
+
+def _all_tasks_done(structured_data: dict) -> bool:
+    """True если список непустой и ВСЕ пункты выполнены."""
+    tasks = (structured_data or {}).get("tasks", [])
+    return bool(tasks) and all(t.get("done") for t in tasks)
+
+
+async def _maybe_autounpin(bot, chat_id: int, msg_id: int, structured_data: dict) -> None:
+    """#7: открепить сообщение списка, когда все пункты выполнены.
+
+    Best-effort: not-pinned / устаревшее сообщение — TelegramBadRequest,
+    молча игнорируем (нечего откреплять — цель уже достигнута).
+    """
+    if not _all_tasks_done(structured_data):
+        return
+    try:
+        await bot.unpin_chat_message(chat_id, msg_id)
+    except TelegramBadRequest as e:
+        logger.debug(f"_maybe_autounpin: nothing to unpin {msg_id}: {e.message}")
+    except Exception as e:
+        logger.debug(f"_maybe_autounpin failed for {msg_id}: {e}")
+
+
+async def _rerender_with_autounpin(
+    bot, chat_id: int, old_msg_id: int, updated: dict,
+    store=None, silent: bool = False,
+) -> int:
+    """#2 + #7: перенести список вниз свежим сообщением; если все пункты
+    выполнены — не перепинивать и доснять пин с итогового сообщения.
+
+    Единая точка для всех action-путей (toggle / fast-edit / LLM-edit),
+    чтобы поведение пина не разъезжалось между ними.
+    """
+    structured = updated.get("structured_data") or {}
+    all_done = _all_tasks_done(structured)
+    new_msg_id = await _rerender_at_bottom(
+        bot, chat_id, old_msg_id, updated,
+        store=store, silent=silent, keep_pinned=not all_done,
+    )
+    if all_done:
+        await _maybe_autounpin(bot, chat_id, new_msg_id, structured)
+    return new_msg_id
 
 
 # ───────────────────── Ephemeral helpers ─────────────────────

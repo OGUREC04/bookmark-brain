@@ -12,10 +12,12 @@ from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import CallbackQuery, Message
 
 from .shared import (
+    _all_tasks_done,
     _deadline_from_code,
     _list_deadline_menu,
     _redraw,
     _rerender_at_bottom,
+    _rerender_with_autounpin,
 )
 
 logger = logging.getLogger(__name__)
@@ -61,14 +63,17 @@ async def cb_toggle_task(callback: CallbackQuery, api, store=None):
         await callback.answer("Ошибка", show_alert=True)
         return
 
-    # Перенести список вниз как свежее сообщение
-    await _rerender_at_bottom(
+    # #2 список вниз свежим сообщением; #7 автооткреп если всё выполнено.
+    await _rerender_with_autounpin(
         callback.message.bot,
         callback.message.chat.id,
         callback.message.message_id,
         updated, store=store,
     )
-    await callback.answer()
+    if _all_tasks_done(updated.get("structured_data") or {}):
+        await callback.answer("Список выполнен ✅")
+    else:
+        await callback.answer()
 
 
 # ───────────────────── Callback: deadline menu ─────────────────────

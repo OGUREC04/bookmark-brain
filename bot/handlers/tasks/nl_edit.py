@@ -20,7 +20,7 @@ from .shared import (
     _delete_after_by_id,
     _ephemeral,
     _render_text,
-    _rerender_at_bottom,
+    _rerender_with_autounpin,
 )
 
 logger = logging.getLogger(__name__)
@@ -371,7 +371,7 @@ async def msg_nl_edit_on_reply(message: Message, api, store=None):
             await _cleanup_failed_attempts(message.bot, message.chat.id, replied.message_id, store)
             await store.force_last_seen(message.chat.id, replied.message_id)
 
-        await _rerender_at_bottom(
+        await _rerender_with_autounpin(
             message.bot, message.chat.id, replied.message_id,
             updated, store=store, silent=silent,
         )
@@ -453,7 +453,7 @@ async def msg_nl_edit_on_reply(message: Message, api, store=None):
         except Exception:
             pass
 
-    await _rerender_at_bottom(
+    await _rerender_with_autounpin(
         message.bot, message.chat.id, replied.message_id,
         updated, store=store, silent=silent,
     )

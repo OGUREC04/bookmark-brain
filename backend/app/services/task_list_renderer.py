@@ -10,6 +10,10 @@ from __future__ import annotations
 from datetime import datetime
 
 
+# Нейтральная шапка без AI-заголовка: он галлюцинирует и добавляет шум.
+# Список и так опознаётся по чекбоксам; общий срок дописывается отдельно.
+LIST_HEADER = "📋 <b>Список</b>"
+
 HINT_LINE = "💬 <i>Ответь на это сообщение чтобы изменить список</i>"
 # Компактная подсказка — 2 строки: действия + примеры. Помещается под список,
 # не плодит отдельных «Не понял»-сообщений для типовых случаев.
@@ -43,7 +47,7 @@ def render_task_list_text(
     silent=False: с кнопками (verbose, legacy).
     """
     tasks = structured_data.get("tasks", [])
-    header = f"📋 <b>{bookmark_title or 'Список задач'}</b>"
+    header = LIST_HEADER
 
     common_deadline = structured_data.get("common_deadline")
     if common_deadline:
