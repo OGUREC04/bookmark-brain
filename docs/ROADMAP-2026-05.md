@@ -42,6 +42,7 @@
 └─ Mini App   доделка UI             ← этот чат
 
 ОЧЕРЕДЬ (новый порядок после пересмотра 2026-05-14):
+├─ UI cleanup  Вычистить визуал/UX     ← bd bookmark-brain-ntn, ПЕРЕД след. фазой
 ├─ User test  Запуск на 5-10 юзеров  ← после Mini App (1-2 недели live)
 ├─ Phase 5    Smart Spaces (PRD ✅)  ← отложен ПОСЛЕ Mini App (4-7 дней)
 ├─ Phase 4.5  DeepSeek (если нужно)  ← по фидбеку (0.5 дня)
