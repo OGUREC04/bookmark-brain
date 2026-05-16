@@ -553,16 +553,8 @@ hr {
 }
 
 /* ==========================================================================
-   6. TELEGRAM THEMING BRIDGE
-   Mini App: pull --tg-theme-* into our vars when present.
-   Apply with [data-tg-bridge="true"] on root.
+   6. TELEGRAM THEMING BRIDGE — REMOVED.
+   The DS is a LOCKED paper-warm / sage brand. Injecting Telegram's
+   theme (esp. its blue --tg-theme-button-color) repeatedly broke the
+   brand to blue. There is intentionally NO tg-theme bridge.
    ========================================================================== */
-
-[data-tg-bridge="disabled-locked-brand"] {  /* sage is locked, no TG theme injection */
-  --bg-page: var(--tg-theme-bg-color, var(--bg-page));
-  --bg-surface: var(--tg-theme-secondary-bg-color, var(--bg-surface));
-  --fg-1: var(--tg-theme-text-color, var(--fg-1));
-  --fg-3: var(--tg-theme-hint-color, var(--fg-3));
-  --brand-primary: var(--tg-theme-button-color, var(--brand-primary));
-  --fg-on-brand: var(--tg-theme-button-text-color, var(--fg-on-brand));
-}

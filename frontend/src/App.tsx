@@ -145,21 +145,23 @@ export function App() {
       }}
       className="app-shell"
     >
-      {searchOpen ? (
-        <SearchScreen onBack={() => setSearchOpen(false)} onOpen={() => {}} />
-      ) : tab === "mysli" ? (
-        <MysliScreen
-          key={`mysli-${reloadKey}`}
-          onSearch={() => setSearchOpen(true)}
-          onBell={() => setSheet({ type: "reminders" })}
-          onLongPress={onLongPress}
-          onOpen={() => {}}
-        />
-      ) : tab === "spaces" ? (
-        <SpacesScreen onOpen={() => {}} onCreate={() => {}} />
-      ) : (
-        <MeScreen />
-      )}
+      <div key={searchOpen ? "search" : tab} className="screen-fade">
+        {searchOpen ? (
+          <SearchScreen onBack={() => setSearchOpen(false)} onOpen={() => {}} />
+        ) : tab === "mysli" ? (
+          <MysliScreen
+            reloadKey={reloadKey}
+            onSearch={() => setSearchOpen(true)}
+            onBell={() => setSheet({ type: "reminders" })}
+            onLongPress={onLongPress}
+            onOpen={onLongPress}
+          />
+        ) : tab === "spaces" ? (
+          <SpacesScreen onOpen={() => {}} onCreate={() => {}} />
+        ) : (
+          <MeScreen />
+        )}
+      </div>
 
       {!searchOpen && (
         <BottomNav

@@ -133,7 +133,7 @@ export function applyTheme(): void {
   root.setAttribute("data-theme", "echo");
   root.setAttribute("data-color-scheme", "light");
   root.classList.remove("theme-dark");
-  root.setAttribute("data-tg-bridge", "disabled-locked-brand");
+  root.removeAttribute("data-tg-bridge");
 }
 
 /**

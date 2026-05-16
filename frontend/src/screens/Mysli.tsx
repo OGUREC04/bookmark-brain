@@ -176,11 +176,13 @@ const SUGGESTION_DEMO = [
 ];
 
 export function MysliScreen({
+  reloadKey,
   onSearch,
   onBell,
   onLongPress,
   onOpen,
 }: {
+  reloadKey: number;
   onSearch: () => void;
   onBell: () => void;
   onLongPress: (b: Bookmark) => void;
@@ -213,7 +215,8 @@ export function MysliScreen({
     return () => {
       alive = false;
     };
-  }, []);
+    // refetch on reloadKey bump (after a mutation) without unmount/flash
+  }, [reloadKey]);
 
   const filtered = items.filter((b) => matchesFilter(b, filter));
 
