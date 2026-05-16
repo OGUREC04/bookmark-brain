@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="ru"><head><meta charset="utf-8"><title>Brand light · signature gradient</title>
+<link rel="stylesheet" href="../foundations/colors_and_type.css">
+<link rel="stylesheet" href="_card.css">
+<style>
+  /* hero — full backdrop, no chrome */
+  .hero{
+    position:relative;overflow:hidden;
+    border-radius:28px;
+    aspect-ratio:16/10;
+    background:var(--backdrop-gradient);
+    box-shadow:var(--shadow-2), inset 0 1px 0 rgba(255,255,255,0.5);
+    border:1px solid var(--glass-edge);
+    display:flex;align-items:center;justify-content:center;
+  }
+  .hero .mark{
+    font-family:var(--font-display);font-style:italic;font-weight:500;
+    font-size:140px;letter-spacing:-0.02em;line-height:0.9;
+    color:var(--brand-primary);
+  }
+  .hero .meta{
+    position:absolute;top:18px;left:22px;
+    font-family:var(--font-mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;
+    color:var(--fg-3);font-weight:500;
+    display:flex;align-items:center;gap:8px;
+  }
+  .hero .meta::before{content:"";width:4px;height:4px;border-radius:50%;background:var(--brand-primary)}
+  .hero .name{
+    position:absolute;right:22px;bottom:18px;
+    font-family:var(--font-display);font-style:italic;font-size:15px;color:var(--fg-2);
+    letter-spacing:0;
+  }
+
+  .layers{
+    display:grid;grid-template-columns:repeat(4,1fr);gap:8px;
+  }
+  .layer{
+    aspect-ratio:1/1;
+    border-radius:18px;
+    border:1px solid var(--glass-edge);
+    box-shadow:var(--shadow-1), inset 0 1px 0 rgba(255,255,255,0.5);
+    position:relative;overflow:hidden;
+  }
+  .layer .nm{
+    position:absolute;bottom:8px;left:12px;
+    font-family:var(--font-mono);font-size:9.5px;color:var(--fg-2);
+    letter-spacing:.08em;text-transform:uppercase;font-weight:500;
+  }
+  .layer .hx{
+    position:absolute;bottom:8px;right:12px;
+    font-family:var(--font-mono);font-size:9px;color:var(--fg-3);letter-spacing:.06em;
+  }
+  .layer-1{background:#F5F1EB}
+  .layer-2{background:#F0EBE2}
+  .layer-3{background:linear-gradient(180deg,#F5F1EB 0%,#F0EBE2 100%)}
+  .layer-4{background:radial-gradient(80% 60% at 12% 0%,rgba(218,234,218,0.55) 0%,transparent 60%),#F2EDE4}
+  .layer-5{background:radial-gradient(70% 60% at 100% 12%,rgba(252,220,194,0.55) 0%,transparent 55%),#F2EDE4}
+  .layer-6{background:radial-gradient(60% 50% at 60% 100%,rgba(248,226,218,0.45) 0%,transparent 60%),#F2EDE4}
+  .layer-7{background:var(--backdrop-gradient)}
+
+  /* recipe */
+  .recipe{
+    background:var(--glass-tint-light);
+    backdrop-filter:blur(var(--glass-blur)) saturate(140%);
+    -webkit-backdrop-filter:blur(var(--glass-blur)) saturate(140%);
+    border:1px solid var(--glass-edge);
+    box-shadow:var(--shadow-glass);
+    border-radius:22px;padding:20px 22px;
+    font-family:var(--font-mono);font-size:11.5px;line-height:1.65;color:var(--fg-2);
+    letter-spacing:0;
+  }
+  .recipe .k{color:var(--brand-primary)}
+  .recipe .c{color:var(--fg-1)}
+  .recipe .dim{color:var(--fg-3)}
+
+  /* applications */
+  .apps{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .app{
+    aspect-ratio:1/1;border-radius:20px;
+    background:var(--backdrop-gradient);
+    border:1px solid var(--glass-edge);
+    box-shadow:var(--shadow-2);
+    position:relative;overflow:hidden;
+    padding:20px;
+    display:flex;flex-direction:column;justify-content:space-between;
+  }
+  .app .tag{
+    font-family:var(--font-mono);font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;
+    color:var(--fg-3);font-weight:500;
+  }
+  .app .head{
+    font-family:var(--font-ui);font-size:22px;font-weight:500;
+    letter-spacing:-0.03em;line-height:1.05;color:var(--fg-1);
+  }
+  .app .head em{font-family:var(--font-display);font-style:italic;color:var(--brand-primary);font-weight:500;letter-spacing:-0.01em}
+
+  .app-card{
+    background:var(--bg-surface);
+  }
+  .app-card .inner{
+    flex:1;display:flex;align-items:center;justify-content:center;
+    background:var(--glass-tint-strong);
+    backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
+    border:1px solid var(--glass-edge);
+    border-radius:16px;
+    box-shadow:var(--shadow-glass);
+    font-family:var(--font-display);font-style:italic;font-size:34px;
+    color:var(--brand-primary);
+    margin:8px 0;
+  }
+
+  .dos{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}
+  .pill{padding:11px 14px;border-radius:12px;font-size:13px;line-height:1.4;letter-spacing:-0.005em;border:1px solid transparent}
+  .do{background:#E2EDE2;color:#2F4A2F;border-color:#CFDFCF}
+  .dont{background:#EFD8D2;color:#7A2A20;border-color:#E0BFB8}
+  .do::before{content:"✓ ";font-weight:500}
+  .dont::before{content:"✕ ";font-weight:500}
+</style></head><body data-theme="echo" data-screen-label="13 Brand light">
+<div class="wrap">
+
+<h1 class="title">brand · <em>light</em></h1>
+<div class="lede">Signature-градиент BookmarkBrain. Тёплый кремовый base + три <em>радиальных «источника света»</em>: <em>sage</em> сверху-слева, <em>apricot</em> сверху-справа, <em>blush</em> снизу. Используем как <em>фон бренда</em>, hero, modal-backdrop, marketing-канвас.</div>
+
+<div class="section-label">Signature · brand-light</div>
+<div class="hero">
+  <span class="meta">brand · light</span>
+  <span class="mark">э</span>
+  <span class="name">always layered as light source</span>
+</div>
+
+<div class="section-label">Composition · 4 layers</div>
+<div class="layers" style="grid-template-columns:repeat(4,1fr)">
+  <div class="layer layer-1"><span class="nm">base 1</span><span class="hx">F5F1EB</span></div>
+  <div class="layer layer-2"><span class="nm">base 2</span><span class="hx">F0EBE2</span></div>
+  <div class="layer layer-4"><span class="nm">sage</span><span class="hx">12% 0%</span></div>
+  <div class="layer layer-5"><span class="nm">apricot</span><span class="hx">100% 12%</span></div>
+</div>
+<div class="layers" style="grid-template-columns:repeat(4,1fr);margin-top:8px">
+  <div class="layer layer-6"><span class="nm">blush</span><span class="hx">60% 100%</span></div>
+  <div class="layer layer-3"><span class="nm">base · linear</span><span class="hx">cream</span></div>
+  <div class="layer layer-7" style="grid-column:span 2"><span class="nm">composed</span><span class="hx">--backdrop</span></div>
+</div>
+
+<div class="section-label">Recipe · CSS token</div>
+<div class="recipe">
+  <div><span class="dim">/* always available on echo theme root */</span></div>
+  <div><span class="k">background:</span> <span class="c">var(--backdrop-gradient)</span>;</div>
+  <div style="margin-top:10px"><span class="dim">/* token decomposes into: */</span></div>
+  <div><span class="k">--brand-light-tint-1:</span> <span class="c">rgba(218,234,218,.55)</span>; <span class="dim">/* fresh sage */</span></div>
+  <div><span class="k">--brand-light-tint-2:</span> <span class="c">rgba(252,220,194,.55)</span>; <span class="dim">/* clean apricot */</span></div>
+  <div><span class="k">--brand-light-tint-3:</span> <span class="c">rgba(248,226,218,.45)</span>; <span class="dim">/* soft blush */</span></div>
+  <div><span class="k">--brand-light-base-1:</span> <span class="c">#F5F1EB</span>; <span class="dim">/* cream top */</span></div>
+  <div><span class="k">--brand-light-base-2:</span> <span class="c">#F0EBE2</span>; <span class="dim">/* cream bottom */</span></div>
+</div>
+
+<div class="section-label">Use · in context</div>
+<div class="apps">
+  <div class="app">
+    <span class="tag">app · page</span>
+    <div class="head">сохрани,<br/><em>забудь</em></div>
+  </div>
+  <div class="app app-card">
+    <span class="tag">marketing · hero</span>
+    <div class="inner">brain</div>
+  </div>
+</div>
+
+<div class="section-label">Do · don't</div>
+<div class="dos">
+  <div class="pill do">фон страницы, hero, marketing</div>
+  <div class="pill dont">поверх — карточка с тем же градиентом</div>
+  <div class="pill do">modal-backdrop, sheet-shell</div>
+  <div class="pill dont">внутри карточки или кнопки</div>
+  <div class="pill do">логотип-mark поверх для лендинга</div>
+  <div class="pill dont">переворачивать или менять оттенки</div>
+</div>
+
+</div></body></html>

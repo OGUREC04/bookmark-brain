@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="ru"><head><meta charset="utf-8"><title>Palette · sage</title>
+<link rel="stylesheet" href="../foundations/colors_and_type.css">
+<link rel="stylesheet" href="_card.css">
+<style>
+  .sw{
+    position:relative; border-radius:18px; overflow:hidden;
+    background:var(--glass-tint-light);
+    backdrop-filter:blur(var(--glass-blur)) saturate(140%);
+    -webkit-backdrop-filter:blur(var(--glass-blur)) saturate(140%);
+    border:1px solid var(--glass-edge);
+    box-shadow:var(--shadow-glass);
+  }
+  .sw .chip{height:88px;border-bottom:1px solid var(--glass-edge)}
+  .sw .meta{padding:10px 14px 12px}
+  .sw .name{font-size:12px;font-weight:500;color:var(--fg-1);letter-spacing:-0.005em;line-height:1.25}
+  .sw .hex{font-family:var(--font-mono);font-size:10px;color:var(--fg-3);letter-spacing:.06em;margin-top:3px}
+
+  .row3{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+  .row4{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+
+  .stack{
+    background:var(--glass-tint-light);
+    backdrop-filter:blur(var(--glass-blur)) saturate(140%);
+    -webkit-backdrop-filter:blur(var(--glass-blur)) saturate(140%);
+    border:1px solid var(--glass-edge);
+    box-shadow:var(--shadow-glass);
+    border-radius:22px; padding:18px;
+    display:flex; flex-direction:column; gap:12px;
+  }
+  .bar{display:flex;align-items:center;gap:12px}
+  .bar .swatch{width:40px;height:40px;border-radius:12px;border:1px solid var(--glass-edge);flex-shrink:0;box-shadow:inset 0 1px 0 rgba(255,255,255,0.4)}
+  .bar .role{font-size:13px;font-weight:500;letter-spacing:-0.005em;color:var(--fg-1)}
+  .bar .hex{font-family:var(--font-mono);font-size:10px;color:var(--fg-3);margin-left:auto;letter-spacing:.06em}
+  .bar i{font-family:var(--font-display);font-style:italic;color:var(--fg-3);font-weight:500;font-size:13px}
+
+  /* hero brand block */
+  .hero{
+    position:relative; overflow:hidden;
+    border-radius:28px; padding:32px 28px;
+    background:linear-gradient(135deg, #7A9C7A 0%, #688A68 60%, #547654 100%);
+    color:#fff; margin-bottom:8px;
+    box-shadow:var(--shadow-3);
+  }
+  .hero::before{
+    content:""; position:absolute; inset:0;
+    background:radial-gradient(60% 80% at 100% 0%, rgba(255,255,255,0.25), transparent 60%);
+    pointer-events:none;
+  }
+  .hero .label{font-family:var(--font-mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:rgba(255,255,255,0.7);margin-bottom:12px}
+  .hero .glyph{font-family:var(--font-display);font-style:italic;font-weight:500;font-size:72px;line-height:0.9;letter-spacing:-0.02em;margin-bottom:8px}
+  .hero .hex{font-family:var(--font-mono);font-size:13px;letter-spacing:.06em;color:rgba(255,255,255,0.85)}
+  .hero .quote{position:absolute;right:24px;bottom:22px;font-family:var(--font-display);font-style:italic;font-size:14px;color:rgba(255,255,255,0.75);max-width:160px;text-align:right;line-height:1.35}
+</style></head><body data-theme="echo" data-screen-label="01 Palette">
+<div class="wrap">
+
+<h1 class="title">palette · <em>sage echo</em></h1>
+<div class="lede">Тёплая бумага + приглушённый шалфей. Один акцент, тёплые off-whites, frosted-shadows. <em>Никаких чистых</em> <code>#000</code> / <code>#FFF</code>.</div>
+
+<div class="hero">
+  <div class="label">brand · primary</div>
+  <div class="glyph">Aa</div>
+  <div class="hex">#7A9C7A · sage</div>
+  <div class="quote">«один акцент на весь продукт»</div>
+</div>
+
+<div class="section-label">Brand states</div>
+<div class="row3">
+  <div class="sw"><div class="chip" style="background:var(--brand-primary)"></div><div class="meta"><div class="name">primary</div><div class="hex">7A9C7A</div></div></div>
+  <div class="sw"><div class="chip" style="background:var(--brand-primary-hover)"></div><div class="meta"><div class="name">hover</div><div class="hex">688A68</div></div></div>
+  <div class="sw"><div class="chip" style="background:var(--brand-primary-press)"></div><div class="meta"><div class="name">press</div><div class="hex">547654</div></div></div>
+</div>
+
+<div class="section-label">Surface · warm paper</div>
+<div class="row3">
+  <div class="sw"><div class="chip" style="background:var(--bg-page)"></div><div class="meta"><div class="name">bg-page</div><div class="hex">F5F1EB</div></div></div>
+  <div class="sw"><div class="chip" style="background:var(--bg-surface)"></div><div class="meta"><div class="name">bg-surface</div><div class="hex">FAF7F1</div></div></div>
+  <div class="sw"><div class="chip" style="background:var(--bg-surface-elev)"></div><div class="meta"><div class="name">bg-elev</div><div class="hex">FFFCF6</div></div></div>
+</div>
+
+<div class="section-label">Ink · warm off-black</div>
+<div class="stack">
+  <div class="bar"><div class="swatch" style="background:var(--fg-1)"></div><div class="role">fg-1 · <i>primary ink</i></div><div class="hex">2C2825</div></div>
+  <div class="bar"><div class="swatch" style="background:var(--fg-2)"></div><div class="role">fg-2 · <i>secondary</i></div><div class="hex">6B645B</div></div>
+  <div class="bar"><div class="swatch" style="background:var(--fg-3)"></div><div class="role">fg-3 · <i>metadata</i></div><div class="hex">9A938A</div></div>
+  <div class="bar"><div class="swatch" style="background:var(--fg-4)"></div><div class="role">fg-4 · <i>placeholder</i></div><div class="hex">C5BFB4</div></div>
+</div>
+
+<div class="section-label">AI · soft sage cast</div>
+<div class="row3">
+  <div class="sw"><div class="chip" style="background:var(--ai-suggest-bg)"></div><div class="meta"><div class="name">suggest-bg</div><div class="hex">ECF2EC</div></div></div>
+  <div class="sw"><div class="chip" style="background:var(--ai-suggest-border)"></div><div class="meta"><div class="name">suggest-border</div><div class="hex">CFDFCF</div></div></div>
+  <div class="sw"><div class="chip" style="background:var(--ai-suggest-fg)"></div><div class="meta"><div class="name">suggest-fg</div><div class="hex">2F4A2F</div></div></div>
+</div>
+
+<div class="section-label">Semantic</div>
+<div class="row3">
+  <div class="sw"><div class="chip" style="background:#5A8A56"></div><div class="meta"><div class="name">success</div><div class="hex">5A8A56</div></div></div>
+  <div class="sw"><div class="chip" style="background:#C49454"></div><div class="meta"><div class="name">warn</div><div class="hex">C49454</div></div></div>
+  <div class="sw"><div class="chip" style="background:#B5483A"></div><div class="meta"><div class="name">error</div><div class="hex">B5483A</div></div></div>
+</div>
+
+<div class="section-label">Tag spectrum · 8 stops</div>
+<div class="row4">
+  <div class="sw"><div class="chip" style="background:var(--tag-1)"></div><div class="meta"><div class="name">1 · sage</div><div class="hex">7A9C7A</div></div></div>
+  <div class="sw"><div class="chip" style="background:var(--tag-2)"></div><div class="meta"><div class="name">2 · ochre</div><div class="hex">C18840</div></div></div>
+  <div class="sw"><div class="chip" style="background:var(--tag-3)"></div><div class="meta"><div class="name">3 · slate</div><div class="hex">4F6A7A</div></div></div>
+  <div class="sw"><div class="chip" style="background:var(--tag-4)"></div><div class="meta"><div class="name">4 · plum</div><div class="hex">8A5C8C</div></div></div>
+  <div class="sw"><div class="chip" style="background:var(--tag-5)"></div><div class="meta"><div class="name">5 · clay</div><div class="hex">B5483A</div></div></div>
+  <div class="sw"><div class="chip" style="background:var(--tag-6)"></div><div class="meta"><div class="name">6 · moss</div><div class="hex">6B7A3F</div></div></div>
+  <div class="sw"><div class="chip" style="background:var(--tag-7)"></div><div class="meta"><div class="name">7 · rose</div><div class="hex">C84B5A</div></div></div>
+  <div class="sw"><div class="chip" style="background:var(--tag-8)"></div><div class="meta"><div class="name">8 · taupe</div><div class="hex">8E908A</div></div></div>
+</div>
+
+</div></body></html>

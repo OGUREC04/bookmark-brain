@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="ru"><head><meta charset="utf-8"><title>Radii & glass · sage</title>
+<link rel="stylesheet" href="../foundations/colors_and_type.css">
+<link rel="stylesheet" href="_card.css">
+<style>
+  .group{
+    background:var(--glass-tint-light);
+    backdrop-filter:blur(var(--glass-blur)) saturate(140%);
+    -webkit-backdrop-filter:blur(var(--glass-blur)) saturate(140%);
+    border:1px solid var(--glass-edge);
+    border-radius:22px; padding:22px;
+    box-shadow:var(--shadow-glass);
+    margin-bottom:8px;
+  }
+  .row{display:flex;gap:18px;align-items:flex-end;flex-wrap:wrap}
+  .tile{display:flex;flex-direction:column;align-items:center;gap:8px;flex-shrink:0}
+  .box{
+    background:rgba(255,252,246,0.85);
+    border:1px solid var(--glass-edge);
+    box-shadow:inset 0 1px 0 rgba(255,255,255,0.5);
+  }
+  .lbl{font-size:9px;font-family:var(--font-mono);color:var(--fg-3);letter-spacing:.06em;text-transform:uppercase;text-align:center;line-height:1.4}
+  .lbl b{font-family:var(--font-mono);font-weight:500;color:var(--fg-2);display:block}
+  .shadow{
+    background:rgba(255,252,246,0.9);
+    border:1px solid var(--glass-edge);
+    backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+  }
+  .glass-demo{
+    background:var(--glass-tint-light);
+    backdrop-filter:blur(var(--glass-blur)) saturate(140%);
+    -webkit-backdrop-filter:blur(var(--glass-blur)) saturate(140%);
+    border:1px solid var(--glass-edge);
+    box-shadow:var(--shadow-glass);
+  }
+  .note{font-family:var(--font-display);font-style:italic;font-size:13px;color:var(--fg-3);line-height:1.45;margin-top:14px;letter-spacing:0}
+  .note b{font-family:var(--font-ui);font-style:normal;font-weight:500;color:var(--fg-1)}
+  code{font-family:var(--font-mono);font-style:normal;font-size:11px;color:var(--fg-2);background:rgba(255,252,246,0.7);padding:2px 6px;border-radius:6px;border:1px solid var(--glass-edge)}
+</style></head><body data-theme="echo" data-screen-label="05 Radii & glass">
+<div class="wrap">
+
+<h1 class="title">radii &amp; <em>glass</em></h1>
+<div class="lede">Углы soft-but-not-pill, шкала 6–36. <em>Frosted shadows</em> с inner-highlight под iOS 26 / liquid glass. Никаких чистых чёрных теней.</div>
+
+<div class="section-label">Radii scale · 6–36</div>
+<div class="group">
+  <div class="row">
+    <div class="tile"><div class="box" style="width:60px;height:60px;border-radius:6px"></div><div class="lbl"><b>xs · 6</b>chip</div></div>
+    <div class="tile"><div class="box" style="width:60px;height:60px;border-radius:10px"></div><div class="lbl"><b>sm · 10</b>input</div></div>
+    <div class="tile"><div class="box" style="width:60px;height:60px;border-radius:16px"></div><div class="lbl"><b>md · 16</b>card</div></div>
+    <div class="tile"><div class="box" style="width:60px;height:60px;border-radius:22px"></div><div class="lbl"><b>lg · 22</b>ai tile</div></div>
+    <div class="tile"><div class="box" style="width:60px;height:60px;border-radius:28px"></div><div class="lbl"><b>xl · 28</b>sheet</div></div>
+    <div class="tile"><div class="box" style="width:60px;height:60px;border-radius:36px"></div><div class="lbl"><b>2xl · 36</b>hero</div></div>
+    <div class="tile"><div class="box" style="width:60px;height:60px;border-radius:999px"></div><div class="lbl"><b>pill</b>btn / field</div></div>
+  </div>
+</div>
+
+<div class="section-label">Elevation · warm + glass</div>
+<div class="group">
+  <div class="row" style="gap:28px">
+    <div class="tile"><div class="shadow" style="width:96px;height:64px;border-radius:14px;box-shadow:var(--shadow-1)"></div><div class="lbl"><b>1 · rest</b></div></div>
+    <div class="tile"><div class="shadow" style="width:96px;height:64px;border-radius:14px;box-shadow:var(--shadow-2)"></div><div class="lbl"><b>2 · hover</b></div></div>
+    <div class="tile"><div class="shadow" style="width:96px;height:64px;border-radius:14px;box-shadow:var(--shadow-3)"></div><div class="lbl"><b>3 · sticky</b></div></div>
+    <div class="tile"><div class="shadow" style="width:96px;height:64px;border-radius:14px;box-shadow:var(--shadow-pop)"></div><div class="lbl"><b>pop · sheet</b></div></div>
+    <div class="tile"><div class="glass-demo" style="width:96px;height:64px;border-radius:14px"></div><div class="lbl"><b>glass</b>frosted</div></div>
+  </div>
+</div>
+
+<div class="section-label">Glass recipe</div>
+<div class="card-surface" style="background:var(--glass-tint-light);border:1px solid var(--glass-edge);backdrop-filter:blur(var(--glass-blur)) saturate(140%);-webkit-backdrop-filter:blur(var(--glass-blur)) saturate(140%);box-shadow:var(--shadow-glass);font-size:13px;color:var(--fg-2);line-height:1.6">
+  <div style="display:flex;flex-direction:column;gap:6px;font-family:var(--font-mono);font-size:11.5px;letter-spacing:0;color:var(--fg-2)">
+    <div><span style="color:var(--brand-primary)">background:</span> <code>rgba(255,252,246, 0.55)</code></div>
+    <div><span style="color:var(--brand-primary)">backdrop-filter:</span> <code>blur(20px) saturate(140%)</code></div>
+    <div><span style="color:var(--brand-primary)">border:</span> <code>1px solid rgba(255,255,255,0.6)</code></div>
+    <div><span style="color:var(--brand-primary)">box-shadow:</span> <code>inset highlight + soft drop</code></div>
+  </div>
+</div>
+
+<div class="section-label">Compose · real components</div>
+<div class="card-surface" style="background:transparent;border:1px dashed var(--border-2);padding:18px">
+  <div style="display:flex;flex-direction:column;gap:10px">
+    <div style="background:var(--bg-surface-elev);border:1px solid var(--border-1);border-radius:6px;padding:4px 10px;font-size:11px;font-family:var(--font-mono);color:var(--fg-2);width:fit-content">#alignment · chip · 6</div>
+    <div style="background:var(--glass-tint-strong);border:1px solid var(--glass-edge);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-radius:999px;padding:12px 18px;font-size:13px;color:var(--fg-3);font-family:var(--font-display);font-style:italic">найти в памяти… · pill</div>
+    <div style="background:var(--glass-tint-strong);border:1px solid var(--glass-edge);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-radius:16px;padding:14px;box-shadow:var(--shadow-glass)">
+      <div style="font-size:14.5px;font-weight:500;letter-spacing:-0.02em">bookmark card · md 16</div>
+      <div style="font-size:12px;color:var(--fg-3);margin-top:2px;font-family:var(--font-display);font-style:italic">glass + shadow-glass в rest</div>
+    </div>
+    <div style="background:linear-gradient(160deg, rgba(226,237,226,0.85) 0%, rgba(207,223,207,0.7) 100%);border:1px solid rgba(207,223,207,0.7);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border-radius:22px;padding:16px 18px;font-size:13px;line-height:1.5;color:var(--ai-suggest-fg);box-shadow:0 1px 0 rgba(255,255,255,0.5) inset, 0 8px 24px rgba(60,90,60,0.08)">
+      <span style="font-family:var(--font-mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;display:block;margin-bottom:4px;font-weight:500">brain suggests · lg 22</span>
+      <span style="font-family:var(--font-display);font-style:italic;font-size:15px;color:var(--fg-1)">собрать связанные?</span>
+    </div>
+  </div>
+</div>
+
+<div class="note">Hover на карточке: <code>shadow-1 → shadow-2</code> + <b>translate-up 1px</b>. Touch — наоборот, <b>translate-down 1px</b>. Никакого scale, никаких неоновых обводок.</div>
+
+</div></body></html>

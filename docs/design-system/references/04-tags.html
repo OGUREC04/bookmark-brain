@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="ru"><head><meta charset="utf-8"><title>Tags · sage</title>
+<link rel="stylesheet" href="../foundations/colors_and_type.css">
+<link rel="stylesheet" href="_card.css">
+<style>
+  .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+  .cell{display:flex;flex-direction:column;align-items:flex-start;gap:6px;padding:14px;border-radius:14px;background:var(--glass-tint-light);backdrop-filter:blur(16px) saturate(140%);-webkit-backdrop-filter:blur(16px) saturate(140%);border:1px solid var(--glass-edge)}
+  .tag{padding:5px 12px;border-radius:999px;font-size:13px;font-weight:500;letter-spacing:-0.005em;font-family:var(--font-ui);border:1px solid transparent}
+  .lbl{font-size:9.5px;font-family:var(--font-mono);color:var(--fg-3);letter-spacing:.08em;text-transform:uppercase}
+  .stack{background:var(--glass-tint-light);backdrop-filter:blur(var(--glass-blur)) saturate(140%);-webkit-backdrop-filter:blur(var(--glass-blur)) saturate(140%);border:1px solid var(--glass-edge);box-shadow:var(--shadow-glass);border-radius:22px;padding:18px;display:flex;flex-direction:column;gap:14px}
+  .row{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+  .tag-soft{background:var(--brand-primary-tint);color:#2F4A2F}
+  .tag-solid{background:var(--brand-primary);color:var(--fg-on-brand);box-shadow:0 1px 0 rgba(255,255,255,0.2) inset, 0 2px 6px rgba(122,156,122,0.2)}
+  .tag-outline{background:rgba(255,252,246,0.4);color:var(--fg-2);border:1px solid var(--glass-edge);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+  .tag-add{background:transparent;color:var(--fg-3);border:1px dashed var(--border-2)}
+  .tag-add::before{content:"+ "}
+  .note{font-family:var(--font-display);font-style:italic;font-size:13px;color:var(--fg-3);line-height:1.45;letter-spacing:0}
+  .note b{font-family:var(--font-ui);font-style:normal;font-weight:500;color:var(--fg-1)}
+</style></head><body data-theme="echo" data-screen-label="04 Tags">
+<div class="wrap">
+
+<h1 class="title">tags · <em>8 stops</em></h1>
+<div class="lede">Цвета тегов не соревнуются с акцентом — приглушённые, тёплые, читаются и на cream, и на glass. <em>Цвет = категория</em>, не «важность».</div>
+
+<div class="section-label">Palette · soft tint chips</div>
+<div class="grid">
+  <div class="cell"><span class="tag" style="background:#E2EDE2;color:#2F4A2F;border-color:#CFDFCF">#чтиво</span><span class="lbl">tag-1 · sage</span></div>
+  <div class="cell"><span class="tag" style="background:#F4E6CC;color:#7A5828;border-color:#E5D2A8">#работа</span><span class="lbl">tag-2 · ochre</span></div>
+  <div class="cell"><span class="tag" style="background:#D8E2EA;color:#3D5A6E;border-color:#B8C8D8">#видео</span><span class="lbl">tag-3 · slate</span></div>
+  <div class="cell"><span class="tag" style="background:#E5D8E8;color:#5C3D6E;border-color:#CFBAD5">#книги</span><span class="lbl">tag-4 · plum</span></div>
+  <div class="cell"><span class="tag" style="background:#EFD8D2;color:#8A2A20;border-color:#DBB5AC">#важно</span><span class="lbl">tag-5 · clay</span></div>
+  <div class="cell"><span class="tag" style="background:#E0E5C8;color:#4A5A2A;border-color:#C8D0A8">#рецепты</span><span class="lbl">tag-6 · moss</span></div>
+  <div class="cell"><span class="tag" style="background:#F4D8DC;color:#8A2A35;border-color:#E0B5BC">#люди</span><span class="lbl">tag-7 · rose</span></div>
+  <div class="cell"><span class="tag" style="background:#E0DED8;color:#56544C;border-color:#C5C3BB">#разное</span><span class="lbl">tag-8 · taupe</span></div>
+</div>
+
+<div class="section-label">Variants</div>
+<div class="stack">
+  <div>
+    <div class="row">
+      <span class="tag tag-soft">ai</span>
+      <span class="tag tag-soft">чтиво</span>
+      <span class="tag tag-soft">anthropic</span>
+      <span class="tag tag-soft">alignment</span>
+    </div>
+    <div class="lbl" style="margin-top:6px">soft · default · primary-tint фон</div>
+  </div>
+  <div>
+    <div class="row">
+      <span class="tag tag-solid">ai</span>
+      <span class="tag tag-solid">чтиво</span>
+    </div>
+    <div class="lbl" style="margin-top:6px">solid · active / selected</div>
+  </div>
+  <div>
+    <div class="row">
+      <span class="tag tag-outline">черновик</span>
+      <span class="tag tag-outline">архив</span>
+    </div>
+    <div class="lbl" style="margin-top:6px">outline · AI-suggested, ещё не принят</div>
+  </div>
+  <div>
+    <div class="row">
+      <span class="tag tag-add">тег</span>
+    </div>
+    <div class="lbl" style="margin-top:6px">add · добавить новый</div>
+  </div>
+</div>
+
+<div class="section-label">In context</div>
+<div class="card-surface" style="background:var(--glass-tint-strong);backdrop-filter:blur(var(--glass-blur)) saturate(160%);-webkit-backdrop-filter:blur(var(--glass-blur)) saturate(160%);border:1px solid var(--glass-edge);box-shadow:var(--shadow-glass)">
+  <div style="font-size:15px;font-weight:500;margin-bottom:6px;letter-spacing:-0.02em">constitutional ai: harmlessness from ai feedback</div>
+  <div style="font-family:var(--font-display);font-style:italic;font-size:14px;color:var(--fg-2);line-height:1.4;margin-bottom:12px;letter-spacing:0">«Метод обучения через набор принципов — без ручной разметки.»</div>
+  <div class="row">
+    <span class="tag" style="background:#E2EDE2;color:#2F4A2F">#ai</span>
+    <span class="tag" style="background:#F4E6CC;color:#7A5828">#чтиво</span>
+    <span class="tag tag-add">тег</span>
+  </div>
+</div>
+
+<div class="note" style="margin-top:14px">Никаких эмодзи в теге. <b>Никаких UPPERCASE.</b> Sentence case + кириллица — норма. Хэштег — необязателен; используем для «системного» голоса.</div>
+
+</div></body></html>

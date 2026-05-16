@@ -1,0 +1,568 @@
+/* ==========================================================================
+   BookmarkBrain — Foundations
+   Three theme directions (A/B/C) share scale + structure, swap palette + type.
+   Cyrillic-first. Telegram-theme aware via var(--tg-theme-*).
+   ========================================================================== */
+
+/* ----- Webfonts (Google) ---------------------------------------------------
+   All three directions use Cyrillic-capable Google Fonts.
+   For production, replace with self-hosted woff2 in fonts/.
+   --------------------------------------------------------------------------- */
+@import url("https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=Lora:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500;1,600;1,700&family=JetBrains+Mono:wght@400;500&family=Inter:wght@400;500;600;700&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,500;0,8..60,600;1,8..60,400&family=IBM+Plex+Mono:wght@400;500;600&family=Manrope:wght@400;500;600;700&family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,400&display=swap");
+
+/* ==========================================================================
+   1. SHARED PRIMITIVES (don't override per theme)
+   ========================================================================== */
+
+:root {
+  /* --- Type scale (modular, mobile-tight, scales fine for desktop too) --- */
+  --fs-12: 0.75rem;     /* micro labels, badges */
+  --fs-13: 0.8125rem;   /* metadata, timestamps */
+  --fs-14: 0.875rem;    /* secondary body, chips */
+  --fs-15: 0.9375rem;   /* primary body (Mini App default) */
+  --fs-16: 1rem;        /* iOS body */
+  --fs-18: 1.125rem;    /* card title */
+  --fs-20: 1.25rem;     /* h3 / section title */
+  --fs-24: 1.5rem;      /* h2 */
+  --fs-32: 2rem;        /* h1 */
+  --fs-44: 2.75rem;     /* display */
+
+  /* --- Line-heights (tight enough for chat density) --- */
+  --lh-tight: 1.15;
+  --lh-snug: 1.3;
+  --lh-normal: 1.5;
+  --lh-loose: 1.6;
+
+  /* --- Letter-spacing (Cyrillic likes slightly looser tracking on caps) --- */
+  --ls-tight: -0.02em;
+  --ls-normal: 0;
+  --ls-wide: 0.04em;
+  --ls-caps: 0.08em;
+
+  /* --- Weights --- */
+  --fw-regular: 400;
+  --fw-medium: 500;
+  --fw-semibold: 600;
+  --fw-bold: 700;
+
+  /* --- Spacing (4px base — plays well with iOS 8pt grid + tight chat lists) --- */
+  --space-0: 0;
+  --space-1: 0.25rem;   /* 4 */
+  --space-2: 0.5rem;    /* 8 */
+  --space-3: 0.75rem;   /* 12 */
+  --space-4: 1rem;      /* 16 */
+  --space-5: 1.25rem;   /* 20 */
+  --space-6: 1.5rem;    /* 24 */
+  --space-8: 2rem;      /* 32 */
+  --space-10: 2.5rem;   /* 40 */
+  --space-12: 3rem;     /* 48 */
+  --space-16: 4rem;     /* 64 */
+
+  /* --- Radii (liquid-glass: bigger, softer; iOS 26 vibe) --- */
+  --radius-xs: 6px;     /* tags, chips */
+  --radius-sm: 10px;    /* inputs, small cards */
+  --radius-md: 16px;    /* bookmark cards */
+  --radius-lg: 22px;    /* AI suggestion cards */
+  --radius-xl: 28px;    /* bottom sheets, hero tiles */
+  --radius-2xl: 36px;   /* huge glass tiles */
+  --radius-pill: 999px;
+
+  /* --- Elevation (liquid-glass: softer, more diffuse, with inner highlight) --- */
+  --shadow-1: 0 1px 2px rgba(60, 40, 25, 0.04), 0 1px 1px rgba(60, 40, 25, 0.03);
+  --shadow-2: 0 4px 14px rgba(60, 40, 25, 0.05), 0 1px 3px rgba(60, 40, 25, 0.04);
+  --shadow-3: 0 14px 40px rgba(60, 40, 25, 0.08), 0 4px 10px rgba(60, 40, 25, 0.04);
+  --shadow-pop: 0 24px 60px rgba(60, 40, 25, 0.14), 0 8px 20px rgba(60, 40, 25, 0.06);
+  --shadow-inset: inset 0 1px 0 rgba(255, 255, 255, 0.5);
+  --shadow-glass: 0 1px 0 rgba(255,255,255,0.6) inset, 0 -1px 0 rgba(0,0,0,0.04) inset, 0 10px 30px rgba(60,40,25,0.08);
+
+  /* --- Liquid Glass primitives --- */
+  --glass-blur: 20px;
+  --glass-blur-strong: 32px;
+  --glass-tint-light: rgba(255, 252, 246, 0.55);
+  --glass-tint-medium: rgba(255, 252, 246, 0.35);
+  --glass-tint-strong: rgba(255, 252, 246, 0.72);
+  --glass-edge: rgba(255, 255, 255, 0.6);
+  --glass-edge-dark: rgba(255, 255, 255, 0.18);
+
+  /* --- Motion --- */
+  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+  --dur-fast: 120ms;
+  --dur-base: 200ms;
+  --dur-slow: 320ms;
+
+  /* --- Z layers --- */
+  --z-sticky: 10;
+  --z-suggest: 20;
+  --z-overlay: 50;
+  --z-modal: 100;
+}
+
+/* ==========================================================================
+   2. DIRECTION A — «ЗАМЕТКА» (Zametka / Paper)
+   Closest to Claude mood: warm cream, ink, terracotta. Source Serif accents.
+   ========================================================================== */
+
+[data-theme="zametka"],
+[data-theme="zametka-dark"] {
+  --font-ui: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --font-display: "Source Serif 4", "Iowan Old Style", "Charter", Georgia, serif;
+  --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace;
+
+  /* Brand */
+  --brand-primary: #C8643C;      /* terracotta — Claude-ish coral, deeper */
+  --brand-primary-hover: #B0552F;
+  --brand-primary-press: #99481F;
+  --brand-primary-tint: #F5E4D8; /* AI-suggestion soft tint */
+  --brand-secondary: #5C4A3D;    /* deep walnut for serif accents */
+
+  /* AI semantic */
+  --ai-processing: #C49454;      /* warm ochre, "thinking" */
+  --ai-suggest-bg: #FBF1E8;
+  --ai-suggest-border: #EBD7C2;
+  --ai-suggest-fg: #6B4828;
+
+  /* Status */
+  --semantic-success: #5A8A56;
+  --semantic-warn: #C49454;
+  --semantic-error: #B5483A;
+  --semantic-info: #5A7A8A;
+}
+
+[data-theme="zametka"] {
+  /* Surface — warm off-white, paper feel */
+  --bg-page: #FAF6F0;
+  --bg-surface: #FFFCF6;
+  --bg-surface-elev: #FFFFFF;
+  --bg-sunken: #F2EBDF;
+  --bg-overlay: rgba(46, 36, 28, 0.45);
+
+  /* Text */
+  --fg-1: #2A2018;        /* primary ink */
+  --fg-2: #56463A;        /* secondary */
+  --fg-3: #8A7868;        /* tertiary, metadata */
+  --fg-4: #B8A595;        /* placeholder */
+  --fg-on-brand: #FFFFFF;
+
+  /* Borders / dividers */
+  --border-1: #ECE2D2;    /* hairline */
+  --border-2: #DDD0BA;    /* card edge */
+  --border-strong: #C9B89B;
+
+  /* Tag palette (8 stops, all warm-leaning) */
+  --tag-1: #C8643C;  /* terracotta */
+  --tag-2: #C49454;  /* ochre */
+  --tag-3: #5A8A56;  /* sage */
+  --tag-4: #5A7A8A;  /* slate */
+  --tag-5: #8E5C8C;  /* plum */
+  --tag-6: #B5483A;  /* clay red */
+  --tag-7: #6B7A3F;  /* moss */
+  --tag-8: #8A7868;  /* taupe */
+}
+
+[data-theme="zametka-dark"] {
+  --bg-page: #1C1813;
+  --bg-surface: #221E18;
+  --bg-surface-elev: #2A251D;
+  --bg-sunken: #15110D;
+  --bg-overlay: rgba(0, 0, 0, 0.6);
+
+  --fg-1: #F2E9DA;
+  --fg-2: #C7B9A4;
+  --fg-3: #8E8067;
+  --fg-4: #5C5246;
+  --fg-on-brand: #1C1813;
+
+  --border-1: #2F2A22;
+  --border-2: #3D362B;
+  --border-strong: #564B3C;
+
+  --brand-primary-tint: #3A2A20;
+  --ai-suggest-bg: #2C2117;
+  --ai-suggest-border: #4A3622;
+  --ai-suggest-fg: #E0BB94;
+
+  --tag-1: #E07F58;
+  --tag-2: #D9AC72;
+  --tag-3: #7DAA77;
+  --tag-4: #7E9CAB;
+  --tag-5: #B07AAF;
+  --tag-6: #D4675A;
+  --tag-7: #99A862;
+  --tag-8: #B8A595;
+}
+
+/* ==========================================================================
+   3. DIRECTION B — «ЭХО» (Echo / Quiet)
+   Sage neutrals, deep ink, muted ochre. IBM Plex everywhere.
+   ========================================================================== */
+
+[data-theme^="echo"] {
+  --font-ui: "Onest", -apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif;
+  --font-display: "Lora", "Source Serif 4", "Iowan Old Style", Charter, Georgia, serif;
+  --font-mono: "JetBrains Mono", "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+
+  /* Claude-pastel base — warm cream, soft greys, off-black ink */
+  --bg-page: #F5F1EB;          /* Claude paper */
+  --bg-surface: #FAF7F1;        /* card surface, slightly lighter */
+  --bg-surface-elev: #FFFCF6;
+  --bg-sunken: #EAE3CF;
+  --bg-overlay: rgba(40, 30, 20, 0.4);
+
+  --fg-1: #2C2825;              /* warm off-black ink */
+  --fg-2: #6B645B;
+  --fg-3: #9A938A;
+  --fg-4: #C5BFB4;
+  --fg-on-brand: #FFFFFF;
+
+  --border-1: #E8E1D2;
+  --border-2: #D8CFBC;
+  --border-strong: #BDB29A;
+
+  --brand-secondary: #2C2825;
+  --brand-secondary-tint: #E8E1D2;
+
+  --tag-2: #C18840; --tag-3: #4F6A7A; --tag-4: #8A5C8C;
+  --tag-5: #B5483A; --tag-6: #6B7A3F; --tag-7: #C84B5A; --tag-8: #8E908A;
+}
+
+/* — Default echo = G1 forest — */
+[data-theme="echo"],
+[data-theme="echo-forest"] {
+  --brand-primary: #1F5A3A;
+  --brand-primary-hover: #174A30;
+  --brand-primary-press: #103A24;
+  --brand-primary-tint: #D8E8DC;
+  --ai-processing: #1F5A3A;
+  --ai-suggest-bg: #E5EFE6;
+  --ai-suggest-border: #C5DCC8;
+  --ai-suggest-fg: #103A24;
+  --tag-1: #1F5A3A;
+}
+
+/* — Sage (locked baseline) — */
+[data-theme="echo"],
+[data-theme="echo-sage"] {
+  --brand-primary: #7A9C7A;
+  --brand-primary-hover: #688A68;
+  --brand-primary-press: #547654;
+  --brand-primary-tint: #E2EDE2;
+  --ai-processing: #7A9C7A;
+  --ai-suggest-bg: #ECF2EC;
+  --ai-suggest-border: #CFDFCF;
+  --ai-suggest-fg: #2F4A2F;
+  --tag-1: #7A9C7A;
+
+  /* ─────────────────────────────────────────────────────────
+     BRAND LIGHT — signature backdrop gradient.
+     Reusable across page bg, hero blocks, modal backdrops,
+     marketing canvases. Always layered as light-source.
+     ─────────────────────────────────────────────────────── */
+  --brand-light-tint-1: rgba(218,234,218,0.55);  /* fresh sage, top-left */
+  --brand-light-tint-2: rgba(252,220,194,0.55);  /* clean apricot, top-right */
+  --brand-light-tint-3: rgba(248,226,218,0.45);  /* soft blush, bottom-center */
+  --brand-light-base-1: #F5F1EB;                 /* cream paper top */
+  --brand-light-base-2: #F0EBE2;                 /* cream paper bottom */
+  --backdrop-gradient:
+    radial-gradient(80% 60% at 12% 0%, var(--brand-light-tint-1) 0%, transparent 60%),
+    radial-gradient(70% 60% at 100% 12%, var(--brand-light-tint-2) 0%, transparent 55%),
+    radial-gradient(60% 50% at 60% 100%, var(--brand-light-tint-3) 0%, transparent 60%),
+    linear-gradient(180deg, var(--brand-light-base-1) 0%, var(--brand-light-base-2) 100%);
+}
+
+/* — Bright Sana-style accents on the same pastel base — */
+
+/* P1 · electric lime (Sana hero green) */
+[data-theme="echo-lime"] {
+  --brand-primary: #B8E635;
+  --brand-primary-hover: #A4D028;
+  --brand-primary-press: #8BB31D;
+  --brand-primary-tint: #EEF8C6;
+  --fg-on-brand: #1A2410;
+  --ai-processing: #B8E635;
+  --ai-suggest-bg: #F2F9DC;
+  --ai-suggest-border: #DCEAA8;
+  --ai-suggest-fg: #4A5A18;
+  --tag-1: #B8E635;
+}
+
+/* P2 · cobalt — bright blue, high contrast */
+[data-theme="echo-cobalt"] {
+  --brand-primary: #1E5BFF;
+  --brand-primary-hover: #1849D8;
+  --brand-primary-press: #1238B0;
+  --brand-primary-tint: #DCE5FF;
+  --ai-processing: #1E5BFF;
+  --ai-suggest-bg: #E8EEFF;
+  --ai-suggest-border: #BFCFFA;
+  --ai-suggest-fg: #1238B0;
+  --tag-1: #1E5BFF;
+}
+
+/* P3 · poppy — vivid red-orange */
+[data-theme="echo-poppy"] {
+  --brand-primary: #FF4A2B;
+  --brand-primary-hover: #E03A1E;
+  --brand-primary-press: #BD2F18;
+  --brand-primary-tint: #FFDDD3;
+  --ai-processing: #FF4A2B;
+  --ai-suggest-bg: #FFE9E1;
+  --ai-suggest-border: #FAC6B5;
+  --ai-suggest-fg: #A82712;
+  --tag-1: #FF4A2B;
+}
+
+/* P4 · magenta — bright pink-red */
+[data-theme="echo-magenta"] {
+  --brand-primary: #E63A8A;
+  --brand-primary-hover: #C82F76;
+  --brand-primary-press: #A6275F;
+  --brand-primary-tint: #FBDCEA;
+  --ai-processing: #E63A8A;
+  --ai-suggest-bg: #FCE7F1;
+  --ai-suggest-border: #F4BFD7;
+  --ai-suggest-fg: #A6275F;
+  --tag-1: #E63A8A;
+}
+
+/* P5 · marigold — saturated yellow-orange */
+[data-theme="echo-marigold"] {
+  --brand-primary: #F5A623;
+  --brand-primary-hover: #DB8E15;
+  --brand-primary-press: #B97710;
+  --brand-primary-tint: #FCE8C2;
+  --fg-on-brand: #2C1F08;
+  --ai-processing: #F5A623;
+  --ai-suggest-bg: #FCEFD0;
+  --ai-suggest-border: #F4D89A;
+  --ai-suggest-fg: #7A4D08;
+  --tag-1: #F5A623;
+}
+
+[data-theme="echo-old-removed"] {
+  --bg-page: #F4F2EC;
+  --bg-surface: #FAF8F2;
+  --bg-surface-elev: #FFFFFF;
+  --bg-sunken: #E8E5DC;
+  --bg-overlay: rgba(30, 32, 28, 0.45);
+
+  --fg-1: #1F2220;
+  --fg-2: #4A4D47;
+  --fg-3: #7A7C75;
+  --fg-4: #A9AAA1;
+  --fg-on-brand: #FAF8F2;
+
+  --border-1: #E2DFD4;
+  --border-2: #CFCBBC;
+  --border-strong: #B5B0A0;
+
+  --tag-1: #8A6E3F;
+  --tag-2: #4F7A4A;
+  --tag-3: #4F6A7A;
+  --tag-4: #6E5780;
+  --tag-5: #9E4A40;
+  --tag-6: #5E6E50;
+  --tag-7: #7E6450;
+  --tag-8: #5C5E55;
+}
+
+[data-theme="echo-dark"] {
+  --bg-page: #16181A;
+  --bg-surface: #1D1F20;
+  --bg-surface-elev: #25282A;
+  --bg-sunken: #101213;
+  --bg-overlay: rgba(0, 0, 0, 0.6);
+
+  --fg-1: #E8E6DD;
+  --fg-2: #B5B3AA;
+  --fg-3: #7A7C75;
+  --fg-4: #525550;
+  --fg-on-brand: #16181A;
+
+  --border-1: #2A2D2E;
+  --border-2: #3A3D3E;
+  --border-strong: #4D5152;
+
+  --brand-primary: #B8946A;
+  --brand-primary-tint: #2E2820;
+  --ai-suggest-bg: #25221A;
+  --ai-suggest-border: #3F3826;
+  --ai-suggest-fg: #D4B884;
+
+  --tag-1: #B8946A;
+  --tag-2: #7AA873;
+  --tag-3: #7896A8;
+  --tag-4: #9C84B0;
+  --tag-5: #C4736A;
+  --tag-6: #8E9E78;
+  --tag-7: #AE9078;
+  --tag-8: #8E908A;
+}
+
+/* ==========================================================================
+   4. DIRECTION C — «MYCEL» (Mycelium / Connected Memory)
+   Warmer + bolder. Plum-burgundy accent, geometric sans + Fraunces display.
+   ========================================================================== */
+
+[data-theme="mycel"],
+[data-theme="mycel-dark"] {
+  --font-ui: "Manrope", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  --font-display: "Fraunces", "Source Serif 4", Georgia, serif;
+  --font-mono: ui-monospace, "JetBrains Mono", Menlo, monospace;
+
+  --brand-primary: #7A2E3F;       /* deep wine/plum */
+  --brand-primary-hover: #682535;
+  --brand-primary-press: #561C2A;
+  --brand-primary-tint: #F2DDE2;
+  --brand-secondary: #C49454;
+
+  --ai-processing: #C49454;
+  --ai-suggest-bg: #FAEFDF;
+  --ai-suggest-border: #E8D2B0;
+  --ai-suggest-fg: #6B4828;
+
+  --semantic-success: #4A7A48;
+  --semantic-warn: #C49454;
+  --semantic-error: #A53A3A;
+  --semantic-info: #4F6A7A;
+}
+
+[data-theme="mycel"] {
+  --bg-page: #F6F0E4;       /* deeper cream than zametka */
+  --bg-surface: #FBF7EC;
+  --bg-surface-elev: #FFFFFF;
+  --bg-sunken: #ECE3D0;
+  --bg-overlay: rgba(40, 25, 28, 0.45);
+
+  --fg-1: #2B1E22;
+  --fg-2: #574248;
+  --fg-3: #8A7670;
+  --fg-4: #B5A39D;
+  --fg-on-brand: #FBF7EC;
+
+  --border-1: #E8DCC4;
+  --border-2: #D4C4A6;
+  --border-strong: #B89E78;
+
+  --tag-1: #7A2E3F;
+  --tag-2: #C49454;
+  --tag-3: #4A7A48;
+  --tag-4: #4F6A7A;
+  --tag-5: #6B4878;
+  --tag-6: #A55028;
+  --tag-7: #6B7A3F;
+  --tag-8: #7E6450;
+}
+
+[data-theme="mycel-dark"] {
+  --bg-page: #1A1416;
+  --bg-surface: #221A1D;
+  --bg-surface-elev: #2A2024;
+  --bg-sunken: #130E10;
+  --bg-overlay: rgba(0, 0, 0, 0.6);
+
+  --fg-1: #F0E5D8;
+  --fg-2: #C5B5A8;
+  --fg-3: #8A7670;
+  --fg-4: #5C4D49;
+  --fg-on-brand: #1A1416;
+
+  --border-1: #2E2528;
+  --border-2: #3E3236;
+  --border-strong: #564147;
+
+  --brand-primary: #C45670;
+  --brand-primary-tint: #3A2128;
+  --ai-suggest-bg: #2A201A;
+  --ai-suggest-border: #4A3826;
+  --ai-suggest-fg: #DCB484;
+
+  --tag-1: #C45670;
+  --tag-2: #D9AC72;
+  --tag-3: #7DAA73;
+  --tag-4: #7E96AB;
+  --tag-5: #A07AAE;
+  --tag-6: #D77554;
+  --tag-7: #99A862;
+  --tag-8: #B89D88;
+}
+
+/* ==========================================================================
+   5. SEMANTIC ELEMENT STYLES
+   Apply default look so plain HTML inherits the brand without classes.
+   ========================================================================== */
+
+body {
+  font-family: var(--font-ui);
+  font-size: var(--fs-15);
+  line-height: var(--lh-normal);
+  color: var(--fg-1);
+  background: var(--bg-page);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  font-feature-settings: "ss01", "cv11"; /* Inter alternates; harmless on others */
+}
+
+h1, h2, h3, h4, h5, h6 {
+  color: var(--fg-1);
+  letter-spacing: var(--ls-tight);
+  margin: 0;
+}
+
+h1 { font-size: var(--fs-32); font-weight: var(--fw-semibold); line-height: var(--lh-tight); }
+h2 { font-size: var(--fs-24); font-weight: var(--fw-semibold); line-height: var(--lh-tight); }
+h3 { font-size: var(--fs-20); font-weight: var(--fw-semibold); line-height: var(--lh-snug); }
+h4 { font-size: var(--fs-18); font-weight: var(--fw-semibold); line-height: var(--lh-snug); }
+h5 { font-size: var(--fs-16); font-weight: var(--fw-semibold); line-height: var(--lh-snug); }
+h6 { font-size: var(--fs-14); font-weight: var(--fw-medium); line-height: var(--lh-snug); letter-spacing: var(--ls-caps); text-transform: uppercase; color: var(--fg-3); }
+
+p { margin: 0; }
+
+small, .meta {
+  font-size: var(--fs-13);
+  color: var(--fg-3);
+}
+
+code, kbd, samp, .mono {
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+}
+
+.display {
+  font-family: var(--font-display);
+  letter-spacing: var(--ls-tight);
+}
+
+a {
+  color: var(--brand-primary);
+  text-decoration: none;
+  text-underline-offset: 2px;
+}
+a:hover { text-decoration: underline; }
+
+hr {
+  border: none;
+  border-top: 1px solid var(--border-1);
+  margin: var(--space-4) 0;
+}
+
+::selection {
+  background: var(--brand-primary-tint);
+  color: var(--fg-1);
+}
+
+/* ==========================================================================
+   6. TELEGRAM THEMING BRIDGE
+   Mini App: pull --tg-theme-* into our vars when present.
+   Apply with [data-tg-bridge="true"] on root.
+   ========================================================================== */
+
+[data-tg-bridge="true"] {
+  --bg-page: var(--tg-theme-bg-color, var(--bg-page));
+  --bg-surface: var(--tg-theme-secondary-bg-color, var(--bg-surface));
+  --fg-1: var(--tg-theme-text-color, var(--fg-1));
+  --fg-3: var(--tg-theme-hint-color, var(--fg-3));
+  --brand-primary: var(--tg-theme-button-color, var(--brand-primary));
+  --fg-on-brand: var(--tg-theme-button-text-color, var(--fg-on-brand));
+}

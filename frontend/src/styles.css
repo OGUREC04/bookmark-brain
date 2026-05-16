@@ -1,6 +1,14 @@
 /* ═══════════════════════════════════════════
    BookmarkBrain — Claude-inspired Design System
+   ───────────────────────────────────────────
+   T2 (2026-05-15): tokens.css теперь источник правды для новых компонентов
+   (Thoughts, Spaces, sheets). Старые --color-* остаются для legacy-страниц
+   (BookmarkDetail, Search, Folders) до их рефактора в T7+.
    ═══════════════════════════════════════════ */
+
+@import "./styles/tokens.css";
+@import "./styles/layout.css";
+@import "./styles/cards.css";
 
 :root {
   /* Colors — warm, neutral palette */

@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="ru"><head><meta charset="utf-8"><title>Search · sage</title>
+<link rel="stylesheet" href="../foundations/colors_and_type.css">
+<link rel="stylesheet" href="_card.css">
+<style>
+  .field{
+    display:flex;align-items:center;gap:12px;
+    padding:14px 20px; margin-bottom:8px;
+    background:var(--glass-tint-strong);
+    backdrop-filter:blur(var(--glass-blur)) saturate(160%);
+    -webkit-backdrop-filter:blur(var(--glass-blur)) saturate(160%);
+    border:1px solid var(--glass-edge);
+    border-radius:999px;
+    box-shadow:var(--shadow-glass);
+    transition:box-shadow 200ms, border-color 200ms;
+  }
+  .field svg{color:var(--fg-3);flex-shrink:0}
+  .field input,.field .ph{flex:1;border:none;outline:none;background:transparent;font:inherit;font-size:15px;color:var(--fg-1);letter-spacing:-0.01em}
+  .field .ph{color:var(--fg-3);font-family:var(--font-display);font-style:italic;font-weight:400}
+  .field.focus{
+    border-color:var(--brand-primary);
+    box-shadow:0 1px 0 rgba(255,255,255,0.6) inset, 0 0 0 4px rgba(122,156,122,0.18), 0 8px 20px rgba(60,90,60,0.1);
+  }
+  .clear{
+    background:rgba(0,0,0,0.06);border:none;
+    width:22px;height:22px;border-radius:50%;
+    display:flex;align-items:center;justify-content:center;
+    color:var(--fg-2);cursor:pointer;font-size:13px;line-height:1;
+  }
+  .voice{
+    background:transparent;border:none;cursor:pointer;color:var(--fg-3);
+    display:flex;align-items:center;justify-content:center;padding:0;
+  }
+
+  .facets{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px;padding:0 4px}
+  .facet{
+    padding:7px 14px;border-radius:999px;font-size:12.5px;font-weight:500;
+    cursor:pointer;border:none;font-family:var(--font-ui);letter-spacing:-0.005em;
+    display:inline-flex;align-items:center;gap:5px;
+  }
+  .facet .ct{font-family:var(--font-mono);font-size:10px;letter-spacing:.06em;opacity:0.7}
+  .facet.on{background:var(--brand-primary);color:var(--fg-on-brand);box-shadow:0 1px 0 rgba(255,255,255,0.2) inset, 0 2px 6px rgba(122,156,122,0.2)}
+  .facet.off{
+    background:var(--glass-tint-light);
+    backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+    border:1px solid var(--glass-edge);
+    color:var(--fg-2);
+  }
+
+  .hint{
+    font-family:var(--font-display);font-style:italic;
+    font-size:13.5px;color:var(--fg-2);
+    margin:0 4px 12px;display:flex;align-items:center;gap:8px;line-height:1.4;
+    letter-spacing:0;
+  }
+  .hint .star{color:var(--brand-primary);font-style:normal;font-size:14px}
+  .hint b{font-family:var(--font-ui);font-style:normal;font-weight:500;color:var(--fg-1);font-size:13px}
+
+  .result{
+    background:var(--glass-tint-strong);
+    backdrop-filter:blur(var(--glass-blur)) saturate(160%);
+    -webkit-backdrop-filter:blur(var(--glass-blur)) saturate(160%);
+    border:1px solid var(--glass-edge);
+    border-radius:20px; padding:18px 20px; margin-bottom:8px;
+    box-shadow:var(--shadow-glass);
+    transition:transform 200ms var(--ease-out);
+  }
+  .result:hover{transform:translateY(-1px)}
+  .rmeta{font-family:var(--font-mono);font-size:10.5px;color:var(--fg-3);letter-spacing:.06em;margin-bottom:8px;display:flex;align-items:center;gap:6px}
+  .rmeta .src{color:var(--fg-2);font-weight:500;text-transform:lowercase;letter-spacing:0;font-family:var(--font-ui);font-size:11px}
+  .rmeta .dot{width:2.5px;height:2.5px;border-radius:50%;background:var(--fg-4)}
+  .rtitle{font-size:16px;font-weight:500;letter-spacing:-0.02em;line-height:1.25;margin-bottom:6px;color:var(--fg-1)}
+  .rtitle mark{background:var(--brand-primary-tint);color:var(--brand-primary-press);padding:1px 4px;border-radius:5px}
+  .summ{font-family:var(--font-display);font-style:italic;font-size:13.5px;color:var(--fg-2);line-height:1.4;letter-spacing:0}
+
+  .empty{
+    text-align:center; padding:42px 24px;
+    background:var(--glass-tint-light);
+    backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);
+    border:1px solid var(--glass-edge);
+    border-radius:22px;
+  }
+  .empty .glyph{font-family:var(--font-display);font-style:italic;font-size:64px;color:var(--brand-primary);line-height:1;margin-bottom:14px;opacity:0.6}
+  .empty .head{font-size:17px;font-weight:500;letter-spacing:-0.02em;color:var(--fg-1);margin-bottom:6px}
+  .empty .copy{font-family:var(--font-display);font-style:italic;font-size:14px;color:var(--fg-3);line-height:1.4;letter-spacing:0}
+</style></head><body data-theme="echo" data-screen-label="11 Search">
+<div class="wrap">
+
+<h1 class="title">search · <em>semantic</em></h1>
+<div class="lede">Telegram-pill глассовое поле + sage focus-ring. Facets — frosted-pills с числом в моно. Hint про семантику — italic-серив.</div>
+
+<div class="section-label">Empty state · idle</div>
+<div class="field">
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+  <span class="ph">найти в памяти…</span>
+  <button class="voice">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="9" y="3" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><line x1="12" y1="18" x2="12" y2="22"/></svg>
+  </button>
+</div>
+
+<div class="section-label">Focused · with query</div>
+<div class="field focus">
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+  <input value="конституционный ai"/>
+  <button class="clear">×</button>
+</div>
+
+<div class="facets">
+  <button class="facet on">все <span class="ct">4</span></button>
+  <button class="facet off">ai <span class="ct">3</span></button>
+  <button class="facet off">статьи <span class="ct">2</span></button>
+  <button class="facet off">за неделю</button>
+</div>
+
+<div class="hint">
+  <span class="star">✦</span>
+  <span>найдено по смыслу · <b>«constitutional»</b> ≈ <b>«конституционный»</b></span>
+</div>
+
+<div class="result">
+  <div class="rmeta"><span class="src">anthropic.com</span><span class="dot"></span><span>14:32</span><span class="dot"></span><span>сохранено вчера</span></div>
+  <div class="rtitle"><mark>constitutional</mark> ai: harmlessness from <mark>ai</mark> feedback</div>
+  <div class="summ">«Метод обучения моделей через набор принципов — без ручной разметки. Самокритика по правилам.»</div>
+</div>
+
+<div class="result">
+  <div class="rmeta"><span class="src">x.com</span><span class="dot"></span><span>вчера</span></div>
+  <div class="rtitle">тред @karpathy про эволюцию rlhf</div>
+  <div class="summ">От InstructGPT через DPO к нынешним методам — короткая хронология.</div>
+</div>
+
+<div class="section-label">Empty · nothing found</div>
+<div class="empty">
+  <div class="glyph">∅</div>
+  <div class="head">ничего не нашлось</div>
+  <div class="copy">попробуй другие слова<br/>или сними фильтры</div>
+</div>
+
+</div></body></html>

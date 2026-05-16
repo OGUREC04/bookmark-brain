@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="ru"><head><meta charset="utf-8"><title>Typography · Onest + Lora</title>
+<link rel="stylesheet" href="../foundations/colors_and_type.css">
+<link rel="stylesheet" href="_card.css">
+<style>
+  .stack{
+    background:var(--glass-tint-light);
+    backdrop-filter:blur(var(--glass-blur)) saturate(140%);
+    -webkit-backdrop-filter:blur(var(--glass-blur)) saturate(140%);
+    border:1px solid var(--glass-edge);
+    box-shadow:var(--shadow-glass);
+    border-radius:22px;padding:22px;
+    display:flex;flex-direction:column;gap:16px;
+    margin-bottom:8px;
+  }
+  .row{display:flex;align-items:baseline;gap:18px;border-bottom:1px solid var(--border-1);padding-bottom:14px}
+  .row:last-child{border-bottom:none;padding-bottom:0}
+  .row .meta{
+    font-family:var(--font-mono);font-size:10px;color:var(--fg-3);
+    letter-spacing:.08em;text-transform:uppercase;
+    width:104px;flex-shrink:0;line-height:1.4;font-weight:500;
+  }
+  .row .sample{color:var(--fg-1);flex:1;min-width:0}
+  .ui{font-family:var(--font-ui)}
+  .display{font-family:var(--font-display);letter-spacing:0}
+  .mono{font-family:var(--font-mono);font-size:12px;color:var(--fg-3);letter-spacing:.06em}
+
+  /* The pair-stat tile — liquid glass plate with Aa × Aa */
+  .pair-stat{
+    position:relative;overflow:hidden;
+    display:flex;align-items:center;gap:18px;
+    margin-bottom:20px;padding:22px 24px;
+    background:var(--glass-tint-strong);
+    backdrop-filter:blur(var(--glass-blur)) saturate(160%);
+    -webkit-backdrop-filter:blur(var(--glass-blur)) saturate(160%);
+    border:1px solid var(--glass-edge);
+    border-radius:22px;
+    box-shadow:var(--shadow-glass);
+  }
+  .pair-stat .ui-glyph{
+    font-family:var(--font-ui);font-size:48px;font-weight:500;
+    letter-spacing:-0.04em;line-height:1;color:var(--fg-1);
+  }
+  .pair-stat .x{font-family:var(--font-display);font-style:italic;font-size:28px;color:var(--fg-4);line-height:1;font-weight:400}
+  .pair-stat .display-glyph{
+    font-family:var(--font-display);font-style:italic;font-size:52px;
+    color:var(--brand-primary);line-height:1;letter-spacing:-0.005em;font-weight:500;
+  }
+  .pair-stat .names{margin-left:auto;text-align:right}
+  .pair-stat .names .a{font-family:var(--font-mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-2);font-weight:500}
+  .pair-stat .names .b{font-family:var(--font-mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-3);margin-top:4px;font-weight:500}
+  .pair-stat .names .meta{font-family:var(--font-display);font-style:italic;font-size:13px;color:var(--fg-3);margin-top:6px;letter-spacing:0}
+
+  /* Specimen — hero spread */
+  .specimen{
+    position:relative;overflow:hidden;
+    padding:36px 32px;
+    background:var(--glass-tint-light);
+    backdrop-filter:blur(var(--glass-blur)) saturate(140%);
+    -webkit-backdrop-filter:blur(var(--glass-blur)) saturate(140%);
+    border:1px solid var(--glass-edge);
+    border-radius:24px;
+    box-shadow:var(--shadow-glass);
+  }
+  .specimen .eyebrow{
+    font-size:10px;letter-spacing:.14em;text-transform:uppercase;
+    color:var(--fg-3);font-weight:500;margin-bottom:18px;
+    font-family:var(--font-mono);
+    display:flex;align-items:center;gap:8px;
+  }
+  .specimen .eyebrow::before{content:"";width:4px;height:4px;border-radius:50%;background:var(--brand-primary)}
+  .specimen .h{
+    font-family:var(--font-ui);font-size:44px;font-weight:500;
+    letter-spacing:-0.035em;line-height:1.02;margin-bottom:16px;color:var(--fg-1);
+  }
+  .specimen .h em{
+    font-family:var(--font-display);font-style:italic;font-weight:500;
+    color:var(--brand-primary);letter-spacing:-0.005em;
+  }
+  .specimen .lead{
+    font-family:var(--font-ui);font-size:15.5px;color:var(--fg-2);
+    line-height:1.55;letter-spacing:-0.005em;max-width:42ch;
+  }
+  .specimen .lead em{
+    font-family:var(--font-display);font-style:italic;color:var(--fg-1);font-weight:500;
+  }
+  code{font-family:var(--font-mono);font-style:normal;font-size:11px;color:var(--fg-2);background:rgba(255,252,246,0.7);padding:2px 6px;border-radius:6px;border:1px solid var(--glass-edge)}
+
+  /* Rules */
+  .rules{
+    background:var(--glass-tint-light);
+    backdrop-filter:blur(var(--glass-blur)) saturate(140%);
+    -webkit-backdrop-filter:blur(var(--glass-blur)) saturate(140%);
+    border:1px solid var(--glass-edge);
+    box-shadow:var(--shadow-glass);
+    border-radius:22px;padding:22px;
+    font-size:13.5px;color:var(--fg-2);line-height:1.6;letter-spacing:-0.005em;
+  }
+  .rules .li{display:flex;gap:10px;align-items:flex-start;padding:4px 0}
+  .rules .li::before{
+    content:"";flex-shrink:0;
+    width:5px;height:5px;border-radius:50%;
+    background:var(--brand-primary);margin-top:9px;
+  }
+  .rules b{font-weight:500;color:var(--fg-1)}
+  .rules i{font-family:var(--font-display);font-style:italic;color:var(--fg-1);font-weight:500;letter-spacing:0}
+</style></head><body data-theme="echo" data-screen-label="02 Typography">
+<div class="wrap">
+
+<h1 class="title">type · <em>onest + lora</em></h1>
+<div class="lede"><code>Onest</code> — open-source гротеск, спроектирован <em>с кириллицей в центре</em>, не «адаптирован». <code>Lora italic</code> — editorial-серив с нативной кириллицей, контраст мягче Cormorant → читается и в 14, и в 56.</div>
+
+<div class="pair-stat">
+  <span class="ui-glyph">Аа</span>
+  <span class="x">×</span>
+  <span class="display-glyph">Аа</span>
+  <div class="names">
+    <div class="a">onest · 400/500/600</div>
+    <div class="b">lora · italic</div>
+    <div class="meta">кириллица native</div>
+  </div>
+</div>
+
+<div class="section-label">Specimen</div>
+<div class="specimen">
+  <div class="eyebrow">brain suggests</div>
+  <div class="h">память<br/>живёт <em>сама</em></div>
+  <div class="lead">Бот ловит ссылки в фоне. AI тегирует, ищет связи, возвращает забытое в момент. <em>«Ты сохранял про это.»</em></div>
+</div>
+
+<div class="section-label">Display & headings · Onest</div>
+<div class="stack">
+  <div class="row"><div class="meta">display · 56</div><div class="sample ui" style="font-size:56px;font-weight:500;letter-spacing:-0.04em;line-height:0.98">сохрани, забудь</div></div>
+  <div class="row"><div class="meta">h1 · 36</div><div class="sample ui" style="font-size:36px;font-weight:500;letter-spacing:-0.035em;line-height:1.08">закладки за неделю</div></div>
+  <div class="row"><div class="meta">h2 · 24</div><div class="sample ui" style="font-size:24px;font-weight:500;letter-spacing:-0.025em;line-height:1.15">что ты сохранил про RLHF</div></div>
+  <div class="row"><div class="meta">h3 · 20</div><div class="sample ui" style="font-size:20px;font-weight:500;letter-spacing:-0.02em;line-height:1.25">конституционный AI</div></div>
+  <div class="row"><div class="meta">h4 · 18</div><div class="sample ui" style="font-size:18px;font-weight:500;letter-spacing:-0.015em;line-height:1.3">Тред @karpathy про эволюцию RLHF</div></div>
+</div>
+
+<div class="section-label">Body · Onest</div>
+<div class="stack">
+  <div class="row"><div class="meta">body · 16</div><div class="sample ui" style="font-size:16px;line-height:1.55;letter-spacing:-0.005em">Бот ловит ссылки в фоне. AI сам тегирует и достаёт связанное, когда нужно — без папок и систем.</div></div>
+  <div class="row"><div class="meta">body · 15</div><div class="sample ui" style="font-size:15px;line-height:1.5;letter-spacing:-0.005em">Метод обучения моделей через набор принципов — без ручной разметки.</div></div>
+  <div class="row"><div class="meta">small · 13</div><div class="sample ui" style="font-size:13px;color:var(--fg-2);line-height:1.45;letter-spacing:-0.003em">x.com · 2 мин · сохранено вчера</div></div>
+  <div class="row"><div class="meta">caps · 11</div><div class="sample mono" style="font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--fg-3);font-weight:500">brain suggests</div></div>
+  <div class="row"><div class="meta">mono · 12</div><div class="sample mono" style="font-size:12px;color:var(--fg-2)">tg://user?id=0n0tee</div></div>
+</div>
+
+<div class="section-label">Italic accents · Lora</div>
+<div class="stack">
+  <div class="row"><div class="meta">summary · 16</div><div class="sample display" style="font-style:italic;font-size:16px;color:var(--fg-2);line-height:1.5;letter-spacing:0">«Модели должны быть честными по умолчанию, а не оптимизированными под одобрение.»</div></div>
+  <div class="row"><div class="meta">accent · 22</div><div class="sample display" style="font-style:italic;font-size:22px;color:var(--brand-primary);line-height:1.3;font-weight:500;letter-spacing:0">Ты сохранял про это.</div></div>
+  <div class="row"><div class="meta">empty · 16</div><div class="sample display" style="font-style:italic;font-size:16px;color:var(--fg-3);letter-spacing:0">Ничего не нашлось.</div></div>
+  <div class="row"><div class="meta">callout · 36</div><div class="sample display" style="font-style:italic;font-size:36px;color:var(--fg-1);font-weight:500;line-height:1.1;letter-spacing:-0.005em">вспомнить.</div></div>
+</div>
+
+<div class="section-label">Weights · 400 / 500 / 600</div>
+<div class="stack">
+  <div class="row"><div class="meta">400 regular</div><div class="sample ui" style="font-size:16px;font-weight:400;letter-spacing:-0.005em">Сохранить в коллекцию</div></div>
+  <div class="row"><div class="meta">500 medium</div><div class="sample ui" style="font-size:16px;font-weight:500;letter-spacing:-0.005em">Сохранить в коллекцию</div></div>
+  <div class="row"><div class="meta">600 semibold</div><div class="sample ui" style="font-size:16px;font-weight:600;letter-spacing:-0.005em">Сохранить в коллекцию</div></div>
+</div>
+
+<div class="section-label">Rules of use</div>
+<div class="rules">
+  <div class="li">Headlines — <b>sentence-case</b>, трекинг <code>−0.035em</code> и плотнее на 32+.</div>
+  <div class="li"><i>Italic Lora</i> — только AI-голос, summary, empty-state, цитата. <b>Не для UI-лейблов</b>.</div>
+  <div class="li">Никаких UPPERCASE на h1–h3. Caps живут только в <code>mono eyebrow</code> и табах статуса.</div>
+  <div class="li">Weight 600 — только primary CTA и таб-bar active. Body всегда 400, заголовки 500.</div>
+  <div class="li">Кириллица <i>равноправна</i> — обе семьи отрисованы под русский, не latin-first с фолбэком.</div>
+</div>
+
+</div></body></html>

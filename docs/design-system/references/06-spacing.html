@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="ru"><head><meta charset="utf-8"><title>Spacing · sage</title>
+<link rel="stylesheet" href="../foundations/colors_and_type.css">
+<link rel="stylesheet" href="_card.css">
+<style>
+  .scale{background:var(--glass-tint-light);backdrop-filter:blur(var(--glass-blur)) saturate(140%);-webkit-backdrop-filter:blur(var(--glass-blur)) saturate(140%);border:1px solid var(--glass-edge);box-shadow:var(--shadow-glass);border-radius:22px;padding:18px;display:flex;flex-direction:column;gap:6px}
+  .row{display:flex;align-items:center;gap:14px;padding:5px 0}
+  .lbl{font-family:var(--font-mono);font-size:10px;color:var(--fg-2);width:92px;letter-spacing:.06em;text-transform:uppercase;font-weight:500}
+  .bar{background:var(--brand-primary);height:8px;border-radius:3px;flex-shrink:0;box-shadow:0 1px 0 rgba(255,255,255,0.2) inset}
+  .val{font-family:var(--font-mono);font-size:10px;color:var(--fg-3);letter-spacing:.06em;margin-left:auto}
+  .ctx{background:var(--glass-tint-light);backdrop-filter:blur(var(--glass-blur)) saturate(140%);-webkit-backdrop-filter:blur(var(--glass-blur)) saturate(140%);border:1px solid var(--glass-edge);box-shadow:var(--shadow-glass);border-radius:22px;padding:16px;margin-top:8px}
+  .demo{background:rgba(255,252,246,0.85);border:1px solid var(--glass-edge);border-radius:14px;padding:14px;margin-bottom:8px}
+  .demo .title{font-size:14.5px;font-weight:500;letter-spacing:-0.02em;margin-bottom:var(--space-1);color:var(--fg-1)}
+  .demo .meta{font-size:11px;color:var(--fg-3);font-family:var(--font-mono);letter-spacing:.06em}
+  .grid-demo{display:flex;flex-direction:column;gap:var(--space-2)}
+  .grid-demo .item{padding:var(--space-3) var(--space-4);background:rgba(255,252,246,0.7);border:1px solid var(--glass-edge);border-radius:10px;font-size:13.5px;color:var(--fg-2);letter-spacing:-0.005em}
+  .note{font-family:var(--font-display);font-style:italic;font-size:12px;color:var(--fg-3);line-height:1.45;margin-top:10px}
+  code{font-family:ui-monospace,monospace;font-style:normal;font-size:11px;color:var(--fg-2);background:var(--bg-sunken);padding:1px 5px;border-radius:4px}
+</style></head><body data-theme="echo" data-screen-label="06 Spacing">
+<div class="wrap">
+
+<h1 class="title">spacing · <em>4px base</em></h1>
+<div class="lede">Шаг 4. Мобайл-гаттер 16, десктоп 24–32. <em>Чат-плотность</em>: <code>row-gap ≥ 8</code>. Внутри карточки не более 16.</div>
+
+<div class="section-label">Scale</div>
+<div class="scale">
+  <div class="row"><div class="lbl">space-1</div><div class="bar" style="width:4px"></div><div class="val">4 px</div></div>
+  <div class="row"><div class="lbl">space-2</div><div class="bar" style="width:8px"></div><div class="val">8 px · chat row-gap</div></div>
+  <div class="row"><div class="lbl">space-3</div><div class="bar" style="width:12px"></div><div class="val">12 px</div></div>
+  <div class="row"><div class="lbl">space-4</div><div class="bar" style="width:16px"></div><div class="val">16 px · base · card pad</div></div>
+  <div class="row"><div class="lbl">space-5</div><div class="bar" style="width:20px"></div><div class="val">20 px</div></div>
+  <div class="row"><div class="lbl">space-6</div><div class="bar" style="width:24px"></div><div class="val">24 px · desktop gutter</div></div>
+  <div class="row"><div class="lbl">space-8</div><div class="bar" style="width:32px"></div><div class="val">32 px · section gap</div></div>
+  <div class="row"><div class="lbl">space-12</div><div class="bar" style="width:48px"></div><div class="val">48 px</div></div>
+  <div class="row"><div class="lbl">space-16</div><div class="bar" style="width:64px"></div><div class="val">64 px</div></div>
+</div>
+
+<div class="section-label">Inside a bookmark card</div>
+<div class="ctx">
+  <div class="demo">
+    <div class="title">Constitutional AI</div>
+    <div class="meta" style="margin-top:4px">anthropic.com · 2 мин</div>
+  </div>
+  <div class="muted-mono" style="margin-top:4px">padding 14 · gap 4 между title и meta</div>
+</div>
+
+<div class="section-label">List rhythm</div>
+<div class="ctx">
+  <div class="grid-demo">
+    <div class="item">Constitutional AI · Anthropic</div>
+    <div class="item">InstructGPT · OpenAI</div>
+    <div class="item">Тред @karpathy про DPO</div>
+    <div class="item">Список покупок на выходные</div>
+  </div>
+  <div class="muted-mono" style="margin-top:8px">space-2 row-gap · space-3/4 inset · читается плотно, как Saved Messages</div>
+</div>
+
+<div class="note">Не уплотнять ниже 8 — пальцем не попадёшь. Не разрежать выше 24 — лента распадается.</div>
+
+</div></body></html>

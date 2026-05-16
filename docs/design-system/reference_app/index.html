@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>BookmarkBrain — Mini App / iOS</title>
+<link rel="stylesheet" href="../foundations/colors_and_type.css">
+<style>
+  html, body { margin: 0; min-height: 100vh; }
+  body {
+    background:
+      radial-gradient(50% 40% at 20% 0%, rgba(218,234,218,0.35) 0%, transparent 60%),
+      radial-gradient(40% 40% at 100% 30%, rgba(252,220,194,0.30) 0%, transparent 55%),
+      radial-gradient(50% 50% at 60% 100%, rgba(248,226,218,0.25) 0%, transparent 60%),
+      linear-gradient(180deg, #2C2825 0%, #1A1816 100%);
+    background-attachment: fixed;
+    min-height: 100vh;
+    display: flex; align-items: flex-start; justify-content: center;
+    padding: 32px 20px 60px;
+    font-family: var(--font-ui);
+    -webkit-font-smoothing: antialiased;
+  }
+</style>
+</head>
+<body data-theme="echo">
+
+<div id="root"></div>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+<script type="text/babel" src="ios-frame.jsx"></script>
+<script type="text/babel" src="Atoms.jsx"></script>
+<script type="text/babel" src="ChatRow.jsx"></script>
+<script type="text/babel" src="BookmarkCard.jsx"></script>
+<script type="text/babel" src="SuggestionCard.jsx"></script>
+<script type="text/babel" src="Feed.jsx"></script>
+<script type="text/babel" src="Screens.jsx"></script>
+<script type="text/babel" src="MiniApp.jsx"></script>
+<script type="text/babel">
+  ReactDOM.createRoot(document.getElementById('root')).render(<MiniApp/>);
+</script>
+</body>
+</html>

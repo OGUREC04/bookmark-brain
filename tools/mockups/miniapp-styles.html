@@ -1,0 +1,706 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BookmarkBrain — Mini App стили</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    background: #f0f1f4;
+    padding: 24px;
+    min-height: 100vh;
+  }
+  .page-title {
+    font-size: 20px;
+    font-weight: 600;
+    color: #1a1a1a;
+    margin-bottom: 4px;
+  }
+  .page-sub {
+    color: #666;
+    font-size: 13px;
+    margin-bottom: 24px;
+  }
+  .row {
+    display: flex;
+    gap: 20px;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  .phone {
+    width: 360px;
+    background: #fff;
+    border-radius: 32px;
+    overflow: hidden;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.12), 0 2px 8px rgba(0,0,0,0.05);
+    border: 1px solid rgba(0,0,0,0.05);
+    display: flex;
+    flex-direction: column;
+    height: 740px;
+  }
+  .phone-label {
+    text-align: center;
+    margin: 16px 0 8px;
+    font-weight: 600;
+    color: #1a1a1a;
+    font-size: 14px;
+  }
+  .phone-desc {
+    text-align: center;
+    margin: 0 16px 12px;
+    color: #777;
+    font-size: 12px;
+    line-height: 1.4;
+    max-width: 320px;
+  }
+
+  /* ─── COMMON STRUCTURE ─── */
+  .app-shell {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    position: relative;
+  }
+  .tg-header {
+    padding: 14px 16px 12px;
+    background: #f7f7f8;
+    border-bottom: 1px solid rgba(0,0,0,0.05);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 15px;
+    color: #6e6e73;
+    flex-shrink: 0;
+  }
+  .tg-header-x { font-size: 22px; color: #999; cursor: pointer; }
+  .content { flex: 1; overflow-y: auto; }
+  .bottom-nav {
+    display: flex;
+    background: #fff;
+    border-top: 1px solid rgba(0,0,0,0.06);
+    padding: 8px 0 18px;
+    flex-shrink: 0;
+  }
+  .nav-item {
+    flex: 1;
+    text-align: center;
+    color: #8e8e93;
+    font-size: 11px;
+    padding: 4px;
+  }
+  .nav-item.active { color: #007aff; }
+  .nav-icon {
+    display: block;
+    font-size: 22px;
+    margin-bottom: 2px;
+    line-height: 1;
+  }
+  .fab {
+    position: absolute;
+    bottom: 80px;
+    right: 16px;
+    width: 52px;
+    height: 52px;
+    border-radius: 50%;
+    background: #007aff;
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 26px;
+    font-weight: 300;
+    box-shadow: 0 6px 16px rgba(0,122,255,0.35);
+    cursor: pointer;
+  }
+  .app-header {
+    padding: 16px 16px 8px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .app-title {
+    font-size: 28px;
+    font-weight: 700;
+    color: #000;
+    letter-spacing: -0.5px;
+  }
+  .header-actions {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+  }
+  .bell {
+    position: relative;
+    width: 36px;
+    height: 36px;
+    border-radius: 18px;
+    background: rgba(0,0,0,0.04);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    cursor: pointer;
+  }
+  .bell-dot {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    width: 8px;
+    height: 8px;
+    border-radius: 4px;
+    background: #ff3b30;
+  }
+  .filters {
+    display: flex;
+    gap: 8px;
+    padding: 8px 16px 16px;
+    overflow-x: auto;
+  }
+  .filters::-webkit-scrollbar { display: none; }
+  .chip {
+    padding: 6px 12px;
+    border-radius: 16px;
+    background: rgba(0,0,0,0.05);
+    color: #1a1a1a;
+    font-size: 13px;
+    white-space: nowrap;
+    cursor: pointer;
+  }
+  .chip.active { background: #1a1a1a; color: #fff; }
+
+  /* ─── A. TELEGRAM-NATIVE ─── */
+  .phone-tg .app-header { background: #f7f7f8; }
+  .phone-tg .content { background: #fff; }
+  .phone-tg .card {
+    background: #fff;
+    border-bottom: 1px solid rgba(60,60,67,0.12);
+    padding: 12px 16px;
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+  }
+  .phone-tg .card-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    background: rgba(0,122,255,0.1);
+    color: #007aff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    flex-shrink: 0;
+  }
+  .phone-tg .card-body { flex: 1; min-width: 0; }
+  .phone-tg .card-row1 {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 8px;
+    margin-bottom: 2px;
+  }
+  .phone-tg .card-title {
+    font-size: 15px;
+    font-weight: 600;
+    color: #000;
+    line-height: 1.3;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .phone-tg .card-date {
+    font-size: 12px;
+    color: #8e8e93;
+    flex-shrink: 0;
+  }
+  .phone-tg .card-sum {
+    font-size: 13px;
+    color: #3c3c43;
+    opacity: 0.7;
+    line-height: 1.35;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .phone-tg .card-tags {
+    margin-top: 4px;
+    display: flex;
+    gap: 6px;
+    font-size: 11px;
+    color: #8e8e93;
+  }
+  .phone-tg .star { color: #ffcc00; font-size: 13px; }
+
+  /* ─── B. NOTION/BEAR ─── */
+  .phone-notion {
+    background: #fafaf7;
+  }
+  .phone-notion .app-shell { background: #fafaf7; }
+  .phone-notion .tg-header { background: #fafaf7; }
+  .phone-notion .app-header {}
+  .phone-notion .app-title {
+    font-family: ui-serif, Georgia, "Times New Roman", serif;
+    font-weight: 700;
+    letter-spacing: -0.8px;
+  }
+  .phone-notion .content { background: #fafaf7; padding: 0 16px; }
+  .phone-notion .filters { padding-left: 0; padding-right: 0; }
+  .phone-notion .chip {
+    background: transparent;
+    border: 1px solid rgba(0,0,0,0.1);
+    color: #555;
+    border-radius: 12px;
+    font-size: 12px;
+  }
+  .phone-notion .chip.active {
+    border-color: #1a1a1a;
+    background: #1a1a1a;
+    color: #fff;
+  }
+  .phone-notion .card {
+    background: #fff;
+    border-radius: 14px;
+    padding: 16px;
+    margin-bottom: 10px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+    cursor: pointer;
+    position: relative;
+  }
+  .phone-notion .card-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 6px;
+  }
+  .phone-notion .card-meta {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    font-size: 12px;
+    color: #999;
+  }
+  .phone-notion .card-icon {
+    color: #888;
+    font-size: 14px;
+  }
+  .phone-notion .star { color: #f5a623; font-size: 14px; }
+  .phone-notion .card-title {
+    font-size: 16px;
+    font-weight: 600;
+    color: #1a1a1a;
+    line-height: 1.35;
+    margin-bottom: 4px;
+    font-family: ui-serif, Georgia, serif;
+    letter-spacing: -0.2px;
+  }
+  .phone-notion .card-sum {
+    font-size: 14px;
+    color: #555;
+    line-height: 1.5;
+    margin-bottom: 6px;
+  }
+  .phone-notion .card-tags {
+    font-size: 12px;
+    color: #999;
+  }
+  .phone-notion .bottom-nav { background: rgba(250,250,247,0.95); backdrop-filter: blur(20px); }
+
+  /* ─── C. LINEAR/VERCEL ─── */
+  .phone-linear {
+    background: #fff;
+  }
+  .phone-linear .app-shell { background: #fff; }
+  .phone-linear .tg-header { background: #fff; border-bottom-color: rgba(0,0,0,0.06); }
+  .phone-linear .app-title {
+    font-size: 22px;
+    font-weight: 600;
+    letter-spacing: -0.4px;
+  }
+  .phone-linear .bell {
+    background: transparent;
+    border: 1px solid rgba(0,0,0,0.1);
+  }
+  .phone-linear .content { background: #fff; }
+  .phone-linear .filters { border-bottom: 1px solid rgba(0,0,0,0.06); padding-bottom: 12px; }
+  .phone-linear .chip {
+    background: transparent;
+    border: 1px solid rgba(0,0,0,0.1);
+    color: #1a1a1a;
+    font-size: 12px;
+    padding: 4px 10px;
+  }
+  .phone-linear .chip.active { background: #000; color: #fff; border-color: #000; }
+  .phone-linear .card {
+    padding: 14px 16px;
+    border-bottom: 1px solid rgba(0,0,0,0.06);
+    display: grid;
+    grid-template-columns: 20px 1fr auto;
+    gap: 10px;
+    align-items: start;
+  }
+  .phone-linear .card-icon {
+    color: #888;
+    font-size: 15px;
+    margin-top: 2px;
+  }
+  .phone-linear .card-title {
+    font-size: 14px;
+    font-weight: 500;
+    color: #000;
+    line-height: 1.4;
+    margin-bottom: 2px;
+  }
+  .phone-linear .card-sum {
+    font-size: 13px;
+    color: #666;
+    line-height: 1.4;
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 1;
+    -webkit-box-orient: vertical;
+  }
+  .phone-linear .card-tags {
+    margin-top: 4px;
+    font-size: 11px;
+    color: #999;
+  }
+  .phone-linear .card-meta {
+    text-align: right;
+    font-size: 11px;
+    color: #999;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 2px;
+  }
+  .phone-linear .star { color: #ffb800; font-size: 13px; }
+  .phone-linear .fab {
+    background: #000;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+  }
+  .phone-linear .bottom-nav { border-top-color: rgba(0,0,0,0.06); }
+  .phone-linear .nav-item.active { color: #000; }
+</style>
+</head>
+<body>
+
+<div class="page-title">BookmarkBrain Mini App — три стиля редизайна</div>
+<div class="page-sub">Один экран «Мысли» в трёх вариантах. Открой на телефоне — будет похоже на реальный Mini App.</div>
+
+<div class="row">
+
+  <!-- ════════════════════════════════════════════════
+       A. TELEGRAM-NATIVE
+       ════════════════════════════════════════════════ -->
+  <div>
+    <div class="phone phone-tg">
+      <div class="app-shell">
+        <div class="tg-header">
+          <span>BookmarkBrain Dev</span>
+          <span class="tg-header-x">✕</span>
+        </div>
+        <div class="app-header">
+          <div class="app-title">Мысли</div>
+          <div class="header-actions">
+            <div class="bell">🔔<span class="bell-dot"></span></div>
+          </div>
+        </div>
+        <div class="filters">
+          <div class="chip active">Все · 49</div>
+          <div class="chip">⭐ Избранное</div>
+          <div class="chip">#идеи</div>
+          <div class="chip">#работа</div>
+          <div class="chip">#чтиво</div>
+        </div>
+        <div class="content">
+
+          <div class="card">
+            <div class="card-icon">⏰</div>
+            <div class="card-body">
+              <div class="card-row1">
+                <div class="card-title">Посетить кинотеатр</div>
+                <div class="card-date">завтра 19:00</div>
+              </div>
+              <div class="card-sum">Заметка о намерении сходить в кино…</div>
+              <div class="card-tags">#кино · #развлечения</div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-icon">📄</div>
+            <div class="card-body">
+              <div class="card-row1">
+                <div class="card-title">React — популярная библиотека <span class="star">⭐</span></div>
+                <div class="card-date">11 мая</div>
+              </div>
+              <div class="card-sum">Статья о React, популярной библиотеке для UI.</div>
+              <div class="card-tags">#технологии · #разработка · #фронтенд</div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-icon">🎤</div>
+            <div class="card-body">
+              <div class="card-row1">
+                <div class="card-title">Идея про рекомендации в апп</div>
+                <div class="card-date">10 мая</div>
+              </div>
+              <div class="card-sum">Голосовая — авто-теги на основе контекста сессии.</div>
+              <div class="card-tags">#идеи · #продукт</div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-icon">📋</div>
+            <div class="card-body">
+              <div class="card-row1">
+                <div class="card-title">Список покупок · 3/5</div>
+                <div class="card-date">10 мая</div>
+              </div>
+              <div class="card-sum">Молоко · хлеб · яйца · масло · сыр</div>
+              <div class="card-tags">#дом</div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-icon">🔗</div>
+            <div class="card-body">
+              <div class="card-row1">
+                <div class="card-title">Habits stack — как формировать привычки</div>
+                <div class="card-date">9 мая</div>
+              </div>
+              <div class="card-sum">Atomic Habits подход: связывать новую привычку с уже устойчивой…</div>
+              <div class="card-tags">#саморазвитие · #книги</div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-icon">💡</div>
+            <div class="card-body">
+              <div class="card-row1">
+                <div class="card-title">Если бы заметки сами связывались…</div>
+                <div class="card-date">7 мая</div>
+              </div>
+              <div class="card-sum">Гипотеза для Phase 6 — auto-connections по embedding.</div>
+              <div class="card-tags">#идеи · #bookmark</div>
+            </div>
+          </div>
+
+          <div style="height: 100px;"></div>
+        </div>
+        <div class="fab">+</div>
+        <div class="bottom-nav">
+          <div class="nav-item active"><span class="nav-icon">💭</span>Мысли</div>
+          <div class="nav-item"><span class="nav-icon">🔍</span>Поиск</div>
+          <div class="nav-item"><span class="nav-icon">▦</span>Пространства</div>
+        </div>
+      </div>
+    </div>
+    <div class="phone-label">A. Telegram-native</div>
+    <div class="phone-desc">Серый фон шапки, разделители-линии, плотный список без карточек. Чувствуется частью Telegram. Самый «знакомый» вид.</div>
+  </div>
+
+  <!-- ════════════════════════════════════════════════
+       B. NOTION / BEAR
+       ════════════════════════════════════════════════ -->
+  <div>
+    <div class="phone phone-notion">
+      <div class="app-shell">
+        <div class="tg-header">
+          <span>BookmarkBrain Dev</span>
+          <span class="tg-header-x">✕</span>
+        </div>
+        <div class="app-header">
+          <div class="app-title">Мысли</div>
+          <div class="header-actions">
+            <div class="bell">🔔<span class="bell-dot"></span></div>
+          </div>
+        </div>
+        <div class="filters">
+          <div class="chip active">Все · 49</div>
+          <div class="chip">⭐ Избранное</div>
+          <div class="chip">#идеи</div>
+          <div class="chip">#работа</div>
+          <div class="chip">#чтиво</div>
+        </div>
+        <div class="content">
+
+          <div class="card">
+            <div class="card-top">
+              <div class="card-meta"><span class="card-icon">⏰</span><span>завтра 19:00</span></div>
+            </div>
+            <div class="card-title">Посетить кинотеатр</div>
+            <div class="card-sum">Заметка о намерении сходить в кино и забронировать билеты на новинку.</div>
+            <div class="card-tags">#кино · #развлечения</div>
+          </div>
+
+          <div class="card">
+            <div class="card-top">
+              <div class="card-meta"><span class="card-icon">📄</span><span>11 мая</span></div>
+              <div><span class="star">⭐</span></div>
+            </div>
+            <div class="card-title">React — популярная библиотека для разработки фронтенда</div>
+            <div class="card-sum">Статья о React, популярной библиотеке для создания пользовательских интерфейсов.</div>
+            <div class="card-tags">#технологии · #разработка · #фронтенд</div>
+          </div>
+
+          <div class="card">
+            <div class="card-top">
+              <div class="card-meta"><span class="card-icon">🎤</span><span>10 мая</span></div>
+            </div>
+            <div class="card-title">Идея про рекомендации в апп</div>
+            <div class="card-sum">Голосовая — авто-теги на основе контекста сессии и истории поведения.</div>
+            <div class="card-tags">#идеи · #продукт</div>
+          </div>
+
+          <div class="card">
+            <div class="card-top">
+              <div class="card-meta"><span class="card-icon">📋</span><span>10 мая · 3/5</span></div>
+            </div>
+            <div class="card-title">Список покупок</div>
+            <div class="card-sum">Молоко · хлеб · яйца · масло · сыр</div>
+            <div class="card-tags">#дом</div>
+          </div>
+
+          <div class="card">
+            <div class="card-top">
+              <div class="card-meta"><span class="card-icon">🔗</span><span>9 мая</span></div>
+            </div>
+            <div class="card-title">Habits stack — как формировать привычки</div>
+            <div class="card-sum">Atomic Habits подход: связывать новую привычку с уже устойчивой ежедневной активностью.</div>
+            <div class="card-tags">#саморазвитие · #книги</div>
+          </div>
+
+          <div class="card">
+            <div class="card-top">
+              <div class="card-meta"><span class="card-icon">💡</span><span>7 мая</span></div>
+            </div>
+            <div class="card-title">Если бы заметки сами связывались…</div>
+            <div class="card-sum">Гипотеза для Phase 6 — auto-connections по embedding между релевантными мыслями.</div>
+            <div class="card-tags">#идеи · #bookmark</div>
+          </div>
+
+          <div style="height: 120px;"></div>
+        </div>
+        <div class="fab">+</div>
+        <div class="bottom-nav">
+          <div class="nav-item active"><span class="nav-icon">💭</span>Мысли</div>
+          <div class="nav-item"><span class="nav-icon">🔍</span>Поиск</div>
+          <div class="nav-item"><span class="nav-icon">▦</span>Пространства</div>
+        </div>
+      </div>
+    </div>
+    <div class="phone-label">B. Notion / Bear</div>
+    <div class="phone-desc">Кремовый фон, мягкие карточки с воздухом, serif в заголовках. Атмосфера «дневника». Самый спокойный, для чтения.</div>
+  </div>
+
+  <!-- ════════════════════════════════════════════════
+       C. LINEAR / VERCEL
+       ════════════════════════════════════════════════ -->
+  <div>
+    <div class="phone phone-linear">
+      <div class="app-shell">
+        <div class="tg-header">
+          <span>BookmarkBrain Dev</span>
+          <span class="tg-header-x">✕</span>
+        </div>
+        <div class="app-header">
+          <div class="app-title">Мысли</div>
+          <div class="header-actions">
+            <div class="bell">🔔<span class="bell-dot"></span></div>
+          </div>
+        </div>
+        <div class="filters">
+          <div class="chip active">Все · 49</div>
+          <div class="chip">⭐</div>
+          <div class="chip">#идеи</div>
+          <div class="chip">#работа</div>
+          <div class="chip">#чтиво</div>
+        </div>
+        <div class="content">
+
+          <div class="card">
+            <div class="card-icon">⏰</div>
+            <div>
+              <div class="card-title">Посетить кинотеатр</div>
+              <div class="card-sum">Заметка о намерении сходить в кино.</div>
+              <div class="card-tags">#кино #развлечения</div>
+            </div>
+            <div class="card-meta"><div>завтра</div><div>19:00</div></div>
+          </div>
+
+          <div class="card">
+            <div class="card-icon">📄</div>
+            <div>
+              <div class="card-title">React — популярная библиотека для разработки фронтенда</div>
+              <div class="card-sum">Статья о React, популярной библиотеке.</div>
+              <div class="card-tags">#технологии #разработка</div>
+            </div>
+            <div class="card-meta"><div class="star">⭐</div><div>11 мая</div></div>
+          </div>
+
+          <div class="card">
+            <div class="card-icon">🎤</div>
+            <div>
+              <div class="card-title">Идея про рекомендации в апп</div>
+              <div class="card-sum">Авто-теги на основе контекста сессии.</div>
+              <div class="card-tags">#идеи #продукт</div>
+            </div>
+            <div class="card-meta"><div>10 мая</div></div>
+          </div>
+
+          <div class="card">
+            <div class="card-icon">📋</div>
+            <div>
+              <div class="card-title">Список покупок</div>
+              <div class="card-sum">Молоко · хлеб · яйца · масло · сыр</div>
+              <div class="card-tags">#дом</div>
+            </div>
+            <div class="card-meta"><div>3/5</div><div>10 мая</div></div>
+          </div>
+
+          <div class="card">
+            <div class="card-icon">🔗</div>
+            <div>
+              <div class="card-title">Habits stack — формировать привычки</div>
+              <div class="card-sum">Связывать новую с устойчивой.</div>
+              <div class="card-tags">#саморазвитие #книги</div>
+            </div>
+            <div class="card-meta"><div>9 мая</div></div>
+          </div>
+
+          <div class="card">
+            <div class="card-icon">💡</div>
+            <div>
+              <div class="card-title">Если бы заметки сами связывались…</div>
+              <div class="card-sum">Гипотеза для Phase 6.</div>
+              <div class="card-tags">#идеи #bookmark</div>
+            </div>
+            <div class="card-meta"><div>7 мая</div></div>
+          </div>
+
+          <div style="height: 100px;"></div>
+        </div>
+        <div class="fab">+</div>
+        <div class="bottom-nav">
+          <div class="nav-item active"><span class="nav-icon">💭</span>Мысли</div>
+          <div class="nav-item"><span class="nav-icon">🔍</span>Поиск</div>
+          <div class="nav-item"><span class="nav-icon">▦</span>Пространства</div>
+        </div>
+      </div>
+    </div>
+    <div class="phone-label">C. Linear / Vercel</div>
+    <div class="phone-desc">Монохром, тонкие линии, sans без украшений, высокая плотность. «Профессиональный» вид. Максимум инфы на экран.</div>
+  </div>
+
+</div>
+
+<div style="text-align:center;margin-top:32px;color:#666;font-size:13px;">
+  Что общее во всех 3: 3 таба внизу, колокольчик 🔔 справа, FAB «+», фильтры-чипы, иконки типов (не эмодзи-бейджи).<br>
+  Что разное: фон / типографика / плотность / тени.
+</div>
+
+</body>
+</html>

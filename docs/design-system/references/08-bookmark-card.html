@@ -1,0 +1,415 @@
+<!doctype html>
+<html lang="ru"><head><meta charset="utf-8"><title>Bookmark card · sage</title>
+<link rel="stylesheet" href="../foundations/colors_and_type.css">
+<link rel="stylesheet" href="_card.css">
+<style>
+  .stage{display:flex;flex-direction:column;gap:10px}
+
+  /* Base card — liquid glass tile */
+  .card{
+    background:var(--glass-tint-strong);
+    backdrop-filter:blur(var(--glass-blur)) saturate(160%);
+    -webkit-backdrop-filter:blur(var(--glass-blur)) saturate(160%);
+    border:1px solid var(--glass-edge);
+    border-radius:18px; padding:16px 18px;
+    box-shadow:var(--shadow-glass);
+    transition:transform 200ms var(--ease-out), box-shadow 200ms var(--ease-out);
+  }
+  .card:hover{transform:translateY(-1px);box-shadow:var(--shadow-3)}
+
+  .ctitle{font-size:16px;font-weight:500;letter-spacing:-0.02em;line-height:1.25;margin-bottom:6px;color:var(--fg-1)}
+  .sum{
+    font-family:var(--font-display); font-style:italic; font-weight:400;
+    font-size:14px; color:var(--fg-2); line-height:1.4; margin-bottom:10px;
+    letter-spacing:0;
+  }
+  .meta{display:flex;gap:8px;align-items:center;font-size:11px;color:var(--fg-3);font-family:var(--font-mono);letter-spacing:.06em}
+  .meta .src{color:var(--fg-2);font-weight:500}
+  .meta .dot{width:2.5px;height:2.5px;border-radius:50%;background:var(--fg-4)}
+  .meta .fav{margin-left:auto;color:var(--brand-primary);font-family:var(--font-display);font-style:italic;font-size:16px;letter-spacing:0}
+
+  .tags{display:flex;gap:5px;margin-top:10px}
+  .t{padding:3px 10px;border-radius:999px;font-size:11px;font-weight:500;font-family:var(--font-ui);letter-spacing:-0.005em;line-height:1.4}
+  .t-sage{background:#E2EDE2;color:#2F4A2F}
+  .t-ochre{background:#F4E6CC;color:#7A5828}
+  .t-slate{background:#D8E2EA;color:#3D5A6E}
+
+  /* Telegram-style link preview — left accent bar */
+  .tg-preview{
+    display:flex; align-items:stretch; gap:12px;
+    padding-left:14px;
+    border-left:3px solid var(--brand-primary);
+  }
+  .tg-preview .body{flex:1;min-width:0}
+  .tg-preview .thumb{
+    width:64px;height:64px;border-radius:12px;flex-shrink:0;
+    background:linear-gradient(135deg, #B8C8B0 0%, #7A9C7A 100%);
+    position:relative;overflow:hidden;
+  }
+  .tg-preview .thumb::after{
+    content:""; position:absolute; inset:0;
+    background:radial-gradient(60% 80% at 0% 0%, rgba(255,255,255,0.3), transparent 60%);
+  }
+
+  /* Task variant */
+  .task .trow{display:flex;align-items:center;gap:10px;font-size:14px;color:var(--fg-2);padding:3px 0;letter-spacing:-0.005em}
+  .task .trow .box{width:16px;height:16px;border:1.5px solid var(--border-strong);border-radius:5px;flex-shrink:0;transition:background 200ms}
+  .task .trow.done .box{background:var(--brand-primary);border-color:var(--brand-primary);position:relative}
+  .task .trow.done .box::after{content:"";position:absolute;left:4px;top:1px;width:4px;height:8px;border:solid var(--fg-on-brand);border-width:0 1.6px 1.6px 0;transform:rotate(45deg)}
+  .task .trow.done{color:var(--fg-3);text-decoration:line-through}
+
+  /* Pinterest masonry tile */
+  .pin{
+    position:relative; overflow:hidden;
+    border-radius:18px;
+    background:linear-gradient(135deg, #DAC8B0 0%, #B8946A 100%);
+    aspect-ratio:3/4;
+    box-shadow:var(--shadow-2);
+  }
+  .pin::after{
+    content:""; position:absolute; inset:0;
+    background:linear-gradient(180deg, transparent 50%, rgba(0,0,0,0.45) 100%);
+  }
+  .pin .body{position:absolute;left:14px;right:14px;bottom:12px;z-index:1;color:#fff}
+  .pin .ctitle{color:#fff;margin-bottom:2px;font-size:15px}
+  .pin .src{font-family:var(--font-mono);font-size:10px;letter-spacing:.08em;color:rgba(255,255,255,0.85);text-transform:lowercase}
+  .pin .fab-mini{
+    position:absolute;top:10px;right:10px;
+    width:32px;height:32px;border-radius:50%;
+    background:rgba(255,255,255,0.85);
+    backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+    display:flex;align-items:center;justify-content:center;
+    color:var(--fg-1);
+    box-shadow:0 1px 0 rgba(255,255,255,0.6) inset, 0 2px 6px rgba(0,0,0,0.15);
+  }
+  .pin-2{background:linear-gradient(135deg, #8FA888 0%, #4A6648 100%)}
+  .pin-3{background:linear-gradient(135deg, #B5A8C0 0%, #6E5A80 100%)}
+  .masonry{display:grid;grid-template-columns:1fr 1fr;gap:8px;align-items:start}
+  .masonry .pin-2{aspect-ratio:3/5}
+  .masonry .pin-3{aspect-ratio:3/3.5}
+
+  /* ──────────────── chat-list view ────────────────
+     telegram-style row: avatar + name/time + preview/badge.
+     dense, scannable, single tap target.
+  */
+  .chat{
+    background:var(--glass-tint-strong);
+    backdrop-filter:blur(var(--glass-blur)) saturate(160%);
+    -webkit-backdrop-filter:blur(var(--glass-blur)) saturate(160%);
+    border:1px solid var(--glass-edge);
+    border-radius:22px;
+    box-shadow:var(--shadow-glass);
+    overflow:hidden;
+  }
+  .crow{
+    display:flex;align-items:center;gap:12px;
+    padding:11px 16px;
+    cursor:pointer;
+    position:relative;
+    transition:background 160ms var(--ease-out);
+  }
+  .crow + .crow{border-top:1px solid var(--border-1)}
+  .crow:hover{background:rgba(255,252,246,0.4)}
+  .crow.unread::before{
+    content:"";position:absolute;left:6px;top:50%;transform:translateY(-50%);
+    width:3px;height:22px;border-radius:2px;background:var(--brand-primary);
+  }
+
+  .av{
+    width:46px;height:46px;border-radius:50%;flex-shrink:0;
+    display:flex;align-items:center;justify-content:center;
+    font-family:var(--font-ui);font-weight:500;font-size:16px;letter-spacing:-0.01em;
+    color:#fff;
+    background:linear-gradient(135deg,#8FA888 0%,#4A6648 100%);
+    box-shadow:0 1px 0 rgba(255,255,255,0.4) inset, 0 2px 6px rgba(60,40,25,0.06);
+  }
+  .av.honey{background:linear-gradient(135deg,#DAC8B0 0%,#B8946A 100%);color:#2B1F12}
+  .av.slate{background:linear-gradient(135deg,#9BB0BE 0%,#4F6A7A 100%)}
+  .av.plum{background:linear-gradient(135deg,#B5A8C0 0%,#6E5A80 100%)}
+  .av.clay{background:linear-gradient(135deg,#D9907F 0%,#A04934 100%)}
+  .av.brain{
+    background:#fff;color:var(--brand-primary);
+    font-family:var(--font-display);font-style:italic;font-size:24px;font-weight:500;line-height:1;
+    border:1px solid var(--glass-edge);
+  }
+  .av.task{
+    background:rgba(255,252,246,0.9);color:var(--brand-primary);
+    border:1.5px solid var(--brand-primary);
+  }
+  .av.task svg{width:22px;height:22px;stroke-width:1.6}
+  .av.archive{
+    background:rgba(234,227,207,0.9);color:var(--fg-3);
+    border:1px dashed var(--border-strong);
+  }
+  .av.archive svg{width:20px;height:20px;stroke-width:1.4}
+
+  .crow .body{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
+  .crow .top{display:flex;align-items:center;gap:8px}
+  .crow .name{
+    font-size:14.5px;font-weight:500;letter-spacing:-0.01em;color:var(--fg-1);
+    flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  }
+  .crow .pin{
+    color:var(--fg-3);flex-shrink:0;
+    transform:rotate(40deg);
+  }
+  .crow .pin svg{width:13px;height:13px;stroke-width:1.6}
+  .crow .ts{
+    font-family:var(--font-mono);font-size:11px;color:var(--fg-3);
+    letter-spacing:.04em;flex-shrink:0;
+  }
+  .crow .ts.now{color:var(--brand-primary)}
+  .crow .bot{display:flex;align-items:center;gap:8px}
+  .crow .prev{
+    flex:1;min-width:0;
+    font-family:var(--font-display);font-style:italic;font-weight:400;
+    font-size:13.5px;color:var(--fg-2);line-height:1.4;letter-spacing:0;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  }
+  .crow .prev b{font-family:var(--font-ui);font-style:normal;font-weight:500;color:var(--fg-1)}
+  .crow .prev .src{font-family:var(--font-mono);font-style:normal;font-size:11px;color:var(--fg-3);letter-spacing:.04em;margin-right:4px}
+  .crow .badge{
+    flex-shrink:0;
+    min-width:20px;height:20px;padding:0 7px;border-radius:999px;
+    background:var(--brand-primary);color:var(--fg-on-brand);
+    font-family:var(--font-mono);font-size:11px;font-weight:500;letter-spacing:0;
+    display:flex;align-items:center;justify-content:center;
+  }
+  .crow .badge.muted{background:rgba(234,227,207,0.9);color:var(--fg-2)}
+  .crow .star{
+    flex-shrink:0;
+    font-family:var(--font-display);font-style:italic;font-size:15px;
+    color:var(--brand-primary);line-height:1;
+  }
+  .crow .proc{
+    flex-shrink:0;width:8px;height:8px;border-radius:50%;
+    background:var(--brand-primary);animation:pulse 1.6s ease-in-out infinite;
+  }
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+  .crow.done .prev::before{
+    content:"";display:inline-block;
+    width:11px;height:11px;margin-right:6px;
+    background:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%237A9C7A' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'><polyline points='20 6 9 17 4 12'/></svg>") no-repeat center/contain;
+    vertical-align:-1px;
+  }
+
+  /* day separator */
+  .day{
+    display:flex;justify-content:center;padding:10px 0 8px;
+    font-family:var(--font-mono);font-size:10px;color:var(--fg-3);
+    letter-spacing:.12em;text-transform:uppercase;font-weight:500;
+  }
+  .day span{padding:4px 12px;background:rgba(234,227,207,0.7);border-radius:999px;backdrop-filter:blur(8px)}
+</style></head><body data-theme="echo" data-screen-label="08 Bookmark card">
+<div class="wrap">
+
+<h1 class="title">bookmark · <em>card &amp; chat</em></h1>
+<div class="lede">Два режима отображения: <em>card</em> — детальная плитка для discover/коллекции; <em>chat</em> — telegram-style ряды для быстрого скана ленты. <em>Один источник</em>, два контекста.</div>
+
+<div class="section-label">Chat view · telegram-style feed</div>
+<div class="chat">
+
+  <div class="crow unread">
+    <div class="av brain">✦</div>
+    <div class="body">
+      <div class="top">
+        <span class="name">brain</span>
+        <span class="pin"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round"><path d="M12 2v8"/><path d="M8 10h8l-2 6h-4z"/><path d="M12 16v6"/></svg></span>
+        <span class="ts now">сейчас</span>
+      </div>
+      <div class="bot">
+        <span class="prev">3 закладки про rlhf — <b>собрать?</b></span>
+        <span class="badge">3</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="crow">
+    <div class="av">A</div>
+    <div class="body">
+      <div class="top">
+        <span class="name">Anthropic · AI safety</span>
+        <span class="ts">14:32</span>
+      </div>
+      <div class="bot">
+        <span class="prev"><span class="src">x.com</span>«Модели должны быть честными по умолчанию»</span>
+        <span class="star">★</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="crow">
+    <div class="av honey">K</div>
+    <div class="body">
+      <div class="top">
+        <span class="name">@karpathy · rlhf evolution</span>
+        <span class="ts">12:08</span>
+      </div>
+      <div class="bot">
+        <span class="prev"><span class="src">x.com</span>От InstructGPT через DPO к нынешним методам</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="crow">
+    <div class="av task">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="4"/><path d="M8 12l3 3 5-6"/></svg>
+    </div>
+    <div class="body">
+      <div class="top">
+        <span class="name">список покупок</span>
+        <span class="ts">вчера</span>
+      </div>
+      <div class="bot">
+        <span class="prev done"><span class="src">task</span><b>1/3</b> · хлеб, пылесос</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="day"><span>вчера</span></div>
+
+  <div class="crow">
+    <div class="av slate">D</div>
+    <div class="body">
+      <div class="top">
+        <span class="name">DPO paper</span>
+        <span class="ts">10:15</span>
+      </div>
+      <div class="bot">
+        <span class="prev"><span class="src">arxiv</span>Direct Preference Optimization без reward model</span>
+        <span class="proc"></span>
+      </div>
+    </div>
+  </div>
+
+  <div class="crow">
+    <div class="av plum">К</div>
+    <div class="body">
+      <div class="top">
+        <span class="name">коллекция · alignment</span>
+        <span class="ts">9:02</span>
+      </div>
+      <div class="bot">
+        <span class="prev"><b>12</b> закладок · в прошлый раз открывал 3 дня назад</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="crow">
+    <div class="av clay">P</div>
+    <div class="body">
+      <div class="top">
+        <span class="name">Pinterest · ceramics</span>
+        <span class="ts">чт</span>
+      </div>
+      <div class="bot">
+        <span class="prev"><span class="src">pin</span>moodboard, 24 изображения</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="crow">
+    <div class="av archive">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="5" rx="1.5"/><path d="M4 9v10a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9"/><path d="M10 13h4"/></svg>
+    </div>
+    <div class="body">
+      <div class="top">
+        <span class="name" style="color:var(--fg-3)">scaling laws</span>
+        <span class="ts">11 мес</span>
+      </div>
+      <div class="bot">
+        <span class="prev" style="color:var(--fg-4)"><span class="src">arxiv</span>в архиве · так и не открыл</span>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div class="section-label">Default · article</div>
+<div class="stage">
+  <div class="card">
+    <div class="ctitle">как Anthropic думает про AI safety</div>
+    <div class="sum">«Модели должны быть честными по умолчанию, а не оптимизированными под одобрение.» — Dario Amodei в треде на X.</div>
+    <div class="meta">
+      <span class="src">x.com</span><span class="dot"></span><span>2 мин</span><span class="dot"></span><span>сохранено вчера</span>
+      <span class="fav">★</span>
+    </div>
+    <div class="tags"><span class="t t-sage">#ai</span><span class="t t-ochre">#чтиво</span></div>
+  </div>
+</div>
+
+<div class="section-label">Telegram-style link preview</div>
+<div class="stage">
+  <div class="card">
+    <div class="tg-preview">
+      <div class="thumb"></div>
+      <div class="body">
+        <div class="ctitle" style="margin-bottom:4px">Constitutional AI</div>
+        <div class="sum" style="margin-bottom:6px;font-size:13px">метод обучения через набор принципов — без ручной разметки</div>
+        <div class="meta"><span class="src">anthropic.com</span><span class="dot"></span><span>pdf · 24p</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section-label">Task / checklist</div>
+<div class="stage">
+  <div class="card task">
+    <div class="ctitle">список покупок на выходные</div>
+    <div class="trow done"><div class="box"></div>заказать продукты</div>
+    <div class="trow"><div class="box"></div>хлеб</div>
+    <div class="trow"><div class="box"></div>отнести пылесос в ремонт</div>
+    <div class="meta" style="margin-top:10px"><span>task</span><span class="dot"></span><span>1 / 3</span></div>
+  </div>
+</div>
+
+<div class="section-label">Pinterest grid · visual collection</div>
+<div class="masonry">
+  <div class="pin">
+    <div class="fab-mini">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
+    </div>
+    <div class="body">
+      <div class="ctitle">палитра sage</div>
+      <div class="src">behance · moodboard</div>
+    </div>
+  </div>
+  <div class="pin pin-2">
+    <div class="fab-mini">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
+    </div>
+    <div class="body">
+      <div class="ctitle">типографика<br/>в editorial</div>
+      <div class="src">issuu · 8 pages</div>
+    </div>
+  </div>
+  <div class="pin pin-3" style="aspect-ratio:3/3.2">
+    <div class="fab-mini">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
+    </div>
+    <div class="body">
+      <div class="ctitle">liquid glass refs</div>
+      <div class="src">dribbble · 24</div>
+    </div>
+  </div>
+  <div class="pin" style="aspect-ratio:3/3.8;background:linear-gradient(135deg, #C9A48F 0%, #8B6A4F 100%)">
+    <div class="fab-mini">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
+    </div>
+    <div class="body">
+      <div class="ctitle">керамика, цвет</div>
+      <div class="src">pinterest · saved</div>
+    </div>
+  </div>
+</div>
+
+<div class="section-label">Quiet · archived</div>
+<div class="stage">
+  <div class="card" style="opacity:.65;background:rgba(245,241,235,0.5);box-shadow:none">
+    <div class="ctitle">scaling laws · old</div>
+    <div class="sum">год назад ты сохранил это в очередь — так и не открыл. <em>архивировать?</em></div>
+    <div class="meta"><span class="src">arxiv.org</span><span class="dot"></span><span>11 мес назад</span></div>
+  </div>
+</div>
+
+</div></body></html>

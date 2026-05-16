@@ -1,0 +1,78 @@
+/* shared chrome — liquid glass + Sana editorial mood */
+@supports (background: var(--backdrop-gradient)) {
+  body { background: var(--backdrop-gradient, var(--bg-page)); }
+}
+body{
+  margin:0; padding:36px 24px 80px;
+  background:var(--backdrop-gradient,var(--bg-page));
+  background-attachment:fixed;
+  color:var(--fg-1); font-family:var(--font-ui);
+  -webkit-font-smoothing:antialiased;
+}
+.wrap{max-width:560px;margin:0 auto}
+
+/* Headers — Sana mood: sentence-case, tight tracking, italic-serif accent */
+.title{
+  font-family:var(--font-ui);
+  font-size:28px; font-weight:500; letter-spacing:-0.035em; line-height:1.02;
+  margin:0 0 8px; color:var(--fg-1);
+}
+.title em{
+  font-family:var(--font-display); font-style:italic; font-weight:500;
+  color:var(--brand-primary); letter-spacing:-0.01em;
+}
+.lede{
+  font-family:var(--font-ui); font-size:14px; color:var(--fg-2);
+  margin:0 0 28px; line-height:1.5; letter-spacing:-0.005em; max-width:46ch;
+}
+.lede em{
+  font-family:var(--font-display); font-style:italic; color:var(--fg-1);
+  font-weight:500; letter-spacing:0;
+}
+.lede code{
+  font-family:var(--font-mono); font-style:normal; font-size:11px;
+  color:var(--fg-2); background:rgba(255,252,246,0.55);
+  backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px);
+  padding:2px 6px; border-radius:6px; border:1px solid var(--glass-edge);
+}
+
+.section-label{
+  font-family:var(--font-mono);
+  font-size:10px; letter-spacing:.12em; text-transform:uppercase;
+  color:var(--fg-3); font-weight:500;
+  margin:28px 0 12px;
+  display:flex; align-items:center; gap:8px;
+}
+.section-label::before{
+  content:""; width:4px; height:4px; border-radius:50%;
+  background:var(--brand-primary); flex-shrink:0;
+}
+
+/* Cards */
+.card-surface{
+  background:var(--bg-surface);
+  border:1px solid var(--border-1);
+  border-radius:var(--radius-lg);
+  padding:20px;
+}
+
+/* Liquid glass tile — translucent surface w/ blur */
+.glass-tile{
+  position:relative;
+  background:var(--glass-tint-light);
+  backdrop-filter:blur(var(--glass-blur)) saturate(140%);
+  -webkit-backdrop-filter:blur(var(--glass-blur)) saturate(140%);
+  border:1px solid var(--glass-edge);
+  border-radius:var(--radius-lg);
+  box-shadow:var(--shadow-glass);
+}
+.glass-tile-strong{
+  background:var(--glass-tint-strong);
+  backdrop-filter:blur(var(--glass-blur-strong)) saturate(160%);
+  -webkit-backdrop-filter:blur(var(--glass-blur-strong)) saturate(160%);
+  border:1px solid var(--glass-edge);
+  border-radius:var(--radius-xl);
+  box-shadow:var(--shadow-glass);
+}
+
+.muted-mono{font-family:var(--font-mono);font-size:10px;color:var(--fg-3);letter-spacing:.08em;text-transform:uppercase}

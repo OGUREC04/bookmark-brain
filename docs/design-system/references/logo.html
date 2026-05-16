@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="ru"><head><meta charset="utf-8"><title>Logo · э</title>
+<link rel="stylesheet" href="../foundations/colors_and_type.css">
+<link rel="stylesheet" href="_card.css">
+<style>
+  .hero{
+    position:relative; overflow:hidden;
+    border-radius:28px; padding:64px;
+    display:flex; justify-content:center; align-items:center;
+    margin-bottom:8px;
+    background:
+      radial-gradient(60% 70% at 30% 30%, rgba(218,234,218,0.6), transparent 60%),
+      radial-gradient(50% 60% at 80% 80%, rgba(252,220,194,0.55), transparent 60%),
+      linear-gradient(160deg, #F5F1EB 0%, #EAE3CF 100%);
+    box-shadow:var(--shadow-2), inset 0 1px 0 rgba(255,255,255,0.5);
+  }
+  .hero img{width:140px;height:140px;border-radius:32px;box-shadow:var(--shadow-3)}
+  .hero .corner{position:absolute;top:18px;left:20px;font-family:var(--font-mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--fg-3);font-weight:500}
+  .hero .corner-r{position:absolute;top:18px;right:20px;font-family:var(--font-display);font-style:italic;font-size:14px;color:var(--brand-primary)}
+
+  .sizes{
+    background:var(--glass-tint-light);
+    backdrop-filter:blur(var(--glass-blur)) saturate(140%);
+    -webkit-backdrop-filter:blur(var(--glass-blur)) saturate(140%);
+    border:1px solid var(--glass-edge);
+    box-shadow:var(--shadow-glass);
+    border-radius:22px; padding:24px;
+    display:flex; align-items:flex-end; gap:24px; flex-wrap:wrap;
+  }
+  .size{display:flex;flex-direction:column;align-items:center;gap:8px}
+  .size .lbl{font-size:10px;color:var(--fg-3);font-family:var(--font-mono);letter-spacing:.08em;text-transform:uppercase;text-align:center;line-height:1.4;font-weight:500}
+  .size .lbl b{font-family:var(--font-mono);font-weight:500;color:var(--fg-2);display:block}
+
+  .ctx{
+    background:var(--glass-tint-strong);
+    backdrop-filter:blur(var(--glass-blur)) saturate(160%);
+    -webkit-backdrop-filter:blur(var(--glass-blur)) saturate(160%);
+    border:1px solid var(--glass-edge);
+    border-radius:18px; padding:16px 18px;
+    display:flex; align-items:center; gap:14px; margin-bottom:8px;
+    box-shadow:var(--shadow-glass);
+  }
+  .ctx img{width:44px;height:44px;border-radius:50%;flex-shrink:0}
+  .ctx .name{font-size:15px;font-weight:500;letter-spacing:-0.02em;color:var(--fg-1)}
+  .ctx .sub{font-family:var(--font-display);font-style:italic;font-size:13.5px;color:var(--fg-2);line-height:1.4;letter-spacing:0;margin-top:2px}
+  .ctx .ts{margin-left:auto;font-family:var(--font-mono);font-size:10px;color:var(--fg-3);letter-spacing:.06em;flex-shrink:0}
+  .badge{margin-left:auto;width:18px;height:18px;border-radius:50%;background:var(--brand-primary);color:var(--fg-on-brand);font-family:var(--font-mono);font-size:10px;display:flex;align-items:center;justify-content:center;font-weight:500;flex-shrink:0}
+</style></head><body data-theme="echo" data-screen-label="Logo">
+<div class="wrap">
+
+<h1 class="title">logo · <em>«э» italic</em></h1>
+<div class="lede">Курсивная «э» серифом · sage <code>#7A9C7A</code> на тёплой бумаге. <em>Один глиф</em>, узнаётся как favicon 16×16. Mark не подсвечен — лежит в gradient-cream поле.</div>
+
+<div class="hero">
+  <span class="corner">mark · L6</span>
+  <span class="corner-r">«э»</span>
+  <img src="../foundations/logo.svg" alt="logo"/>
+</div>
+
+<div class="section-label">Sizes</div>
+<div class="sizes">
+  <div class="size"><img src="../foundations/logo.svg" style="width:16px;height:16px;border-radius:4px"/><span class="lbl"><b>16</b>favicon</span></div>
+  <div class="size"><img src="../foundations/logo.svg" style="width:32px;height:32px;border-radius:8px"/><span class="lbl"><b>32</b>tg avatar</span></div>
+  <div class="size"><img src="../foundations/logo.svg" style="width:60px;height:60px;border-radius:14px"/><span class="lbl"><b>60</b>app icon</span></div>
+  <div class="size"><img src="../foundations/logo.svg" style="width:88px;height:88px;border-radius:20px"/><span class="lbl"><b>88</b>marketing</span></div>
+</div>
+
+<div class="section-label">In context · Telegram bot list</div>
+<div class="ctx">
+  <img src="../foundations/logo.svg"/>
+  <div>
+    <div class="name">brain</div>
+    <div class="sub">«сохранил constitutional ai»</div>
+  </div>
+  <div class="ts">14:32</div>
+</div>
+<div class="ctx">
+  <img src="../foundations/logo.svg"/>
+  <div>
+    <div class="name">brain</div>
+    <div class="sub">3 закладки про rlhf — собрать?</div>
+  </div>
+  <div class="badge">1</div>
+</div>
+
+</div></body></html>

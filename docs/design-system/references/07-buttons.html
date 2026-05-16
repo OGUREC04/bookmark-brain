@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="ru"><head><meta charset="utf-8"><title>Buttons · sage</title>
+<link rel="stylesheet" href="../foundations/colors_and_type.css">
+<link rel="stylesheet" href="_card.css">
+<style>
+  .group{
+    background:var(--glass-tint-light);
+    backdrop-filter:blur(var(--glass-blur)) saturate(140%);
+    -webkit-backdrop-filter:blur(var(--glass-blur)) saturate(140%);
+    border:1px solid var(--glass-edge);
+    border-radius:22px; padding:18px 20px;
+    box-shadow:var(--shadow-glass);
+    margin-bottom:8px;
+  }
+  .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  .row + .row{margin-top:10px}
+
+  .btn{
+    padding:11px 20px; border-radius:999px;
+    font-size:13.5px; font-weight:500; border:none; cursor:pointer;
+    font-family:var(--font-ui); display:inline-flex; align-items:center; gap:8px;
+    letter-spacing:-0.005em;
+    transition:transform 160ms var(--ease-out), background 200ms, box-shadow 200ms;
+  }
+  .btn:active{transform:scale(0.97)}
+
+  .primary{background:var(--brand-primary);color:var(--fg-on-brand);box-shadow:0 1px 0 rgba(255,255,255,0.2) inset, 0 4px 12px rgba(122,156,122,0.25)}
+  .primary:hover{background:var(--brand-primary-hover)}
+
+  .glass{
+    background:rgba(255,252,246,0.7);
+    backdrop-filter:blur(16px) saturate(160%);
+    -webkit-backdrop-filter:blur(16px) saturate(160%);
+    color:var(--fg-1);
+    box-shadow:0 1px 0 rgba(255,255,255,0.6) inset, 0 -1px 0 rgba(0,0,0,0.05) inset, 0 2px 6px rgba(60,40,25,0.06);
+    border:1px solid var(--glass-edge);
+  }
+  .glass:hover{background:rgba(255,252,246,0.85)}
+
+  .ghost{background:transparent;color:var(--fg-2)}
+  .ghost:hover{background:rgba(255,252,246,0.5)}
+
+  .danger{background:transparent;color:#B5483A}
+  .danger:hover{background:rgba(181,72,58,0.08)}
+
+  .ai{
+    background:var(--ai-suggest-bg);
+    color:var(--ai-suggest-fg);
+    padding-left:14px;
+    box-shadow:0 1px 0 rgba(255,255,255,0.5) inset;
+  }
+  .ai .star{font-family:var(--font-display);font-style:italic;color:var(--brand-primary);font-size:16px;line-height:1}
+
+  .icon-btn{
+    width:40px;height:40px;border-radius:50%;
+    border:1px solid var(--glass-edge); cursor:pointer;
+    display:inline-flex; align-items:center; justify-content:center;
+    color:var(--fg-2);
+    background:rgba(255,252,246,0.7);
+    backdrop-filter:blur(16px) saturate(160%);
+    -webkit-backdrop-filter:blur(16px) saturate(160%);
+    box-shadow:0 1px 0 rgba(255,255,255,0.6) inset, 0 2px 6px rgba(60,40,25,0.06);
+    transition:transform 160ms var(--ease-out);
+  }
+  .icon-btn:hover{transform:translateY(-1px)}
+  .icon-btn.solid{background:var(--brand-primary);color:var(--fg-on-brand);border-color:transparent}
+
+  .pill-tag{
+    padding:6px 13px; border-radius:999px;
+    font-size:12.5px; font-weight:500; font-family:var(--font-ui);
+    background:var(--brand-primary-tint); color:var(--brand-primary);
+    cursor:pointer; border:none; letter-spacing:-0.005em;
+  }
+
+  /* Floating capture FAB — Pinterest-style group */
+  .fab-row{
+    display:inline-flex; flex-direction:column; gap:8px; padding:8px;
+    background:rgba(255,252,246,0.7);
+    backdrop-filter:blur(20px) saturate(160%);
+    -webkit-backdrop-filter:blur(20px) saturate(160%);
+    border:1px solid var(--glass-edge);
+    border-radius:999px;
+    box-shadow:var(--shadow-3);
+  }
+  .fab{
+    width:44px;height:44px;border-radius:50%;
+    background:#fff;border:none;cursor:pointer;
+    display:inline-flex;align-items:center;justify-content:center;
+    color:var(--fg-1);
+    box-shadow:0 1px 0 rgba(255,255,255,0.6) inset, 0 2px 8px rgba(60,40,25,0.08);
+  }
+  .fab.brand{background:var(--brand-primary);color:var(--fg-on-brand)}
+
+  .stage-dark{
+    background:linear-gradient(135deg, #2C2825 0%, #1A1816 100%);
+    border-radius:24px; padding:24px;
+    display:flex; gap:10px; align-items:center; justify-content:center;
+    box-shadow:var(--shadow-3);
+  }
+  .stage-dark .glass{
+    background:rgba(255,255,255,0.12); color:#fff;
+    border:1px solid rgba(255,255,255,0.18);
+    box-shadow:0 1px 0 rgba(255,255,255,0.18) inset, 0 2px 8px rgba(0,0,0,0.2);
+  }
+  .stage-dark .glass:hover{background:rgba(255,255,255,0.22)}
+
+  .label{font-family:var(--font-mono);font-size:9.5px;color:var(--fg-3);letter-spacing:.12em;text-transform:uppercase;margin-bottom:8px;font-weight:500}
+</style></head><body data-theme="echo" data-screen-label="07 Buttons">
+<div class="wrap">
+
+<h1 class="title">buttons · <em>liquid pill</em></h1>
+<div class="lede">Полностью pill, sage primary, frosted glass для secondary. AI-кнопки — мягкий sage-cast с italic-звездой. Никаких бордеров на основном CTA.</div>
+
+<div class="section-label">Variants</div>
+<div class="group">
+  <div class="label">primary · secondary · ghost · danger</div>
+  <div class="row">
+    <button class="btn primary">сохранить</button>
+    <button class="btn glass">отмена</button>
+    <button class="btn ghost">позже</button>
+    <button class="btn danger">удалить</button>
+  </div>
+</div>
+
+<div class="section-label">AI action · italic spark</div>
+<div class="group">
+  <div class="row">
+    <button class="btn ai"><span class="star">✦</span>собрать в коллекцию</button>
+    <button class="btn ai"><span class="star">✦</span>связать с другой</button>
+  </div>
+</div>
+
+<div class="section-label">States · primary</div>
+<div class="group">
+  <div class="row">
+    <button class="btn primary">default</button>
+    <button class="btn primary" style="background:var(--brand-primary-hover)">hover</button>
+    <button class="btn primary" style="background:var(--brand-primary-press)">pressed</button>
+    <button class="btn primary" style="opacity:.4" disabled>disabled</button>
+  </div>
+</div>
+
+<div class="section-label">Sizes</div>
+<div class="group">
+  <div class="row">
+    <button class="btn primary" style="padding:7px 14px;font-size:12px">small</button>
+    <button class="btn primary">medium</button>
+    <button class="btn primary" style="padding:14px 26px;font-size:15px">large</button>
+  </div>
+</div>
+
+<div class="section-label">Icon-only · floating</div>
+<div class="group">
+  <div class="row">
+    <button class="icon-btn">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+    </button>
+    <button class="icon-btn">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
+    </button>
+    <button class="icon-btn solid">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+    </button>
+    <span style="font-family:var(--font-display);font-style:italic;font-size:13px;color:var(--fg-3);margin-left:6px">↑ glass · solid CTA</span>
+  </div>
+</div>
+
+<div class="section-label">FAB cluster · Pinterest-style</div>
+<div class="group" style="display:flex;gap:14px;align-items:center;justify-content:center;padding:22px">
+  <div class="fab-row">
+    <button class="fab brand">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+    </button>
+    <button class="fab">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
+    </button>
+    <button class="fab">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+    </button>
+  </div>
+</div>
+
+<div class="section-label">Over dark · glass adapts</div>
+<div class="stage-dark">
+  <button class="btn glass">отмена</button>
+  <button class="btn primary">сохранить</button>
+</div>
+
+<div class="section-label">Tag pills</div>
+<div class="group">
+  <div class="row">
+    <button class="pill-tag">ai</button>
+    <button class="pill-tag">чтиво</button>
+    <button class="pill-tag">anthropic</button>
+    <button class="pill-tag" style="background:transparent;border:1px dashed var(--border-2);color:var(--fg-3)">+ добавить</button>
+  </div>
+</div>
+
+</div></body></html>

@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="ru"><head><meta charset="utf-8"><title>Color roles · sage</title>
+<link rel="stylesheet" href="../foundations/colors_and_type.css">
+<link rel="stylesheet" href="_card.css">
+<style>
+  .roles{background:var(--glass-tint-light);backdrop-filter:blur(var(--glass-blur)) saturate(140%);-webkit-backdrop-filter:blur(var(--glass-blur)) saturate(140%);border:1px solid var(--glass-edge);box-shadow:var(--shadow-glass);border-radius:22px;padding:18px;display:flex;flex-direction:column;gap:10px}
+  .role{display:flex;align-items:center;gap:12px;padding:10px 12px;background:rgba(255,252,246,0.7);border-radius:14px;border:1px solid var(--glass-edge);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px)}
+  .role .sw{width:44px;height:44px;border-radius:12px;border:1px solid var(--glass-edge);flex-shrink:0;box-shadow:inset 0 1px 0 rgba(255,255,255,0.4)}
+  .role .body{flex:1;min-width:0}
+  .role .name{font-size:13px;font-weight:500;letter-spacing:-0.005em;color:var(--fg-1)}
+  .role .desc{font-family:var(--font-display);font-style:italic;font-size:13px;color:var(--fg-2);line-height:1.4;margin-top:2px;letter-spacing:0}
+  .role .hex{font-family:var(--font-mono);font-size:10px;color:var(--fg-3);letter-spacing:.06em}
+  .stage{background:transparent;padding:16px;border-radius:18px;border:1px dashed var(--border-2);display:flex;gap:10px;align-items:stretch;margin-top:8px}
+  .stage .card{flex:1;background:var(--glass-tint-strong);border:1px solid var(--glass-edge);backdrop-filter:blur(14px) saturate(160%);-webkit-backdrop-filter:blur(14px) saturate(160%);border-radius:14px;padding:14px;box-shadow:var(--shadow-glass)}
+  .stage .card.elev{background:rgba(255,252,246,0.95);box-shadow:var(--shadow-3)}
+  .stage .card.sunken{background:rgba(236,230,219,0.6);border-color:transparent;box-shadow:none;backdrop-filter:none;-webkit-backdrop-filter:none}
+  .stage .card .h{font-size:13px;font-weight:600;margin-bottom:4px}
+  .stage .card .p{font-size:11px;color:var(--fg-3);line-height:1.4}
+  .do-dont{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}
+  .pill{padding:10px 12px;border-radius:10px;font-size:12px;line-height:1.4;letter-spacing:-0.005em;border:1px solid transparent}
+  .do{background:#ECF2EC;color:#2F4A2F;border-color:#CFDFCF}
+  .dont{background:#F3E0DD;color:#7A2A20;border-color:#E0BFB8}
+  .do::before{content:"✓ ";font-weight:600}
+  .dont::before{content:"✕ ";font-weight:600}
+</style></head><body data-theme="echo" data-screen-label="03 Color roles">
+<div class="wrap">
+
+<h1 class="title">color · <em>roles</em></h1>
+<div class="lede">Как разносить роли по поверхностям и тексту. <em>Один акцент</em> <code>--brand-primary</code> работает только на primary CTA, AI-маркерах и active-состояниях.</div>
+
+<div class="section-label">Surfaces — paper, not glass</div>
+<div class="roles">
+  <div class="role"><div class="sw" style="background:var(--bg-page)"></div><div class="body"><div class="name">bg-page</div><div class="desc">Фон страницы. Самый тёплый off-white.</div></div><div class="hex">#F5F1EB</div></div>
+  <div class="role"><div class="sw" style="background:var(--bg-surface)"></div><div class="body"><div class="name">bg-surface</div><div class="desc">Карточки закладок, инпуты, лента.</div></div><div class="hex">#FAF7F1</div></div>
+  <div class="role"><div class="sw" style="background:var(--bg-surface-elev)"></div><div class="body"><div class="name">bg-surface-elev</div><div class="desc">Модалки, поповеры, фокус-стейт инпута.</div></div><div class="hex">#FFFCF6</div></div>
+  <div class="role"><div class="sw" style="background:var(--bg-sunken)"></div><div class="body"><div class="name">bg-sunken</div><div class="desc">Search facets, kbd hint, тихие well-блоки.</div></div><div class="hex">#ECE6DB</div></div>
+</div>
+
+<div class="section-label">Stack — в одной сцене</div>
+<div class="stage">
+  <div class="card sunken"><div class="h" style="color:var(--fg-2)">sunken</div><div class="p">фильтр / поиск</div></div>
+  <div class="card"><div class="h">surface</div><div class="p">карточка закладки</div></div>
+  <div class="card elev"><div class="h">elev</div><div class="p">модалка, поповер</div></div>
+</div>
+
+<div class="section-label">Text — warm ink hierarchy</div>
+<div class="roles">
+  <div class="role"><div class="sw" style="background:var(--fg-1)"></div><div class="body"><div class="name" style="color:var(--fg-1)">fg-1 · primary</div><div class="desc">Заголовки, основной текст карточек.</div></div><div class="hex">#2C2825</div></div>
+  <div class="role"><div class="sw" style="background:var(--fg-2)"></div><div class="body"><div class="name" style="color:var(--fg-2)">fg-2 · secondary</div><div class="desc">Body, summary, описания.</div></div><div class="hex">#6B645B</div></div>
+  <div class="role"><div class="sw" style="background:var(--fg-3)"></div><div class="body"><div class="name" style="color:var(--fg-3)">fg-3 · metadata</div><div class="desc">Время, домен, статусы, eyebrow-метки.</div></div><div class="hex">#9A938A</div></div>
+  <div class="role"><div class="sw" style="background:var(--fg-4)"></div><div class="body"><div class="name" style="color:var(--fg-4)">fg-4 · placeholder</div><div class="desc">Plaхолдеры инпутов, disabled state.</div></div><div class="hex">#C5BFB4</div></div>
+</div>
+
+<div class="section-label">Borders & dividers</div>
+<div class="roles">
+  <div class="role"><div class="sw" style="background:var(--border-1)"></div><div class="body"><div class="name">border-1 · hairline</div><div class="desc">Дивайдеры в листах, тонкие разделители.</div></div><div class="hex">#E8E1D2</div></div>
+  <div class="role"><div class="sw" style="background:var(--border-2)"></div><div class="body"><div class="name">border-2 · card edge</div><div class="desc">Карточки, инпуты.</div></div><div class="hex">#D8CFBC</div></div>
+  <div class="role"><div class="sw" style="background:var(--border-strong)"></div><div class="body"><div class="name">border-strong</div><div class="desc">Press / focus / strong selection.</div></div><div class="hex">#BDB29A</div></div>
+</div>
+
+<div class="section-label">Где использовать акцент</div>
+<div class="do-dont">
+  <div class="pill do">primary CTA «Сохранить»</div>
+  <div class="pill dont">фон карточки</div>
+  <div class="pill do">active tab / selected facet</div>
+  <div class="pill dont">обводка любой карточки</div>
+  <div class="pill do">маркер AI и star для serif-italic</div>
+  <div class="pill dont">цвет любого secondary-текста</div>
+</div>
+
+</div></body></html>
