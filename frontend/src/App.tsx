@@ -269,7 +269,7 @@ export function App() {
             fontWeight: 500,
             letterSpacing: "-0.005em",
             boxShadow: "0 6px 20px rgba(60,40,25,0.28)",
-            animation: "screenIn 220ms var(--ease-out, ease) both",
+            animation: "toastIn 200ms var(--ease-out, ease) both",
             pointerEvents: "none",
             whiteSpace: "nowrap",
           }}
