@@ -168,6 +168,7 @@ async def list_bookmarks(
     is_favorite: bool | None = None,
     is_archived: bool | None = None,
     item_type: str | None = None,  # B2 (2026-05-15): фильтр для Mini App чипов
+    structured_type: str | None = None,  # фильтр по structured_data.type (напр. task_list) — /lists
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ):
@@ -192,6 +193,12 @@ async def list_bookmarks(
     if item_type is not None:
         stmt = stmt.where(Bookmark.item_type == item_type)
         count_stmt = count_stmt.where(Bookmark.item_type == item_type)
+    if structured_type is not None:
+        # JSONB: structured_data->>'type' == structured_type (idx-free,
+        # объём на юзера небольшой). Используется /lists (task_list).
+        type_match = Bookmark.structured_data["type"].astext == structured_type
+        stmt = stmt.where(type_match)
+        count_stmt = count_stmt.where(type_match)
 
     stmt = stmt.order_by(Bookmark.created_at.desc())
     stmt = stmt.offset((page - 1) * per_page).limit(per_page)

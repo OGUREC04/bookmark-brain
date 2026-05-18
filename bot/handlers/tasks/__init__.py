@@ -39,7 +39,7 @@ Callback схема (лимит 64 байта):
 
 from aiogram import Router as _Router
 
-from .commands import cmd_todo
+from .commands import cmd_todo, cmd_unpin_all
 from .commands import router as _commands_router
 from .confirm import cb_tasklist_confirm, cb_tasklist_decline
 from .confirm import router as _confirm_router
@@ -139,6 +139,7 @@ __all__ = [
     "cb_not_a_list",
     "cb_toggle_task",
     "cmd_todo",
+    "cmd_unpin_all",
     "handle_pending_dedup",
     "msg_nl_edit_on_reply",
     "on_pin_service_message",

@@ -216,12 +216,16 @@ class BackendClient:
         return response.json()
 
     async def get_bookmarks(
-        self, token: str, page: int = 1, per_page: int = 20
+        self, token: str, page: int = 1, per_page: int = 20,
+        structured_type: str | None = None,
     ) -> dict:
+        params: dict = {"page": page, "per_page": per_page}
+        if structured_type is not None:
+            params["structured_type"] = structured_type
         response = await self.client.get(
             "/api/v1/bookmarks/",
             headers={"Authorization": f"Bearer {token}"},
-            params={"page": page, "per_page": per_page},
+            params=params,
         )
         response.raise_for_status()
         return response.json()

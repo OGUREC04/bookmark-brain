@@ -143,6 +143,9 @@ function ViewToggle({ view, setView }: { view: "chat" | "cards"; setView: (v: "c
   );
 }
 
+// Подсказки скрыты до реального источника (bd bookmark-brain-ntn). Вернуть = true.
+const SHOW_SUGGESTIONS = false;
+
 const SUGGESTION_DEMO = [
   {
     text: (
@@ -279,7 +282,7 @@ export function MysliScreen({
 
       <FilterChipsRow active={filter} onChange={setFilter} />
 
-      {!hideSuggest && view === "chat" && filter === "all" && !loading && items.length > 0 && (
+      {SHOW_SUGGESTIONS && !hideSuggest && view === "chat" && filter === "all" && !loading && items.length > 0 && (
         <SuggestionPager items={SUGGESTION_DEMO} onDismissAll={() => setHideSuggest(true)} />
       )}
 

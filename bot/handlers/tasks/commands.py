@@ -13,6 +13,48 @@ logger = logging.getLogger(__name__)
 router = Router()
 
 
+@router.message(Command("unpin"))
+async def cmd_unpin_all(message: Message, api, store=None):
+    """#5: открепить все списки задач в чате. Сами списки остаются —
+    снимается только закрепление."""
+    from bot.common.auth import ensure_user
+    token = await ensure_user(message, api)
+    if not token:
+        return
+    if store is None:
+        await message.answer(
+            "Сейчас недоступно (нет состояния). Попробуй позже.",
+            parse_mode=None,
+        )
+        return
+
+    chat_id = message.chat.id
+    try:
+        msg_ids = await store.list_task_list_message_ids(chat_id)
+    except Exception as e:
+        logger.warning(f"/unpin: list ids failed: {e}")
+        msg_ids = []
+
+    if not msg_ids:
+        await message.answer("Списков в этом чате не нашёл.", parse_mode=None)
+        return
+
+    # unpinChatMessage идемпотентен (на незакреплённом — no-op), поэтому
+    # точный счётчик «сколько было закреплено» недостоверен — не врём.
+    for mid in msg_ids:
+        try:
+            await message.bot.unpin_chat_message(chat_id, mid)
+        except TelegramBadRequest:
+            pass  # не был закреплён / устарел — ок
+        except Exception as e:
+            logger.debug(f"/unpin: unpin {mid} failed: {e}")
+
+    await message.answer(
+        "📌 Открепил все списки. Сами списки на месте — /lists.",
+        parse_mode=None,
+    )
+
+
 @router.message(Command("todo"))
 async def cmd_todo(message: Message, api):
     """`/todo пункт1, пункт2` — принудительно создать список."""
