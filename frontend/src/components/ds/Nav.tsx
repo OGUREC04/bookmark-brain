@@ -121,7 +121,9 @@ export function BottomNav({
           border: "1px solid rgba(255,255,255,0.7)",
           borderRadius: 28,
           display: "grid",
-          gridTemplateColumns: "repeat(3, 1fr)",
+          // minmax(0,1fr): строго равные трети, не раздуваются под длинный
+          // неразрывный лейбл («пространства») и не прыгают при смене актив-таба.
+          gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
           padding: "6px 4px",
           boxShadow:
             "0 1px 0 rgba(255,255,255,0.7) inset, 0 -1px 0 rgba(0,0,0,0.04) inset, 0 16px 40px rgba(60,40,25,0.12)",
