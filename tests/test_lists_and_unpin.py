@@ -127,8 +127,8 @@ class TestCmdUnpinAll:
 
 class TestApiClientParam:
     async def test_get_bookmarks_passes_structured_type(self):
-        from bot.api_client import APIClient
-        c = APIClient.__new__(APIClient)
+        from bot.api_client import BackendClient
+        c = BackendClient.__new__(BackendClient)
         resp = MagicMock()
         resp.raise_for_status = MagicMock()
         resp.json = MagicMock(return_value={"items": [], "total": 0})
@@ -140,8 +140,8 @@ class TestApiClientParam:
         assert params["page"] == 2
 
     async def test_get_bookmarks_omits_param_when_none(self):
-        from bot.api_client import APIClient
-        c = APIClient.__new__(APIClient)
+        from bot.api_client import BackendClient
+        c = BackendClient.__new__(BackendClient)
         resp = MagicMock()
         resp.raise_for_status = MagicMock()
         resp.json = MagicMock(return_value={"items": [], "total": 0})
