@@ -224,7 +224,7 @@ export function MysliScreen({
   const filtered = items.filter((b) => matchesFilter(b, filter));
 
   return (
-    <div style={{ padding: "6px 0 100px" }}>
+    <div style={{ padding: "6px 0 calc(116px + env(safe-area-inset-bottom, 0px))" }}>
       <div
         style={{
           display: "flex",

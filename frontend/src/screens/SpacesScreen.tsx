@@ -136,7 +136,7 @@ export function SpacesScreen({ onOpen, onCreate }: { onOpen: (f: Folder) => void
   }, []);
 
   return (
-    <div style={{ padding: "6px 16px 100px" }}>
+    <div style={{ padding: "6px 16px calc(116px + env(safe-area-inset-bottom, 0px))" }}>
       <div style={{ marginBottom: 4, marginTop: 4 }}>
         <h1 style={{ fontSize: 32, fontWeight: 500, letterSpacing: "-0.035em", margin: 0, color: "var(--fg-1)", lineHeight: 1 }}>
           пространства

@@ -136,7 +136,7 @@ export function MeScreen({ onComingSoon }: { onComingSoon: () => void }) {
   const since = me ? `с ${formatDate(me.created_at)}` : "";
 
   return (
-    <div style={{ padding: "6px 16px 100px" }}>
+    <div style={{ padding: "6px 16px calc(116px + env(safe-area-inset-bottom, 0px))" }}>
       <h1 style={{ fontSize: 32, fontWeight: 500, letterSpacing: "-0.035em", margin: "4px 0 16px", color: "var(--fg-1)", lineHeight: 1 }}>
         я
         <span
