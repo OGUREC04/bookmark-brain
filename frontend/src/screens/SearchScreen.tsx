@@ -1,6 +1,6 @@
 /* ЭКРАН 2 — Поиск. Ported from docs/design-system-miniapp/app/Search.jsx,
    wired to the real /search API. */
-import { useRef, useState, cloneElement } from "react";
+import { useEffect, useRef, useState, cloneElement } from "react";
 import { Icons } from "../components/ds/icons";
 import { Glyph, EmptyState } from "../components/ds/atoms";
 import { api, type SearchResult as ApiResult } from "../lib/api";
@@ -120,6 +120,13 @@ export function SearchScreen({ onBack, onOpen }: { onBack: () => void; onOpen: (
       if (id === reqId.current) setLoading(false);
     }
   };
+
+  // Динамический поиск: debounce 350мс после остановки ввода (Enter — мгновенно).
+  useEffect(() => {
+    const t = setTimeout(() => run(q), 350);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [q]);
 
   return (
     <div style={{ padding: "6px 0 calc(116px + env(safe-area-inset-bottom, 0px))" }}>

@@ -203,9 +203,6 @@ export function SearchBar({
           {placeholder}
         </span>
       )}
-      <span style={{ color: "var(--fg-3)", display: "flex", flexShrink: 0 }}>
-        {cloneElement(Icons.voice, { size: 18, sw: 1.6 } as never)}
-      </span>
     </div>
   );
 }

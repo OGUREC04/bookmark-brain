@@ -257,7 +257,7 @@ export function App() {
           style={{
             position: "fixed",
             left: "50%",
-            bottom: "calc(110px + env(safe-area-inset-bottom, 0px))",
+            top: "calc(16px + env(safe-area-inset-top, 0px))",
             transform: "translateX(-50%)",
             zIndex: 200,
             padding: "10px 18px",
