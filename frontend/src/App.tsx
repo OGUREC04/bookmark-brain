@@ -213,7 +213,7 @@ export function App() {
 
       {sheet?.type === "reminderPicker" && (
         <ReminderPickerSheet
-          contextText={sheet.bookmark.title || sheet.bookmark.raw_text.slice(0, 60)}
+          contextText={sheet.bookmark.title || (sheet.bookmark.raw_text ?? "").slice(0, 60) || "без названия"}
           onDismiss={closeSheet}
           onConfirm={(iso) =>
             runAction(async () => {

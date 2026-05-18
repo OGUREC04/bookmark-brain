@@ -4,7 +4,7 @@ import { useRef, useState, cloneElement } from "react";
 import { Icons } from "../components/ds/icons";
 import { Glyph, EmptyState } from "../components/ds/atoms";
 import { api, type SearchResult as ApiResult } from "../lib/api";
-import { hostOf } from "../lib/adapters";
+import { hostOf, titleOf } from "../lib/adapters";
 import { formatRelativeDate } from "../lib/formatters";
 
 function SearchResultCard({
@@ -249,7 +249,7 @@ export function SearchScreen({ onBack, onOpen }: { onBack: () => void; onOpen: (
               key={r.bookmark.id}
               src={r.bookmark.url ? hostOf(r.bookmark.url) : ""}
               time={formatRelativeDate(r.bookmark.created_at)}
-              title={r.bookmark.title || r.bookmark.raw_text.slice(0, 80)}
+              title={titleOf(r.bookmark)}
               summary={r.bookmark.summary || ""}
               onClick={() => onOpen(r.bookmark.id)}
             />

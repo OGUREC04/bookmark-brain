@@ -1,9 +1,18 @@
-// Маппинг Bookmark (backend) → Thought (UI). См. MINIAPP-ARCHITECTURE.md §9.
+// Bookmark (backend) → UI-адаптеры (ChatRow / Card / detail). См. frontend/README.md.
 
 import type { Bookmark } from "./api";
-import type { Thought, ThoughtKind, TaskProgress } from "./types";
+import type { ThoughtKind, TaskProgress } from "./types";
 import { formatRelativeDate } from "./formatters";
 import { tagStop } from "./tagPalette";
+
+/**
+ * Безопасный заголовок закладки: title → срез raw_text → плейсхолдер.
+ * raw_text типизирован string, но backend может вернуть null/"" для
+ * закладок в обработке — без guard .slice() кидал runtime-ошибку.
+ */
+export function titleOf(b: Bookmark, max = 80): string {
+  return b.title || (b.raw_text ?? "").slice(0, max) || "без названия";
+}
 
 /** host из url без www/протокола: "https://www.x.com/a" → "x.com". */
 export function hostOf(url: string | null): string {
@@ -45,7 +54,7 @@ export interface ChatRowData {
 /** Bookmark → props для ChatRow (chat-режим ленты). */
 export function bookmarkToChatRow(b: Bookmark): ChatRowData {
   const kind = deriveKind(b);
-  const title = b.title || b.raw_text.slice(0, 80);
+  const title = titleOf(b);
   const tp = deriveTaskProgress(b);
 
   let avatar: ChatRowData["avatar"];
@@ -69,8 +78,8 @@ export function bookmarkToChatRow(b: Bookmark): ChatRowData {
     name: title,
     time: formatRelativeDate(b.created_at),
     preview: tp
-      ? `${tp.done}/${tp.total} · ${b.summary || b.raw_text.slice(0, 60)}`
-      : b.summary || b.raw_text.slice(0, 80),
+      ? `${tp.done}/${tp.total} · ${b.summary || (b.raw_text ?? "").slice(0, 60)}`
+      : b.summary || (b.raw_text ?? "").slice(0, 80),
     src,
     star: b.is_favorite,
     pulsing: b.ai_status !== "completed",
@@ -97,7 +106,7 @@ export function bookmarkToCard(b: Bookmark): CardData {
   const kind = deriveKind(b);
   return {
     id: b.id,
-    title: b.title || b.raw_text.slice(0, 80),
+    title: titleOf(b),
     summary: b.summary,
     url: b.url ? hostOf(b.url) : null,
     tags: b.tags.map((t) => ({ name: t.name, color: tagStop(t.name) })),
@@ -123,7 +132,7 @@ export interface SheetTargetData {
 
 /** Bookmark → mini-context shown at the top of ActionSheet. */
 export function targetOf(b: Bookmark): SheetTargetData {
-  const title = b.title || b.raw_text.slice(0, 80);
+  const title = titleOf(b);
   return {
     id: b.id,
     title,
@@ -207,45 +216,4 @@ export function deriveTaskProgress(b: Bookmark): TaskProgress | null {
   const tasks = sd.tasks ?? [];
   const done = tasks.filter((t) => t.done).length;
   return { done, total: tasks.length };
-}
-
-/** Адаптер Bookmark → Thought. Иммутабельный, не мутирует Bookmark. */
-export function bookmarkToThought(
-  b: Bookmark,
-  remindersMap: Map<string, { fireAt: string }> = new Map(),
-): Thought {
-  const reminder = remindersMap.get(b.id);
-  return {
-    id: b.id,
-    title: b.title || b.raw_text.slice(0, 80),
-    summary: b.summary,
-    tags: b.tags,
-    isFavorite: b.is_favorite,
-    createdAt: b.created_at,
-    folderId: b.folder_id,
-    aiStatus: b.ai_status,
-    url: b.url,
-    rawText: b.raw_text,
-    structuredData: b.structured_data ?? null,
-
-    kind: deriveKind(b),
-    taskProgress: deriveTaskProgress(b),
-    hasReminder: !!reminder,
-    reminderAt: reminder?.fireAt ?? null,
-  };
-}
-
-/**
- * Строит O(1)-lookup Map<bookmarkId, {fireAt}> из ответа /reminders/upcoming.
- * Используется в Thoughts.tsx чтобы избежать N запросов на проверку
- * «есть ли reminder» для каждой карточки.
- */
-export function buildRemindersMap(
-  reminders: Array<{ bookmark_id: string | null; fire_at: string }>,
-): Map<string, { fireAt: string }> {
-  const map = new Map<string, { fireAt: string }>();
-  for (const r of reminders) {
-    if (r.bookmark_id) map.set(r.bookmark_id, { fireAt: r.fire_at });
-  }
-  return map;
 }

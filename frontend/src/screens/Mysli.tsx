@@ -331,7 +331,7 @@ function ChatView({
   return (
     <div>
       {rows.map((r, i) => {
-        if ("sep" in r) return <DaySeparator key={`s${i}`} label={r.sep} />;
+        if ("sep" in r) return <DaySeparator key={`sep-${r.sep}`} label={r.sep} />;
         const cr = bookmarkToChatRow(r.b);
         const last = i === rows.length - 1;
         return (

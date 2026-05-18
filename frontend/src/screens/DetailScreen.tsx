@@ -23,7 +23,7 @@ export function DetailScreen({
   onBack: () => void;
   onMore: () => void;
 }) {
-  const title = bookmark.title || bookmark.raw_text.slice(0, 80);
+  const title = bookmark.title || (bookmark.raw_text ?? "").slice(0, 80) || "без названия";
   const host = bookmark.url ? hostOf(bookmark.url) : null;
   const tasks = bookmark.structured_data?.type === "task_list" ? bookmark.structured_data.tasks : null;
 
