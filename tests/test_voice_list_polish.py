@@ -19,7 +19,6 @@ if str(_BACKEND) not in sys.path:
 
 import pytest
 
-
 # ───────────────────── preprocess_voice_list ─────────────────────
 
 
@@ -66,6 +65,25 @@ class TestVoiceListPreprocessing:
         from bot.services.voice_list import preprocess_voice_list
         assert preprocess_voice_list("") == ""
         assert preprocess_voice_list("   \n  ") == ""
+
+    def test_only_bare_digits_returns_empty(self):
+        """M4 (code review): входной транскрипт только из голых цифр
+        (STT-разрывы посреди молчания) → пустой результат. Caller
+        должен фолбэчиться на full_text."""
+        from bot.services.voice_list import preprocess_voice_list
+        assert preprocess_voice_list("1\n2\n3") == ""
+
+    def test_trailing_bare_digit_dropped(self):
+        """Последняя голая цифра (STT добил «4.» без продолжения) —
+        дропается как огрызок."""
+        from bot.services.voice_list import preprocess_voice_list
+        out = preprocess_voice_list("1 хлеб\n2 молоко\n3.")
+        assert out.splitlines() == ["1. хлеб", "2. молоко"]
+
+    def test_only_preamble_returns_empty(self):
+        """Только преамбула без пунктов → пусто (caller фолбэчится)."""
+        from bot.services.voice_list import preprocess_voice_list
+        assert preprocess_voice_list("Сегодня нужно.\nЗапиши.") == ""
 
 
 # ───────────────────── strip_timestamps ─────────────────────
@@ -165,6 +183,7 @@ def _bookmark_obj(content_type=None, bid="bid-X"):
 class TestWorkerOfferMediaFlag:
     async def test_voice_source_sets_is_media_src_true(self):
         import json
+
         from app.worker import task_list_offer as mod
         fake = _FakeRedis()
         with patch.object(mod, "aioredis_from_url", return_value=fake), \
@@ -180,6 +199,7 @@ class TestWorkerOfferMediaFlag:
 
     async def test_text_source_sets_is_media_src_false(self):
         import json
+
         from app.worker import task_list_offer as mod
         fake = _FakeRedis()
         with patch.object(mod, "aioredis_from_url", return_value=fake), \

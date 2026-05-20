@@ -23,6 +23,7 @@ from aiogram.types import BotCommand, MenuButtonWebApp, WebAppInfo
 from bot.api_client import BackendClient
 from bot.config import get_settings
 from bot.handlers import (
+    bookmark_view,
     clean,
     documents,
     media,
@@ -108,6 +109,7 @@ async def main():
     dp.include_router(clean.router)
     dp.include_router(media.router)   # voice, video_note, audio — до catch-all
     dp.include_router(documents.router)  # PDF/DOCX/TXT/MD — до catch-all в start
+    dp.include_router(bookmark_view.router)  # view: callback — раньше start
     dp.include_router(start.router)
     dp.include_router(search.router)
     dp.include_router(random.router)

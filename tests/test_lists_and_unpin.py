@@ -36,7 +36,7 @@ def patch_ensure_user(monkeypatch):
 
 class TestCmdLists:
     async def test_filters_by_task_list_and_renders(self):
-        from bot.handlers.start import cmd_lists
+        from bot.handlers.tasks.lists import cmd_lists
         msg = MagicMock()
         msg.text = "/lists"
         msg.answer = AsyncMock()
@@ -65,7 +65,7 @@ class TestCmdLists:
         assert "1/2" in sent  # прогресс done/total
 
     async def test_empty_lists_hint(self):
-        from bot.handlers.start import cmd_lists
+        from bot.handlers.tasks.lists import cmd_lists
         msg = MagicMock()
         msg.text = "/lists"
         msg.answer = AsyncMock()
@@ -94,6 +94,7 @@ class TestCmdUnpinAll:
 
     async def test_swallows_unpin_errors(self):
         from aiogram.exceptions import TelegramBadRequest
+
         from bot.handlers.tasks.commands import cmd_unpin_all
         msg = MagicMock()
         msg.chat = MagicMock(id=100)

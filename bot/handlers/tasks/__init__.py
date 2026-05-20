@@ -60,6 +60,8 @@ from .fast_edit import (
     _parse_indices,
     _try_fast_edit,
 )
+from .lists import cb_lists_page, cmd_lists
+from .lists import router as _lists_router
 from .nl_edit import (
     _cleanup_failed_attempts,
     _handle_nudge_reply,
@@ -102,6 +104,7 @@ router.include_router(_task_callbacks_router)
 router.include_router(_dedup_router)
 router.include_router(_nl_edit_router)
 router.include_router(_commands_router)
+router.include_router(_lists_router)
 
 __all__ = [
     "EPHEMERAL_DELAY",
@@ -132,12 +135,14 @@ __all__ = [
     "cb_dedup_keep",
     "cb_dedup_merge",
     "cb_delete_list",
+    "cb_lists_page",
     "cb_tasklist_confirm",
     "cb_tasklist_decline",
     "cb_list_deadline_menu",
     "cb_list_deadline_set",
     "cb_not_a_list",
     "cb_toggle_task",
+    "cmd_lists",
     "cmd_todo",
     "cmd_unpin_all",
     "handle_pending_dedup",

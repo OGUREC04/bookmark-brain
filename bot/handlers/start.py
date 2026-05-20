@@ -1,6 +1,7 @@
 import logging
 import re
 import time
+from datetime import datetime
 
 from aiogram import F, Router, types
 from aiogram.filters import Command, CommandStart
@@ -238,7 +239,6 @@ async def _send_list(target, api, token: str, page: int = 1):
         date_str = ""
         if created:
             try:
-                from datetime import datetime
                 dt = datetime.fromisoformat(created.replace("Z", "+00:00"))
                 date_str = dt.strftime("%d.%m.%Y %H:%M")
             except Exception:
@@ -297,192 +297,20 @@ async def cb_page(callback: CallbackQuery, api):
     if not token:
         return
 
-    page = int(callback.data.split(":")[1])
+    try:
+        page = int((callback.data or "").split(":")[1])
+    except (IndexError, ValueError):
+        page = 1
     await _send_list(callback, api, token, page)
     await callback.answer()
 
 
-# ── #6: отдельная история списков задач (/lists) ──────────────
+# ── #6: /lists вынесён в bot/handlers/tasks/lists.py (router-split,
+#       code review H1). cmd_lists + _send_task_lists + cb_lists_page
+#       живут там, подключены через `tasks.router`.
 
 
-@router.message(Command("lists"))
-async def cmd_lists(message: types.Message, api):
-    """Только списки задач — отдельно от обычных закладок (/list)."""
-    token = await ensure_user(message, api)
-    if not token:
-        return
-    parts = message.text.split()
-    page = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 1
-    await _send_task_lists(message, api, token, page)
-
-
-async def _send_task_lists(target, api, token: str, page: int = 1):
-    """Список task_list'ов (structured_data.type=task_list) с прогрессом."""
-    per_page = 5
-    is_cb = isinstance(target, CallbackQuery)
-    try:
-        data = await api.get_bookmarks(
-            token, page=page, per_page=per_page, structured_type="task_list",
-        )
-    except Exception as e:
-        logger.error(f"/lists failed: {e}")
-        if is_cb:
-            await target.answer("Ошибка загрузки", show_alert=True)
-        else:
-            await target.answer("Ошибка. Попробуй позже.", parse_mode=None)
-        return
-
-    items = data.get("items", [])
-    total = data.get("total", 0)
-
-    if not items:
-        text = "У тебя пока нет списков задач. Создай: /todo пункт1, пункт2"
-        if is_cb:
-            await target.message.edit_text(text)
-        else:
-            await target.answer(text, parse_mode=None)
-        return
-
-    total_pages = (total + per_page - 1) // per_page
-    lines = [f"📋 <b>Списки задач</b> (стр. {page}/{total_pages}, всего {total}):\n"]
-    buttons = []
-    for i, b in enumerate(items, start=(page - 1) * per_page + 1):
-        sd = b.get("structured_data") or {}
-        tasks = sd.get("tasks", []) if isinstance(sd, dict) else []
-        done = sum(1 for t in tasks if t.get("done"))
-        title = b.get("title") or "Список задач"
-        entry = f"{i}. <b>{title}</b> — {done}/{len(tasks)}"
-        cd = sd.get("common_deadline") if isinstance(sd, dict) else None
-        if cd:
-            try:
-                from datetime import datetime
-                dt = datetime.fromisoformat(cd)
-                entry += (
-                    f"  <i>⏰ {dt.strftime('%d.%m')}</i>" if dt.hour == 0
-                    else f"  <i>⏰ {dt.strftime('%d.%m %H:%M')}</i>"
-                )
-            except Exception:
-                pass
-        lines.append(entry)
-        bid = b["id"]
-        buttons.append([
-            InlineKeyboardButton(
-                text=f"📋 {title[:25]}", callback_data=f"view:{bid}",
-            ),
-            InlineKeyboardButton(text="🗑", callback_data=f"del:{bid}"),
-        ])
-
-    nav_row = []
-    if page > 1:
-        nav_row.append(InlineKeyboardButton(
-            text="⬅️ Назад", callback_data=f"lpage:{page - 1}"))
-    if page < total_pages:
-        nav_row.append(InlineKeyboardButton(
-            text="Вперёд ➡️", callback_data=f"lpage:{page + 1}"))
-    if nav_row:
-        buttons.append(nav_row)
-
-    kb = InlineKeyboardMarkup(inline_keyboard=buttons)
-    text = "\n".join(lines)
-    if is_cb:
-        await target.message.edit_text(
-            text, reply_markup=kb, parse_mode="HTML",
-            disable_web_page_preview=True,
-        )
-    else:
-        await target.answer(
-            text, reply_markup=kb, parse_mode="HTML",
-            disable_web_page_preview=True,
-        )
-
-
-@router.callback_query(F.data.startswith("lpage:"))
-async def cb_lists_page(callback: CallbackQuery, api):
-    """Пагинация /lists."""
-    if not isinstance(callback.message, Message):
-        await callback.answer("Сообщение устарело.", show_alert=True)
-        return
-    token = await ensure_user(callback, api)
-    if not token:
-        return
-    page = int(callback.data.split(":")[1])
-    await _send_task_lists(callback, api, token, page)
-    await callback.answer()
-
-
-@router.callback_query(F.data.startswith("view:"))
-async def cb_view(callback: CallbackQuery, api):
-    """Просмотр полной закладки."""
-    if not isinstance(callback.message, Message):
-        await callback.answer("Сообщение устарело.", show_alert=True)
-        return
-
-    token = await ensure_user(callback, api)
-    if not token:
-        return
-
-    bid = callback.data.split(":")[1]
-
-    try:
-        bookmark = await api.get_bookmark(token, bid)
-    except Exception as e:
-        logger.error(f"View failed: {e}")
-        await callback.answer("Ошибка загрузки", show_alert=True)
-        return
-
-    title = bookmark.get("title") or "Без названия"
-    raw_text = bookmark.get("raw_text", "")
-    summary = bookmark.get("summary") or ""
-    category = bookmark.get("category") or ""
-    url = bookmark.get("url")
-    tags = bookmark.get("tags", [])
-    ai_status = bookmark.get("ai_status", "pending")
-
-    lines = [f"<b>{title}</b>"]
-
-    if category:
-        lines.append(f"Категория: {category}")
-
-    if tags:
-        tag_str = " ".join(f"#{t['name']}" for t in tags)
-        lines.append(f"Теги: {tag_str}")
-
-    status_map = {"completed": "✅", "processing": "⏳", "pending": "🕐", "failed": "❌", "partial": "⚠️"}
-    lines.append(f"Статус: {status_map.get(ai_status, '?')} {ai_status}")
-
-    if summary:
-        lines.append(f"\n<b>Саммари:</b>\n{summary}")
-
-    if url:
-        lines.append(f'\n<b>Ссылка:</b> <a href="{url}">{url[:60]}...</a>' if len(url) > 60 else f'\n<b>Ссылка:</b> <a href="{url}">{url}</a>')
-
-    # Полный текст (обрезаем до 3000 символов для Telegram)
-    if raw_text and raw_text != summary:
-        display_text = raw_text[:3000]
-        if len(raw_text) > 3000:
-            display_text += "\n\n... (текст обрезан)"
-        lines.append(f"\n<b>Полный текст:</b>\n{display_text}")
-
-    text = "\n".join(lines)
-
-    # Кнопки
-    buttons = [
-        [
-            InlineKeyboardButton(text="🗑 Удалить", callback_data=f"del:{bid}"),
-            InlineKeyboardButton(text="◀️ К списку", callback_data="page:1"),
-        ]
-    ]
-    if url:
-        buttons.insert(0, [InlineKeyboardButton(text="🔗 Открыть ссылку", url=url)])
-
-    kb = InlineKeyboardMarkup(inline_keyboard=buttons)
-
-    # Telegram ограничивает edit_text до 4096 символов
-    if len(text) > 4000:
-        text = text[:4000] + "\n\n... (обрезано)"
-
-    await callback.message.edit_text(text, reply_markup=kb, parse_mode="HTML", disable_web_page_preview=True)
-    await callback.answer()
+# cb_view вынесен в bot/handlers/bookmark_view.py (router-split, H1).
 
 
 @router.callback_query(F.data.startswith("del:"))

@@ -23,7 +23,6 @@ import pytest
 from bot.services.nl_date import ParseStatus, parse
 from bot.services.voice_intent import VoiceIntent, detect_intent
 
-
 # ───────────────────── skf/kjo: voice intent ─────────────────────
 
 
@@ -54,7 +53,9 @@ class TestVoiceReminderIntent:
 
 class TestVoiceListDictation:
     """kjo-followup: голосовой список без буллетов (STT-поток).
-    Compensация: ≥2 цифр-маркеров ИЛИ ≥2 «нужно/надо <глагол>» → TODO."""
+    Compensация: ≥3 цифр-маркеров ИЛИ ≥2 «нужно/надо <глагол>» → TODO.
+    Порог цифр поднят с 2 до 3 после code review H2 — иначе обычные
+    реплики с парой числительных уезжали в TODO."""
 
     def test_numbered_dictation_is_list(self):
         r = detect_intent(
@@ -86,6 +87,20 @@ class TestVoiceListDictation:
             "напомни купить молоко 1 хлеб 2 сыр 3 масло", duration=5.0,
         )
         assert r.intent == VoiceIntent.REMINDER
+
+    def test_two_numbers_in_speech_is_not_list(self):
+        """H2 (code review): «у меня 2 идеи 3 варианта» НЕ должно
+        уезжать в TODO — это обычная речь, не диктовка списка."""
+        r = detect_intent("у меня 2 идеи 3 варианта по этому проекту",
+                          duration=5.0)
+        assert r.intent != VoiceIntent.TODO
+
+    def test_two_numbered_items_not_enough(self):
+        """Граничное: 2 нумерованных маркера без императива — порог
+        ≥3 не достигнут. Пользователь использует /todo явно для
+        коротких списков, либо «сделай список …»."""
+        r = detect_intent("1 хлеб 2 молоко", duration=3.0)
+        assert r.intent != VoiceIntent.TODO
 
 
 class TestVoiceReminderHandler:

@@ -163,13 +163,20 @@ async def _send_general_dedup_alert(
         f"• <b>обнови</b> — заменю старую новой\n"
         f"• <b>сохрани как новую</b> — оставлю обе"
     )
+    gen_id = general_dup.get("id")
+    if gen_id is None:
+        logger.warning(
+            f"_send_general_dedup_alert: payload missing 'id': "
+            f"{list(general_dup.keys())}"
+        )
+        return
     try:
         sent = await bot.send_message(
             chat_id, alert_text, parse_mode="HTML",
             disable_web_page_preview=True,
         )
         await store.store_general_dedup(
-            chat_id, sent.message_id, new_bid, str(general_dup["id"]),
+            chat_id, sent.message_id, new_bid, str(gen_id),
             src_msg_id=src_msg_id,
         )
     except Exception as e:
@@ -199,6 +206,13 @@ async def _send_dedup_alert(
         f"({done}/{total} выполнено)\n\n"
         f"Объединить новые задачи в него?"
     )
+    sim_id = similar.get("id")
+    if sim_id is None:
+        logger.warning(
+            f"_send_dedup_alert: similar payload missing 'id': "
+            f"{list(similar.keys())}"
+        )
+        return
     buttons = {"inline_keyboard": [[
         {"text": "🔗 Объединить", "callback_data": f"dm:{new_bid}"},
         {"text": "📋 Отдельно", "callback_data": f"dk:{new_bid}"},
@@ -208,7 +222,7 @@ async def _send_dedup_alert(
             chat_id, text, reply_markup=buttons,
             parse_mode="HTML", disable_web_page_preview=True,
         )
-        await store.store_dedup_alert(chat_id, new_bid, similar["id"], new_msg_id)
+        await store.store_dedup_alert(chat_id, new_bid, sim_id, new_msg_id)
     except Exception as e:
         logger.debug(f"_send_dedup_alert failed: {e}")
 

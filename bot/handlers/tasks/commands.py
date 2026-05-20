@@ -4,7 +4,7 @@ from __future__ import annotations
 import logging
 
 from aiogram import Router
-from aiogram.exceptions import TelegramBadRequest
+from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
 from aiogram.filters import Command
 from aiogram.types import Message
 
@@ -29,17 +29,44 @@ async def cmd_unpin_all(message: Message, api, store=None):
         return
 
     chat_id = message.chat.id
+    unpinned = False
+    forbidden = False
     try:
         await message.bot.unpin_all_chat_messages(chat_id)
+        unpinned = True
+    except TelegramForbiddenError as e:
+        forbidden = True
+        logger.warning(f"/unpin: forbidden (no rights): {e}")
     except TelegramBadRequest as e:
-        logger.debug(f"/unpin: unpin_all failed: {e.message}")
+        # «not enough rights to manage pinned messages» → BadRequest у aiogram,
+        # «chat not found»/«message can't be unpinned» — то же. Считаем
+        # как отсутствие прав/нечего откреплять.
+        msg = (e.message or "").lower()
+        if "not enough rights" in msg or "forbidden" in msg:
+            forbidden = True
+            logger.warning(f"/unpin: no rights: {e.message}")
+        else:
+            logger.debug(f"/unpin: unpin_all benign: {e.message}")
+            unpinned = True  # ничего не было закреплено — это успех
     except Exception as e:
         logger.warning(f"/unpin: unpin_all failed: {e}")
 
-    await message.answer(
-        "📌 Открепил все списки. Сами списки на месте — /lists.",
-        parse_mode=None,
-    )
+    if forbidden:
+        await message.answer(
+            "Не смог открепить — у бота нет прав на управление "
+            "закреплёнными в этом чате.",
+            parse_mode=None,
+        )
+    elif unpinned:
+        await message.answer(
+            "📌 Открепил все списки. Сами списки на месте — /lists.",
+            parse_mode=None,
+        )
+    else:
+        await message.answer(
+            "Не получилось открепить. Попробуй ещё раз.",
+            parse_mode=None,
+        )
 
 
 @router.message(Command("todo"))

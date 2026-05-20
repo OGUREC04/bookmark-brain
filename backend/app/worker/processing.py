@@ -318,19 +318,26 @@ async def process_bookmark_task(
                     # (pre-offer) — переиспользуем, без повторного запроса.
                     if similar is not None and task_list_msg_id is not None:
                         try:
-                            if similar:
+                            sim_id = similar.get("id") if similar else None
+                            if similar and sim_id is not None:
                                 alert_text, alert_buttons = _build_dedup_alert(similar, bookmark_id)
                                 alert_resp = await _send_message(chat_id, alert_text, alert_buttons)
                                 if alert_resp:
                                     # Redis key по new_bid (а не msg_id) — кнопки уже содержат bid
                                     await _store_dedup_alert(
                                         chat_id, bookmark_id,
-                                        similar["id"], task_list_msg_id,
+                                        sim_id, task_list_msg_id,
                                     )
+                                    sim_score = float(similar.get("similarity") or 0.0)
                                     logger.info(
                                         f"Dedup alert sent for {bookmark_id}: "
-                                        f"similar to {similar['id']} (sim={similar['similarity']:.2f})"
+                                        f"similar to {sim_id} (sim={sim_score:.2f})"
                                     )
+                            elif similar:
+                                logger.warning(
+                                    f"Dedup alert skipped for {bookmark_id}: "
+                                    f"similar payload missing 'id': {list(similar.keys())}"
+                                )
                         except Exception as e:
                             # Dedup — best-effort, никогда не ломаем основной flow
                             logger.debug(f"Dedup check failed for {bookmark_id}: {e}")
