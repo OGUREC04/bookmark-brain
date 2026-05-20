@@ -10,6 +10,7 @@ Detection is purely heuristic (no LLM call) for speed.
 """
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from enum import Enum
 
@@ -71,6 +72,19 @@ _REMINDER_SEARCH_GUARD = (
     "напомни сколько",
 )
 
+# Голосовая диктовка списка без буллетов: STT отдаёт сплошной поток.
+# Эти два паттерна (порог ≥2) — компенсация: ловим перечисление и
+# повтор-императив, отправляем в TODO. Подтверждение «Сделать список?»
+# дальше всё равно спросит — даже ложный позитив гасится отказом.
+
+# «1 ... 2 ... 3 ...» — нумерованный диктат без точек после цифр.
+_NUMBERED_LIST_RE = re.compile(r"(?:^|\s)[1-9]\b")
+# «нужно/надо сделать ... нужно/надо купить ...» — повтор-императив.
+_REPEAT_IMPERATIVE_RE = re.compile(
+    r"\b(?:нужно|надо|должен|должна|должны)\s+\w+",
+    re.IGNORECASE,
+)
+
 _TODO_ANYWHERE = (
     "запиши задач",
     "сделай задач",
@@ -124,6 +138,16 @@ def detect_intent(text: str, duration: float | None = None) -> IntentResult:
                     intent=VoiceIntent.REMINDER,
                     cleaned_text=cleaned or text.strip(),
                 )
+
+    # ── Voice list dictation without bullets (kjo-followup) ──
+    # ≥2 «1 ... 2 ...» цифр-маркеров ИЛИ ≥2 «нужно/надо <глагол>»
+    # → диктовка списка. Подтверждение спросит дальше — ложный
+    # позитив (например «у меня 2 идеи 3 варианта») безопасен.
+    if (
+        len(_NUMBERED_LIST_RE.findall(normalized)) >= 2
+        or len(_REPEAT_IMPERATIVE_RE.findall(normalized)) >= 2
+    ):
+        return IntentResult(intent=VoiceIntent.TODO, cleaned_text=text.strip())
 
     # ── Check todo intent ──
     for prefix in _TODO_PREFIXES:

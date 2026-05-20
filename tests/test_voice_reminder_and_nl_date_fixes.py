@@ -52,6 +52,42 @@ class TestVoiceReminderIntent:
         assert r.intent == VoiceIntent.TODO
 
 
+class TestVoiceListDictation:
+    """kjo-followup: голосовой список без буллетов (STT-поток).
+    Compensация: ≥2 цифр-маркеров ИЛИ ≥2 «нужно/надо <глагол>» → TODO."""
+
+    def test_numbered_dictation_is_list(self):
+        r = detect_intent(
+            "1 нужно сделать отчёт 2 нужно сделать презентацию "
+            "3 нужно сделать звонок", duration=12.0,
+        )
+        assert r.intent == VoiceIntent.TODO
+
+    def test_numbered_without_imperative_is_list(self):
+        r = detect_intent(
+            "1 купить молоко 2 купить хлеб 3 купить сыр", duration=8.0,
+        )
+        assert r.intent == VoiceIntent.TODO
+
+    def test_repeat_imperative_no_numbers_is_list(self):
+        r = detect_intent(
+            "нужно сделать отчёт нужно позвонить маме надо забрать посылку",
+            duration=8.0,
+        )
+        assert r.intent == VoiceIntent.TODO
+
+    def test_single_imperative_not_list(self):
+        r = detect_intent("нужно подумать об этом", duration=3.0)
+        assert r.intent != VoiceIntent.TODO
+
+    def test_napomni_wins_over_numbered(self):
+        # REMINDER-проверка идёт ДО TODO — «напомни» приоритетнее.
+        r = detect_intent(
+            "напомни купить молоко 1 хлеб 2 сыр 3 масло", duration=5.0,
+        )
+        assert r.intent == VoiceIntent.REMINDER
+
+
 class TestVoiceReminderHandler:
     async def test_calls_explicit_remind_pipeline(self):
         """kjo: voice «напомни …» идёт в тот же путь, что /remind —
