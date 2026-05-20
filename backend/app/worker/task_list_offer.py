@@ -73,6 +73,13 @@ async def _maybe_offer_task_list(
     text = _task_list_offer_text(structured)
     buttons = _task_list_offer_buttons(bookmark_id)
 
+    # Источник — медиа (voice/audio/video_note)? Тогда исходное
+    # сообщение бот НЕ должен удалять при подтверждении — это запись,
+    # а не дубль текста списка.
+    _ct = getattr(bookmark, "content_type", None)
+    content_type = _ct if isinstance(_ct, str) and _ct else "text"
+    is_media_src = content_type != "text"
+
     # Probe Redis ДО отправки — иначе кнопка без стейта.
     probe_key = f"task_list_pending_probe:{chat_id}:{bookmark_id}"
     r = None
@@ -104,6 +111,7 @@ async def _maybe_offer_task_list(
                     "bookmark_id": bookmark_id,
                     "src_msg_id": message_id,
                     "silent": bool(silent),
+                    "is_media_src": is_media_src,
                 }),
                 ex=TASK_LIST_PENDING_TTL_SEC,
             )

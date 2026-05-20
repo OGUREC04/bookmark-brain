@@ -19,6 +19,20 @@ MIN_DURATION_FOR_TIMESTAMPS = 60  # seconds
 
 
 _EXISTING_TIMESTAMP_RE = __import__("re").compile(r"\[\d{2}:\d{2}\]")
+# Стрипа для пайплайнов, которые НЕ хотят таймкоды (task_list AI и т.п.):
+# Yandex async STT (>30s) встраивает [MM:SS] в текст. Когда мы потом
+# подаём такой текст в AI как список — таймкоды попадают в каждый пункт.
+_STRIP_TIMESTAMP_RE = __import__("re").compile(r"\s*\[\d{2}:\d{2}\]\s*")
+
+
+def strip_timestamps(text: str) -> str:
+    """Убрать все [MM:SS] маркеры из текста (с окружающими пробелами).
+
+    Использовать когда таймкоды мешают — например при подаче текста
+    голосового списка в AI-классификатор (он не должен видеть их как
+    часть пунктов).
+    """
+    return _STRIP_TIMESTAMP_RE.sub(" ", text).strip()
 
 
 def add_timestamps(text: str, duration: float | None) -> str:

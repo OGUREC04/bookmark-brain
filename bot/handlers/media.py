@@ -20,7 +20,7 @@ from bot.services.stt import (
     YandexSTTService,
     create_stt_service,
 )
-from bot.services.timestamps import add_timestamps
+from bot.services.timestamps import add_timestamps, strip_timestamps
 from bot.services.voice_intent import VoiceIntent, detect_intent
 from bot.utils import ephemeral_error, safe_react
 
@@ -439,11 +439,14 @@ async def _handle_voice_todo(
     silent: bool,
 ) -> None:
     """Voice todo: transcribe → detect tasks → create task_list bookmark."""
-    # Reply with transcription + todo marker
+    # Reply with transcription + todo marker (таймкоды оставляем — для
+    # навигации по длинной записи).
     reply_msg = await message.reply(f"📋 {full_text}", parse_mode=None)
 
-    # Build raw_text with todo prefix so backend task_list_detector picks it up
-    raw_text = f"список задач: {cleaned_text}" if cleaned_text else f"список задач: {full_text}"
+    # AI получает текст БЕЗ [MM:SS] — иначе таймкоды попадают в каждый
+    # пункт списка (Yandex async STT встраивает их прямо в текст).
+    cleaned_for_ai = strip_timestamps(cleaned_text or full_text)
+    raw_text = f"список задач: {cleaned_for_ai}" if cleaned_for_ai else f"список задач: {full_text}"
 
     saved_ok = False
     try:

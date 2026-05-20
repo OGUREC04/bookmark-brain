@@ -51,6 +51,7 @@ async def cb_tasklist_confirm(callback: CallbackQuery, api, store=None):
     bid = pending["bookmark_id"]
     src_msg_id = pending.get("src_msg_id")
     silent = bool(pending.get("silent"))
+    is_media_src = bool(pending.get("is_media_src"))
 
     try:
         bookmark = await api.get_bookmark(token, bid)
@@ -97,7 +98,9 @@ async def cb_tasklist_confirm(callback: CallbackQuery, api, store=None):
         await callback.message.delete()
     except TelegramBadRequest:
         pass
-    if silent and src_msg_id:
+    # Удаляем исходное только если это ТЕКСТОВЫЙ дубль списка.
+    # Голос/аудио/видео-кружок — это запись (контент), не дубль → не трогаем.
+    if silent and src_msg_id and not is_media_src:
         try:
             await callback.message.bot.delete_message(chat_id, src_msg_id)
         except TelegramBadRequest:

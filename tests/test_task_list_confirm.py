@@ -78,7 +78,12 @@ class TestWorkerOffer:
         raw = fake.store.get("task_list_pending:42:777")
         assert raw is not None
         payload = json.loads(raw)
-        assert payload == {"bookmark_id": "bid-X", "src_msg_id": 9, "silent": True}
+        # is_media_src добавлен позже (голос не удаляем). По умолчанию
+        # _bookmark_obj не задаёт content_type → text → is_media_src=False.
+        assert payload == {
+            "bookmark_id": "bid-X", "src_msg_id": 9,
+            "silent": True, "is_media_src": False,
+        }
         # probe-ключ убран после финального SET
         assert "task_list_pending_probe:42:bid-X" not in fake.store
 

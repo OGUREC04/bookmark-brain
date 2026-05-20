@@ -259,8 +259,12 @@ async def process_bookmark_task(
                             bookmark.structured_data,
                             silent=True,
                         )
-                        # Удаляем оригинал юзера (дубль списка) + снимаем 👀
-                        await _delete_message(chat_id, message_id)
+                        # Удаляем оригинал юзера (дубль списка) + снимаем 👀.
+                        # Голос/аудио/видео — это запись, не дубль текста,
+                        # её НЕ удаляем (юзер хочет видеть источник).
+                        _src_ct = getattr(bookmark, "content_type", None) or "text"
+                        if _src_ct == "text":
+                            await _delete_message(chat_id, message_id)
                         resp = await _send_message(chat_id, text)
                         if resp and resp.get("message_id"):
                             new_msg_id = resp["message_id"]
