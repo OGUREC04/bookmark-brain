@@ -34,6 +34,16 @@ class TestStripTimestamps:
         assert "Сегодня нужно" in out
         assert "Дочистить макеты" in out
 
+    def test_preserves_chunk_structure_as_lines(self):
+        """[MM:SS] = границы chunks STT = разрезы. Заменяем на \\n,
+        иначе AI получает одну строку → один пункт."""
+        from bot.services.timestamps import strip_timestamps
+        out = strip_timestamps(
+            "[00:00] раз [00:02] два [00:05] три"
+        )
+        lines = out.splitlines()
+        assert lines == ["раз", "два", "три"]
+
     def test_no_markers_passthrough(self):
         from bot.services.timestamps import strip_timestamps
         assert strip_timestamps("просто текст") == "просто текст"

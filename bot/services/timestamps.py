@@ -26,13 +26,18 @@ _STRIP_TIMESTAMP_RE = __import__("re").compile(r"\s*\[\d{2}:\d{2}\]\s*")
 
 
 def strip_timestamps(text: str) -> str:
-    """Убрать все [MM:SS] маркеры из текста (с окружающими пробелами).
+    """Убрать [MM:SS] маркеры, заменив их на переносы строк.
 
-    Использовать когда таймкоды мешают — например при подаче текста
-    голосового списка в AI-классификатор (он не должен видеть их как
-    часть пунктов).
+    Yandex async STT ставит [MM:SS] на границах chunks — это
+    естественные точки разреза (паузы). Заменяя на \\n, мы сохраняем
+    структуру, что важно для AI-классификатора голосового списка:
+    одна строка без переносов → AI делает один пункт; многострочное
+    → парсит как список.
     """
-    return _STRIP_TIMESTAMP_RE.sub(" ", text).strip()
+    out = _STRIP_TIMESTAMP_RE.sub("\n", text).strip()
+    # Коллапсируем подряд идущие пустые строки и срезаем пробелы по краям.
+    lines = [ln.strip() for ln in out.splitlines() if ln.strip()]
+    return "\n".join(lines)
 
 
 def add_timestamps(text: str, duration: float | None) -> str:
