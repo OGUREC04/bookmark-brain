@@ -200,6 +200,62 @@ class TestConfirmDoesNotDeleteMedia:
         for call in cb.message.bot.delete_message.await_args_list:
             assert call.args != (100, 42)
 
+    async def test_post_confirm_dedup_alert_when_similar(self):
+        """Worker нашёл similar и прокинул в pending → bot tlc после
+        пина шлёт «🔄 Похожий список — объединить?» (post-confirm)."""
+        from bot.handlers.tasks import cb_tasklist_confirm
+        cb = _make_cb()
+        store = AsyncMock()
+        store.pop_task_list_pending = AsyncMock(return_value={
+            "bookmark_id": "bid-1", "src_msg_id": 9,
+            "silent": False, "is_media_src": False,
+            "similar": {
+                "id": "old-bid", "title": "Старый",
+                "done_count": 1, "total_count": 3,
+                "created_at": "2026-05-19T10:00:00",
+            },
+        })
+        api = AsyncMock()
+        api.get_bookmark = AsyncMock(return_value={
+            "title": "x",
+            "structured_data": {"type": "task_list",
+                                "tasks": [{"text": "a", "done": False}]},
+        })
+        api.update_bookmark = AsyncMock()
+
+        await cb_tasklist_confirm(cb, api, store)
+
+        # Два send_message: первый — сам список (999), второй — dedup alert
+        assert cb.message.bot.send_message.await_count >= 2
+        alert_call = cb.message.bot.send_message.await_args_list[-1]
+        assert "Похожий список" in alert_call.args[1]
+        # store_dedup_alert вызван
+        store.store_dedup_alert.assert_awaited()
+        args = store.store_dedup_alert.await_args.args
+        assert args[:3] == (100, "bid-1", "old-bid")
+
+    async def test_no_similar_no_alert(self):
+        from bot.handlers.tasks import cb_tasklist_confirm
+        cb = _make_cb()
+        store = AsyncMock()
+        store.pop_task_list_pending = AsyncMock(return_value={
+            "bookmark_id": "bid-1", "src_msg_id": 9,
+            "silent": False, "is_media_src": False, "similar": None,
+        })
+        api = AsyncMock()
+        api.get_bookmark = AsyncMock(return_value={
+            "title": "x",
+            "structured_data": {"type": "task_list",
+                                "tasks": [{"text": "a", "done": False}]},
+        })
+        api.update_bookmark = AsyncMock()
+
+        await cb_tasklist_confirm(cb, api, store)
+
+        # Только один send_message — сам список, без alert
+        assert cb.message.bot.send_message.await_count == 1
+        store.store_dedup_alert.assert_not_awaited()
+
     async def test_text_source_still_deleted(self):
         from bot.handlers.tasks import cb_tasklist_confirm
         cb = _make_cb()

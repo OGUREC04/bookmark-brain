@@ -80,9 +80,10 @@ class TestWorkerOffer:
         payload = json.loads(raw)
         # is_media_src добавлен позже (голос не удаляем). По умолчанию
         # _bookmark_obj не задаёт content_type → text → is_media_src=False.
+        # similar=None — похожего списка нет (offer чистый).
         assert payload == {
             "bookmark_id": "bid-X", "src_msg_id": 9,
-            "silent": True, "is_media_src": False,
+            "silent": True, "is_media_src": False, "similar": None,
         }
         # probe-ключ убран после финального SET
         assert "task_list_pending_probe:42:bid-X" not in fake.store

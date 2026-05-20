@@ -106,7 +106,54 @@ async def cb_tasklist_confirm(callback: CallbackQuery, api, store=None):
         except TelegramBadRequest:
             pass
 
+    # Post-confirm dedup-alert: worker нашёл похожий список ДО offer и
+    # прокинул его в pending; теперь, когда новый список создан и
+    # запинен, спрашиваем «🔄 Похожий список — объединить?».
+    similar = pending.get("similar")
+    if similar and isinstance(similar, dict) and similar.get("id"):
+        await _send_dedup_alert(
+            callback.message.bot, chat_id, bid, sent.message_id,
+            similar, store,
+        )
+
     await callback.answer("Список создан ✅")
+
+
+async def _send_dedup_alert(
+    bot, chat_id: int, new_bid: str, new_msg_id: int,
+    similar: dict, store,
+) -> None:
+    """Отправляет «🔄 Похожий список — объединить?» после подтверждения
+    создания. Зеркало worker._build_dedup_alert + _store_dedup_alert."""
+    title = similar.get("title") or "Список задач"
+    done = similar.get("done_count", 0)
+    total = similar.get("total_count", 0)
+    created = similar.get("created_at")
+    date_str = ""
+    if created:
+        try:
+            from datetime import datetime
+            dt = datetime.fromisoformat(created) if isinstance(created, str) else created
+            date_str = f" от {dt.strftime('%d.%m')}"
+        except Exception:
+            pass
+    text = (
+        f"🔄 Похожий список <b>{title}</b>{date_str}\n"
+        f"({done}/{total} выполнено)\n\n"
+        f"Объединить новые задачи в него?"
+    )
+    buttons = {"inline_keyboard": [[
+        {"text": "🔗 Объединить", "callback_data": f"dm:{new_bid}"},
+        {"text": "📋 Отдельно", "callback_data": f"dk:{new_bid}"},
+    ]]}
+    try:
+        await bot.send_message(
+            chat_id, text, reply_markup=buttons,
+            parse_mode="HTML", disable_web_page_preview=True,
+        )
+        await store.store_dedup_alert(chat_id, new_bid, similar["id"], new_msg_id)
+    except Exception as e:
+        logger.debug(f"_send_dedup_alert failed: {e}")
 
 
 @router.callback_query(F.data.startswith("tlx:"))

@@ -225,14 +225,16 @@ async def process_bookmark_task(
                     except Exception as e:
                         logger.debug(f"pre-offer similar check failed: {e}")
 
-                # Подтверждение перед созданием+пином только для НОВЫХ
-                # (не-дублирующих) списков. Offer показан → ранний выход:
-                # создание/пин/tip/reminder-хвост отрабатывает bot.
-                if can_notify and not similar:
+                # Подтверждение перед созданием+пином ВСЕГДА (offer и
+                # dedup-alert — разные слои UX). Если есть similar —
+                # прокидываем его в pending; bot после «Да» создаст
+                # список И отправит dedup-alert (post-confirm).
+                if can_notify:
                     from .task_list_offer import _maybe_offer_task_list
                     if await _maybe_offer_task_list(
                         bookmark=bookmark, chat_id=chat_id,
                         message_id=message_id, silent=silent,
+                        similar=similar,
                     ):
                         await session.commit()
                         await embedding_service.close()
