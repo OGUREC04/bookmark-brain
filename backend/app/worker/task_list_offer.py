@@ -53,7 +53,7 @@ def _task_list_offer_text(structured_data: dict) -> str:
 
 async def _maybe_offer_task_list(
     *, bookmark, chat_id: int | None, message_id: int | None, silent: bool,
-    similar: dict | None = None,
+    similar: dict | None = None, general_dup: dict | None = None,
 ) -> bool:
     """Шлём offer «Сделать список?». Возвращает True если offer показан
     (вызывающий тогда НЕ создаёт/пинит список — это сделает bot по «Да»).
@@ -96,6 +96,20 @@ async def _maybe_offer_task_list(
             ),
         }
 
+    # general_dup — для отложенного near-dup при «Нет» (bot tlx).
+    gen_pl: dict | None = None
+    if general_dup:
+        gc = general_dup.get("created_at")
+        gen_pl = {
+            "id": str(general_dup.get("id", "")),
+            "title": general_dup.get("title") or "Без названия",
+            "is_task_list": bool(general_dup.get("is_task_list")),
+            "similarity": float(general_dup.get("similarity") or 0.0),
+            "created_at": (
+                gc.isoformat() if hasattr(gc, "isoformat") else gc
+            ),
+        }
+
     # Probe Redis ДО отправки — иначе кнопка без стейта.
     probe_key = f"task_list_pending_probe:{chat_id}:{bookmark_id}"
     r = None
@@ -129,6 +143,7 @@ async def _maybe_offer_task_list(
                     "silent": bool(silent),
                     "is_media_src": is_media_src,
                     "similar": sim_pl,
+                    "general_dup": gen_pl,
                 }),
                 ex=TASK_LIST_PENDING_TTL_SEC,
             )

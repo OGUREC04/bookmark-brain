@@ -214,6 +214,31 @@ class StateStore:
 
     # ── general dedup (Phase 5D-lite) ──────────────────────────
 
+    async def store_general_dedup(
+        self, chat_id: int, alert_msg_id: int,
+        new_bid: str, old_bid: str, src_msg_id: int | None = None,
+    ) -> None:
+        """Зеркало worker._store_general_dedup. Используется bot когда
+        general near-dup отложен (task_list → tlx «Нет») и теперь
+        материализуется на бот-стороне."""
+        import json
+        r = await self._get()
+        await r.set(
+            f"general_dedup:{chat_id}:{alert_msg_id}",
+            json.dumps({
+                "new_bid": new_bid,
+                "old_bid": old_bid,
+                "src_msg_id": src_msg_id,
+            }),
+            ex=24 * 3600,
+        )
+        # pending_dedup — чтобы следующее сообщение БЕЗ reply тоже работало
+        await r.set(
+            f"pending_dedup:{chat_id}",
+            str(alert_msg_id),
+            ex=self._PENDING_DEDUP_TTL,
+        )
+
     async def get_general_dedup(
         self, chat_id: int, message_id: int,
     ) -> dict | None:

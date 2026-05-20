@@ -122,9 +122,19 @@ async def process_bookmark_task(
         # Если юзер прислал почти то же самое — спрашиваем через reply.
         # Запускаем даже при отсутствии embedding (Pass 2 — text overlap),
         # иначе partial-bookmarks после GigaChat-fail никогда не ловятся.
+        #
+        # ИСКЛЮЧЕНИЕ для task_list: сначала спрашиваем «Сохранить как
+        # список?» (offer), и только если юзер скажет «Нет» — показываем
+        # «уже есть похожая, что делать?» (general dedup отложен в bot tlx).
+        _is_task_list_early = bool(
+            bookmark and bookmark.structured_data
+            and isinstance(bookmark.structured_data, dict)
+            and bookmark.structured_data.get("type") == "task_list"
+        )
         near_dup_handled = False
         if (
-            bookmark
+            not _is_task_list_early
+            and bookmark
             and bookmark.ai_status in ("completed", "partial")
             and can_notify
         ):
@@ -211,30 +221,44 @@ async def process_bookmark_task(
                 # отваливалась при включённом подтверждении. Результат
                 # переиспользуется ниже (без повторного vector-запроса).
                 similar: dict | None = None
+                general_dup: dict | None = None
                 if bookmark.embedding is not None:
+                    _emb_list = (
+                        bookmark.embedding.tolist()
+                        if hasattr(bookmark.embedding, 'tolist')
+                        else list(bookmark.embedding)
+                    )
                     try:
                         from app.services.dedup_checker import (
                             find_similar_unclosed_task_list,
                         )
                         similar = await find_similar_unclosed_task_list(
-                            session, bookmark.id, bookmark.user_id,
-                            bookmark.embedding.tolist()
-                            if hasattr(bookmark.embedding, 'tolist')
-                            else list(bookmark.embedding),
+                            session, bookmark.id, bookmark.user_id, _emb_list,
                         )
                     except Exception as e:
                         logger.debug(f"pre-offer similar check failed: {e}")
+                    # General near-dup (любой тип) — для «Нет» tlx.
+                    # Показываем «уже есть похожая, что делать?» ТОЛЬКО
+                    # если юзер откажется создавать список.
+                    try:
+                        from app.services.dedup_checker import find_near_duplicate
+                        general_dup = await find_near_duplicate(
+                            session, bookmark.id, bookmark.user_id,
+                            _emb_list, raw_text=bookmark.raw_text or "",
+                        )
+                    except Exception as e:
+                        logger.debug(f"pre-offer general dedup failed: {e}")
 
                 # Подтверждение перед созданием+пином ВСЕГДА (offer и
-                # dedup-alert — разные слои UX). Если есть similar —
-                # прокидываем его в pending; bot после «Да» создаст
-                # список И отправит dedup-alert (post-confirm).
+                # dedup-alert — разные слои UX). similar → post-confirm
+                # merge-alert (bot tlc). general_dup → отложенный
+                # near-dup при «Нет» (bot tlx).
                 if can_notify:
                     from .task_list_offer import _maybe_offer_task_list
                     if await _maybe_offer_task_list(
                         bookmark=bookmark, chat_id=chat_id,
                         message_id=message_id, silent=silent,
-                        similar=similar,
+                        similar=similar, general_dup=general_dup,
                     ):
                         await session.commit()
                         await embedding_service.close()

@@ -136,6 +136,46 @@ async def cb_tasklist_confirm(callback: CallbackQuery, api, store=None):
     await callback.answer("Список создан ✅")
 
 
+async def _send_general_dedup_alert(
+    bot, chat_id: int, new_bid: str, src_msg_id, general_dup: dict, store,
+) -> None:
+    """Отложенный general near-dup при «Нет» на offer списка.
+    Зеркало worker'овской ветки: тот же текст, тот же state, тот же
+    reply-флоу (`dedup._handle_general_dedup_reply` подхватит)."""
+    title = general_dup.get("title") or "Без названия"
+    dup_type = "список" if general_dup.get("is_task_list") else "закладку"
+    created = general_dup.get("created_at")
+    date_str = ""
+    if created:
+        try:
+            from datetime import datetime as _dt
+            dt = _dt.fromisoformat(created) if isinstance(created, str) else created
+            date_str = f" от {dt.strftime('%d.%m')}"
+        except Exception:
+            pass
+    similarity = float(general_dup.get("similarity") or 0.0)
+    prefix = "⚠️ Уже есть почти такая же" if similarity >= 0.95 else "🔄 Похожая запись уже сохранялась"
+    alert_text = (
+        f"{prefix} {dup_type}: <b>{title}</b>{date_str}\n\n"
+        f"Что делаем с новой? Ответь reply на это сообщение:\n"
+        f"• <b>открой</b> — покажу старую\n"
+        f"• <b>удали</b> — удалю новую (старая останется)\n"
+        f"• <b>обнови</b> — заменю старую новой\n"
+        f"• <b>сохрани как новую</b> — оставлю обе"
+    )
+    try:
+        sent = await bot.send_message(
+            chat_id, alert_text, parse_mode="HTML",
+            disable_web_page_preview=True,
+        )
+        await store.store_general_dedup(
+            chat_id, sent.message_id, new_bid, str(general_dup["id"]),
+            src_msg_id=src_msg_id,
+        )
+    except Exception as e:
+        logger.debug(f"_send_general_dedup_alert failed: {e}")
+
+
 async def _send_dedup_alert(
     bot, chat_id: int, new_bid: str, new_msg_id: int,
     similar: dict, store,
@@ -201,12 +241,29 @@ async def cb_tasklist_decline(callback: CallbackQuery, api, store=None):
     bid = pending["bookmark_id"]
     src_msg_id = pending.get("src_msg_id")
     silent = bool(pending.get("silent"))
+    general_dup = pending.get("general_dup")
 
     try:
         bookmark = await api.update_bookmark(token, bid, {"structured_data": None})
     except Exception as e:
         logger.warning(f"cb_tasklist_decline: update {bid} failed: {e}")
         await callback.answer("Ошибка", show_alert=True)
+        return
+
+    # Отложенный general near-dup: worker нашёл похожую запись ДО offer,
+    # но не показал — ждали решения «Это список?». Юзер сказал «Нет» —
+    # закладка обычная, теперь самое время спросить про дубль.
+    if general_dup and isinstance(general_dup, dict) and general_dup.get("id"):
+        # Чистим offer-сообщение, потом шлём near-dup alert.
+        try:
+            await callback.message.delete()
+        except TelegramBadRequest:
+            pass
+        await _send_general_dedup_alert(
+            callback.message.bot, chat_id, bid, src_msg_id,
+            general_dup, store,
+        )
+        await callback.answer()
         return
 
     if silent:

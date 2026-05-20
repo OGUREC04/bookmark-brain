@@ -162,6 +162,7 @@ def _make_cb(data: str = "tlc:bid-1", msg_id: int = 555):
     cb.message.bot.pin_chat_message = AsyncMock()
     cb.message.bot.delete_message = AsyncMock()
     cb.message.delete = AsyncMock()
+    cb.message.edit_text = AsyncMock()
     cb.from_user = MagicMock(id=999)
     cb.answer = AsyncMock()
     return cb
@@ -299,6 +300,62 @@ class TestConfirmDoesNotDeleteMedia:
             "new-bid", 42, user_id=7,
         )
         created.assert_not_awaited()
+
+    async def test_decline_with_general_dup_sends_alert(self):
+        """tlx «Нет» + есть general_dup → отложенный near-dup alert
+        отправляется, store_general_dedup пишется (reply-флоу подхватит)."""
+        from bot.handlers.tasks import cb_tasklist_decline
+        cb = _make_cb("tlx:bid-1")
+        store = AsyncMock()
+        store.pop_task_list_pending = AsyncMock(return_value={
+            "bookmark_id": "bid-1", "src_msg_id": 42,
+            "silent": False, "is_media_src": True,
+            "similar": None,
+            "general_dup": {
+                "id": "old-bid", "title": "Старая закладка",
+                "is_task_list": False, "similarity": 0.97,
+                "created_at": "2026-05-18T10:00:00",
+            },
+        })
+        api = AsyncMock()
+        api.update_bookmark = AsyncMock(return_value={"title": "x"})
+
+        # capture sent alert message_id для assert
+        sent_msg = MagicMock(message_id=777)
+        cb.message.bot.send_message = AsyncMock(return_value=sent_msg)
+
+        await cb_tasklist_decline(cb, api, store)
+
+        # 1) structured_data сброшен
+        api.update_bookmark.assert_awaited_with("tok", "bid-1", {"structured_data": None})
+        # 2) Alert отправлен с «почти такая же» (similarity >= 0.95)
+        cb.message.bot.send_message.assert_awaited()
+        alert_text = cb.message.bot.send_message.await_args.args[1]
+        assert "почти такая же" in alert_text
+        assert "Старая закладка" in alert_text
+        # 3) general_dedup state сохранён в Redis (для reply-флоу)
+        store.store_general_dedup.assert_awaited()
+        args = store.store_general_dedup.await_args.args
+        assert args[:4] == (100, 777, "bid-1", "old-bid")
+
+    async def test_decline_without_general_dup_old_behavior(self):
+        """tlx без general_dup → стандартная карточка/реакция, без alert."""
+        from bot.handlers.tasks import cb_tasklist_decline
+        cb = _make_cb("tlx:bid-1")
+        store = AsyncMock()
+        store.pop_task_list_pending = AsyncMock(return_value={
+            "bookmark_id": "bid-1", "src_msg_id": 42,
+            "silent": False, "is_media_src": False,
+            "similar": None, "general_dup": None,
+        })
+        api = AsyncMock()
+        api.update_bookmark = AsyncMock(return_value={"title": "x"})
+
+        await cb_tasklist_decline(cb, api, store)
+
+        store.store_general_dedup.assert_not_awaited()
+        # Verbose: edit_text карточкой
+        cb.message.edit_text.assert_awaited()
 
     async def test_text_source_still_deleted(self):
         from bot.handlers.tasks import cb_tasklist_confirm

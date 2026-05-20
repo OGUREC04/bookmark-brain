@@ -83,7 +83,8 @@ class TestWorkerOffer:
         # similar=None — похожего списка нет (offer чистый).
         assert payload == {
             "bookmark_id": "bid-X", "src_msg_id": 9,
-            "silent": True, "is_media_src": False, "similar": None,
+            "silent": True, "is_media_src": False,
+            "similar": None, "general_dup": None,
         }
         # probe-ключ убран после финального SET
         assert "task_list_pending_probe:42:bid-X" not in fake.store
