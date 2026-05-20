@@ -256,6 +256,50 @@ class TestConfirmDoesNotDeleteMedia:
         assert cb.message.bot.send_message.await_count == 1
         store.store_dedup_alert.assert_not_awaited()
 
+    async def test_materialize_calls_create_when_task_list(self, monkeypatch):
+        """save_new на near-dup → если new — task_list, материализуем
+        (без повторного offer)."""
+        from bot.handlers.tasks.dedup import _materialize_if_task_list
+        api = AsyncMock()
+        api.get_bookmark = AsyncMock(return_value={
+            "structured_data": {"type": "task_list", "tasks": [{"text": "a"}]},
+            "content_type": "voice",
+        })
+        store = AsyncMock()
+        bot = AsyncMock()
+        import bot.handlers.settings
+        async def _silent(*_a, **_k): return True
+        monkeypatch.setattr(bot.handlers.settings, "is_silent", _silent)
+        # patch the helper we delegate to
+        import bot.handlers.tasks.confirm as cf
+        created = AsyncMock(return_value=999)
+        monkeypatch.setattr(cf, "_create_and_pin_task_list", created)
+        await _materialize_if_task_list(
+            bot, 100, "tok", api, store, "new-bid", 42, user_id=7,
+        )
+        created.assert_awaited_once()
+        # is_media_src=True (voice), silent=True переданы
+        kwargs = created.await_args.kwargs
+        assert kwargs["silent"] is True
+        assert kwargs["is_media_src"] is True
+        assert kwargs["src_msg_id"] == 42
+
+    async def test_materialize_skips_when_not_task_list(self, monkeypatch):
+        from bot.handlers.tasks.dedup import _materialize_if_task_list
+        api = AsyncMock()
+        api.get_bookmark = AsyncMock(return_value={
+            "structured_data": None,  # обычная заметка
+            "content_type": "text",
+        })
+        import bot.handlers.tasks.confirm as cf
+        created = AsyncMock()
+        monkeypatch.setattr(cf, "_create_and_pin_task_list", created)
+        await _materialize_if_task_list(
+            AsyncMock(), 100, "tok", api, AsyncMock(),
+            "new-bid", 42, user_id=7,
+        )
+        created.assert_not_awaited()
+
     async def test_text_source_still_deleted(self):
         from bot.handlers.tasks import cb_tasklist_confirm
         cb = _make_cb()

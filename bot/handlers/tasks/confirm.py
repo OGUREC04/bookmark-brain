@@ -23,6 +23,64 @@ logger = logging.getLogger(__name__)
 router = Router()
 
 
+async def _create_and_pin_task_list(
+    bot, chat_id: int, token: str, api, store,
+    bookmark_id: str, *, silent: bool,
+    src_msg_id: int | None = None, is_media_src: bool = False,
+) -> int | None:
+    """Создать + забиндить + запинить task_list по подтверждённому
+    bookmark_id. Используется из:
+      - cb_tasklist_confirm («Да» на offer)
+      - general dedup «сохрани как новую» когда new — task_list
+        (юзер уже опт-инул через резолюцию near-dup, повторный
+        offer не нужен).
+
+    Возвращает message_id отправленного списка, либо None при сбое.
+    """
+    try:
+        bookmark = await api.get_bookmark(token, bookmark_id)
+    except Exception as e:
+        logger.warning(f"_create_and_pin_task_list: get_bookmark {bookmark_id} failed: {e}")
+        return None
+
+    structured = bookmark.get("structured_data") or {}
+    text = _render_text(bookmark.get("title"), structured, silent=silent)
+    keyboard = None if silent else _build_keyboard(bookmark_id, structured)
+
+    try:
+        sent = await bot.send_message(
+            chat_id, text, reply_markup=keyboard,
+            parse_mode="HTML", disable_web_page_preview=True,
+        )
+    except Exception as e:
+        logger.error(f"_create_and_pin_task_list: send list failed: {e}")
+        return None
+
+    # bind ПЕРЕД pin — иначе on_pin_service_message не найдёт.
+    try:
+        await store.bind_list_message(chat_id, sent.message_id, bookmark_id)
+    except Exception as e:
+        logger.debug(f"bind failed: {e}")
+    try:
+        await bot.pin_chat_message(chat_id, sent.message_id, disable_notification=True)
+    except TelegramBadRequest as e:
+        logger.debug(f"pin failed: {e.message}")
+
+    try:
+        await api.update_bookmark(token, bookmark_id, {"is_favorite": True})
+    except Exception as e:
+        logger.debug(f"set favorite failed: {e}")
+
+    # Удаляем исходный текстовый дубль (silent). Медиа — не трогаем.
+    if silent and src_msg_id and not is_media_src:
+        try:
+            await bot.delete_message(chat_id, src_msg_id)
+        except TelegramBadRequest:
+            pass
+
+    return sent.message_id
+
+
 @router.callback_query(F.data.startswith("tlc:"))
 async def cb_tasklist_confirm(callback: CallbackQuery, api, store=None):
     """«✅ Да» — создаём, биндим и пиним список."""
@@ -53,67 +111,26 @@ async def cb_tasklist_confirm(callback: CallbackQuery, api, store=None):
     silent = bool(pending.get("silent"))
     is_media_src = bool(pending.get("is_media_src"))
 
-    try:
-        bookmark = await api.get_bookmark(token, bid)
-    except Exception as e:
-        logger.warning(f"cb_tasklist_confirm: get_bookmark {bid} failed: {e}")
-        await callback.answer("Не нашёл список.", show_alert=True)
-        return
-
-    structured = bookmark.get("structured_data") or {}
-    text = _render_text(bookmark.get("title"), structured, silent=silent)
-    keyboard = None if silent else _build_keyboard(bid, structured)
-
-    try:
-        sent = await callback.message.bot.send_message(
-            chat_id, text, reply_markup=keyboard,
-            parse_mode="HTML", disable_web_page_preview=True,
-        )
-    except Exception as e:
-        logger.error(f"cb_tasklist_confirm: send list failed: {e}")
+    new_msg_id = await _create_and_pin_task_list(
+        callback.message.bot, chat_id, token, api, store, bid,
+        silent=silent, src_msg_id=src_msg_id, is_media_src=is_media_src,
+    )
+    if new_msg_id is None:
         await callback.answer("Не удалось создать список.", show_alert=True)
         return
 
-    # bind ПЕРЕД pin — иначе on_pin_service_message не найдёт список в
-    # Redis и не уберёт сервисное «закрепил(а)».
-    try:
-        await store.bind_list_message(chat_id, sent.message_id, bid)
-    except Exception as e:
-        logger.debug(f"cb_tasklist_confirm: bind failed: {e}")
-    try:
-        await callback.message.bot.pin_chat_message(
-            chat_id, sent.message_id, disable_notification=True,
-        )
-    except TelegramBadRequest as e:
-        logger.debug(f"cb_tasklist_confirm: pin failed: {e.message}")
-
-    # Список подтверждён → favorite (видно в /list).
-    try:
-        await api.update_bookmark(token, bid, {"is_favorite": True})
-    except Exception as e:
-        logger.debug(f"cb_tasklist_confirm: set favorite failed: {e}")
-
-    # Чистим offer и (в silent) исходный дубль юзера — список сам себе фидбэк.
+    # Чистим offer — список сам себе фидбэк.
     try:
         await callback.message.delete()
     except TelegramBadRequest:
         pass
-    # Удаляем исходное только если это ТЕКСТОВЫЙ дубль списка.
-    # Голос/аудио/видео-кружок — это запись (контент), не дубль → не трогаем.
-    if silent and src_msg_id and not is_media_src:
-        try:
-            await callback.message.bot.delete_message(chat_id, src_msg_id)
-        except TelegramBadRequest:
-            pass
 
     # Post-confirm dedup-alert: worker нашёл похожий список ДО offer и
-    # прокинул его в pending; теперь, когда новый список создан и
-    # запинен, спрашиваем «🔄 Похожий список — объединить?».
+    # прокинул его в pending; теперь спрашиваем про объединение.
     similar = pending.get("similar")
     if similar and isinstance(similar, dict) and similar.get("id"):
         await _send_dedup_alert(
-            callback.message.bot, chat_id, bid, sent.message_id,
-            similar, store,
+            callback.message.bot, chat_id, bid, new_msg_id, similar, store,
         )
 
     await callback.answer("Список создан ✅")

@@ -33,6 +33,36 @@ logger = logging.getLogger(__name__)
 router = Router()
 
 
+async def _materialize_if_task_list(
+    bot, chat_id: int, token: str, api, store,
+    bookmark_id: str, src_msg_id, user_id: int,
+) -> None:
+    """После «сохрани как новую» (general near-dup): если новая
+    закладка — task_list, бот её сам материализует (создаёт сообщение
+    списка + пинит + favorite). Повторный offer не нужен: юзер уже
+    опт-инул через резолюцию dedup. Раньше список молча оставался в
+    БД без UI, юзер не понимал «куда делся список».
+    """
+    try:
+        bm = await api.get_bookmark(token, bookmark_id)
+    except Exception as e:
+        logger.debug(f"_materialize: get_bookmark {bookmark_id} failed: {e}")
+        return
+    sd = bm.get("structured_data") or {}
+    if not isinstance(sd, dict) or sd.get("type") != "task_list":
+        return
+    from bot.handlers.settings import is_silent
+
+    from .confirm import _create_and_pin_task_list
+    silent = await is_silent(api, token, user_id)
+    ct = bm.get("content_type")
+    is_media_src = bool(ct) and isinstance(ct, str) and ct != "text"
+    await _create_and_pin_task_list(
+        bot, chat_id, token, api, store, bookmark_id,
+        silent=silent, src_msg_id=src_msg_id, is_media_src=is_media_src,
+    )
+
+
 async def _react_src(bot, chat_id: int, src_msg_id, emoji: str) -> None:
     """#10: вернуть реакцию на исходное сообщение юзера.
 
@@ -444,6 +474,13 @@ async def _handle_general_dedup_reply(
             pass
         # #10: вернуть фидбэк на исходное сообщение (silent снял 👀)
         await _react_src(message.bot, chat_id, src_msg_id, "\U0001f44d")
+        # Если новая закладка — task_list, материализуем её сейчас:
+        # worker пропустил task_list-ветку из-за near_dup, юзер
+        # подтвердил «сохранить как новую» — пора показать список.
+        await _materialize_if_task_list(
+            message.bot, chat_id, token, api, store,
+            new_bid, src_msg_id, message.from_user.id,
+        )
 
     elif intent == "update":
         # См. docs/bugs/2026-05-11-task-list-duplicates-and-merge-ui.md
@@ -552,6 +589,10 @@ async def handle_pending_dedup(
         await _edit_alert(MSG_SAVED_NEW)
         asyncio.create_task(_delete_after_by_id(bot, chat_id, alert_msg_id, 5.0))
         await _react_src(bot, chat_id, src_msg_id, "\U0001f44d")
+        await _materialize_if_task_list(
+            bot, chat_id, token, api, store,
+            new_bid, src_msg_id, message.from_user.id,
+        )
 
     elif intent == "update":
         # См. docs/bugs/2026-05-11-task-list-duplicates-and-merge-ui.md
