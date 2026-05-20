@@ -15,39 +15,26 @@ router = Router()
 
 @router.message(Command("unpin"))
 async def cmd_unpin_all(message: Message, api, store=None):
-    """#5: открепить все списки задач в чате. Сами списки остаются —
-    снимается только закрепление."""
+    """#5: открепить ВСЕ закреплённые сообщения в чате.
+
+    Telegram unpin_all_chat_messages снимает все пины разом, не
+    полагаясь на наш Redis-реестр (старые пины могли быть забинжены
+    до фиксов, или TTL истёк — итерация по реестру их не зацепит).
+    У нас бот пинит только списки, так что «всё → списки» эквивалентно.
+    Сами списки остаются как закладки, /lists их покажет.
+    """
     from bot.common.auth import ensure_user
     token = await ensure_user(message, api)
     if not token:
         return
-    if store is None:
-        await message.answer(
-            "Сейчас недоступно (нет состояния). Попробуй позже.",
-            parse_mode=None,
-        )
-        return
 
     chat_id = message.chat.id
     try:
-        msg_ids = await store.list_task_list_message_ids(chat_id)
+        await message.bot.unpin_all_chat_messages(chat_id)
+    except TelegramBadRequest as e:
+        logger.debug(f"/unpin: unpin_all failed: {e.message}")
     except Exception as e:
-        logger.warning(f"/unpin: list ids failed: {e}")
-        msg_ids = []
-
-    if not msg_ids:
-        await message.answer("Списков в этом чате не нашёл.", parse_mode=None)
-        return
-
-    # unpinChatMessage идемпотентен (на незакреплённом — no-op), поэтому
-    # точный счётчик «сколько было закреплено» недостоверен — не врём.
-    for mid in msg_ids:
-        try:
-            await message.bot.unpin_chat_message(chat_id, mid)
-        except TelegramBadRequest:
-            pass  # не был закреплён / устарел — ок
-        except Exception as e:
-            logger.debug(f"/unpin: unpin {mid} failed: {e}")
+        logger.warning(f"/unpin: unpin_all failed: {e}")
 
     await message.answer(
         "📌 Открепил все списки. Сами списки на месте — /lists.",

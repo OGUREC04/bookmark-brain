@@ -20,6 +20,54 @@ if str(_BACKEND) not in sys.path:
 import pytest
 
 
+# ───────────────────── preprocess_voice_list ─────────────────────
+
+
+class TestVoiceListPreprocessing:
+    def test_full_voice_transcript_cleaned(self):
+        from bot.services.timestamps import strip_timestamps
+        from bot.services.voice_list import preprocess_voice_list
+        stt = (
+            "[00:00] Сегодня нужно. [00:02] 1 Дочистить макеты. "
+            "[00:05] По главной странице поиска. [00:08] 2 Сделай 3 Вьюга 100. "
+            "[00:12] 3 [00:15] Сделать 3 задание по бизнесу. "
+            "[00:19] 4 [00:21] Внести правки на сайт Тильда. "
+            "[00:25] 5 Заказать справку студента. [00:30] Вроде все."
+        )
+        out = preprocess_voice_list(strip_timestamps(stt))
+        lines = out.splitlines()
+        # Преамбула «Сегодня нужно» удалена, 5 нумерованных пунктов.
+        assert len(lines) == 5
+        assert lines[0].startswith("1. Дочистить макеты")
+        # Континуация склеена с пунктом 1
+        assert "По главной странице поиска" in lines[0]
+        # Bare digit «3» склеен со следующей строкой
+        assert lines[2].startswith("3. Сделать 3 задание")
+        # «Вроде все» приклеено к последнему пункту
+        assert "Вроде все" in lines[4]
+
+    def test_preamble_dropped(self):
+        from bot.services.voice_list import preprocess_voice_list
+        out = preprocess_voice_list("Мне нужно.\n1 Купить молоко.\n2 Позвонить маме.")
+        assert "Мне нужно" not in out
+        assert out.splitlines() == ["1. Купить молоко.", "2. Позвонить маме."]
+
+    def test_bare_digit_merges_with_next(self):
+        from bot.services.voice_list import preprocess_voice_list
+        out = preprocess_voice_list("1 a\n2\nb\n3 c")
+        assert out.splitlines() == ["1. a", "2. b", "3. c"]
+
+    def test_no_digits_keeps_single_item(self):
+        from bot.services.voice_list import preprocess_voice_list
+        out = preprocess_voice_list("просто заметка без структуры")
+        assert out == "просто заметка без структуры"
+
+    def test_empty_passthrough(self):
+        from bot.services.voice_list import preprocess_voice_list
+        assert preprocess_voice_list("") == ""
+        assert preprocess_voice_list("   \n  ") == ""
+
+
 # ───────────────────── strip_timestamps ─────────────────────
 
 

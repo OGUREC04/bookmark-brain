@@ -22,6 +22,7 @@ from bot.services.stt import (
 )
 from bot.services.timestamps import add_timestamps, strip_timestamps
 from bot.services.voice_intent import VoiceIntent, detect_intent
+from bot.services.voice_list import preprocess_voice_list
 from bot.utils import ephemeral_error, safe_react
 
 logger = logging.getLogger(__name__)
@@ -443,9 +444,13 @@ async def _handle_voice_todo(
     # навигации по длинной записи).
     reply_msg = await message.reply(f"📋 {full_text}", parse_mode=None)
 
-    # AI получает текст БЕЗ [MM:SS] — иначе таймкоды попадают в каждый
-    # пункт списка (Yandex async STT встраивает их прямо в текст).
-    cleaned_for_ai = strip_timestamps(cleaned_text or full_text)
+    # AI получает текст БЕЗ [MM:SS] и пере-сгруппированный по нумерации:
+    # STT даёт chunks (строки), но границы chunks не = пунктам. Группируем
+    # «1 ... \n По главной ... \n 2 ... \n 3 \n Сделать ...» → «1. ... \n
+    # 2. ... \n 3. Сделать ...» — детектор увидит чистую нумерацию.
+    cleaned_for_ai = preprocess_voice_list(
+        strip_timestamps(cleaned_text or full_text)
+    )
     raw_text = f"список задач: {cleaned_for_ai}" if cleaned_for_ai else f"список задач: {full_text}"
 
     saved_ok = False

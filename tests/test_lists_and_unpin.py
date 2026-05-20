@@ -79,31 +79,18 @@ class TestCmdLists:
 
 
 class TestCmdUnpinAll:
-    async def test_unpins_all_registered(self):
+    async def test_calls_unpin_all_chat_messages(self):
+        """unpin_all_chat_messages — единый вызов Telegram, не зависит
+        от Redis-реестра (старые пины тоже снимаются)."""
         from bot.handlers.tasks.commands import cmd_unpin_all
         msg = MagicMock()
         msg.chat = MagicMock(id=100)
         msg.bot = AsyncMock()
         msg.answer = AsyncMock()
-        store = AsyncMock()
-        store.list_task_list_message_ids = AsyncMock(return_value=[11, 22, 33])
-        await cmd_unpin_all(msg, AsyncMock(), store)
+        await cmd_unpin_all(msg, AsyncMock(), AsyncMock())
 
-        assert msg.bot.unpin_chat_message.await_count == 3
-        msg.bot.unpin_chat_message.assert_any_await(100, 22)
+        msg.bot.unpin_all_chat_messages.assert_awaited_once_with(100)
         assert "Открепил" in msg.answer.await_args.args[0]
-
-    async def test_no_lists(self):
-        from bot.handlers.tasks.commands import cmd_unpin_all
-        msg = MagicMock()
-        msg.chat = MagicMock(id=100)
-        msg.bot = AsyncMock()
-        msg.answer = AsyncMock()
-        store = AsyncMock()
-        store.list_task_list_message_ids = AsyncMock(return_value=[])
-        await cmd_unpin_all(msg, AsyncMock(), store)
-        msg.bot.unpin_chat_message.assert_not_awaited()
-        assert "не нашёл" in msg.answer.await_args.args[0].lower()
 
     async def test_swallows_unpin_errors(self):
         from aiogram.exceptions import TelegramBadRequest
@@ -111,14 +98,12 @@ class TestCmdUnpinAll:
         msg = MagicMock()
         msg.chat = MagicMock(id=100)
         msg.bot = AsyncMock()
-        msg.bot.unpin_chat_message = AsyncMock(
-            side_effect=TelegramBadRequest(method=None, message="not pinned")
+        msg.bot.unpin_all_chat_messages = AsyncMock(
+            side_effect=TelegramBadRequest(method=None, message="no rights")
         )
         msg.answer = AsyncMock()
-        store = AsyncMock()
-        store.list_task_list_message_ids = AsyncMock(return_value=[11])
-        # не должно бросать
-        await cmd_unpin_all(msg, AsyncMock(), store)
+        # не должно бросать; юзер всё равно увидит подтверждение
+        await cmd_unpin_all(msg, AsyncMock(), AsyncMock())
         msg.answer.assert_awaited()
 
 
