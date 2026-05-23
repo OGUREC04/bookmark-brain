@@ -4,7 +4,7 @@ title BookmarkBrain - Startup
 
 set PROJECT_DIR=%~dp0
 set BACKEND_DIR=%PROJECT_DIR%backend
-set FRONTEND_DIR=%PROJECT_DIR%frontend
+set FRONTEND_DIR=%PROJECT_DIR%..\bookmark-brain-miniapp
 set RUN_DIR=%PROJECT_DIR%tools\run
 set VENV_DIR=%LOCALAPPDATA%\bookmark-brain\venv
 set VENV_PY=%VENV_DIR%\Scripts\python.exe
