@@ -22,7 +22,6 @@ from freezegun import freeze_time
 
 from backend.app.services.nl_date import ParseStatus, parse
 
-
 # Фиксированное «сейчас»: среда, 13 мая 2026, 12:00 MSK = 09:00 UTC
 NOW_MSK = datetime(2026, 5, 13, 12, 0, tzinfo=ZoneInfo("Europe/Moscow"))
 NOW_UTC = NOW_MSK.astimezone(timezone.utc)
@@ -126,6 +125,19 @@ class TestWeekday:
 
     def test_v_subbotu_no_time(self) -> None:
         result = parse("в субботу", user_tz="Europe/Moscow", now=NOW_UTC)
+        assert result.status == ParseStatus.NEEDS_HOUR
+        assert result.dt is None
+
+    def test_zavtra_no_time_needs_hour(self) -> None:
+        """«завтра» без часа → NEEDS_HOUR, а НЕ «завтра в текущее время».
+        dateparser наследовал час от RELATIVE_BASE для относительных слов —
+        обнуляем время базы для голой даты."""
+        result = parse("завтра", user_tz="Europe/Moscow", now=NOW_UTC)
+        assert result.status == ParseStatus.NEEDS_HOUR
+        assert result.dt is None
+
+    def test_poslezavtra_no_time_needs_hour(self) -> None:
+        result = parse("послезавтра", user_tz="Europe/Moscow", now=NOW_UTC)
         assert result.status == ParseStatus.NEEDS_HOUR
         assert result.dt is None
 

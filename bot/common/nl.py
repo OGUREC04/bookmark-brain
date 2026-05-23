@@ -113,10 +113,13 @@ def split_remind_text_and_time(
     n = len(tokens)
 
     # Heuristic: try a LARGER window from the end (5..1 tokens).
-    # Count OK AND IN_PAST as a "time match" — otherwise «вчера в 9»
-    # (3 tokens) is skipped because «в 9» (2 tokens) parses OK first.
-    # IN_PAST is later caught in cmd_remind with a meaningful message.
-    valid_statuses = (ParseStatus.OK, ParseStatus.IN_PAST)
+    # OK / IN_PAST / NEEDS_HOUR считаем «совпадением времени»: «вчера в 9»
+    # (3 токена) иначе скипается т.к. «в 9» парсится OK первым. NEEDS_HOUR —
+    # голая дата в хвосте («купить хлеб завтра»): время-часть = «завтра»,
+    # downstream спросит час. IN_PAST ловится в cmd_remind с понятным текстом.
+    valid_statuses = (
+        ParseStatus.OK, ParseStatus.IN_PAST, ParseStatus.NEEDS_HOUR,
+    )
     for window in range(min(5, n), 0, -1):
         time_part = " ".join(tokens[n - window:])
         text_part = " ".join(tokens[: n - window])

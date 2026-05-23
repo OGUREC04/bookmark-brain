@@ -220,12 +220,26 @@ def parse(
     # Препроцессинг: «в 9» → «в 9:00» (dateparser не парсит часы без минут)
     text_for_parser = _preprocess_short_time(text_normalized)
 
+    # Есть ли в тексте указание времени / интервала. Считаем ДО парсинга —
+    # нужно чтобы решить, обнулять ли время базы (см. ниже).
+    has_time_in_text = bool(_TIME_HINT_RE.search(text_normalized))
+    has_interval = bool(_INTERVAL_HINT_RE.search(text_normalized))
+
+    # «Голая дата» без времени/интервала («завтра», «в субботу», «15 мая»):
+    # обнуляем время базы. Иначе dateparser для ОТНОСИТЕЛЬНЫХ слов («завтра»)
+    # наследует текущий час (завтра в это же время) → NEEDS_HOUR не срабатывает
+    # и бот молча ставит напоминание на «сейчас завтра». «сегодня» не трогаем
+    # (midnight → ушло бы в IN_PAST вместо вопроса о часе).
+    base = now_in_user_tz
+    if not has_today_marker and not has_time_in_text and not has_interval:
+        base = now_in_user_tz.replace(hour=0, minute=0, second=0, microsecond=0)
+
     # БАГ-фикс: ранее RELATIVE_BASE передавался naive (через .replace(tzinfo=None)).
     # Dateparser трактует naive base как UTC → «завтра» в локальном 01:08 даёт
     # неверный день (UTC 22:08 → «завтра» = тот же local day).
     # Передаём tz-aware RELATIVE_BASE + явный TIMEZONE чтобы parsing шёл в user_tz.
     settings: dict = {
-        "RELATIVE_BASE": now_in_user_tz,  # tz-aware в user_tz
+        "RELATIVE_BASE": base,  # tz-aware в user_tz (время обнулено для голой даты)
         "TIMEZONE": user_tz,
         "RETURN_AS_TIMEZONE_AWARE": True,
     }
@@ -263,12 +277,8 @@ def parse(
         else:
             return ParseResult(dt=None, status=ParseStatus.IN_PAST)
 
-    # Проверка «есть ли в тексте указание времени»
-    has_time_in_text = bool(_TIME_HINT_RE.search(text_normalized))
-    has_interval = bool(_INTERVAL_HINT_RE.search(text_normalized))
-
     # Если нет указания времени и нет интервала, и время вышло «00:00» в user_tz —
-    # это дата без времени → NEEDS_TIME
+    # это дата без времени → NEEDS_TIME (has_time_in_text/has_interval уже посчитаны выше)
     if not has_time_in_text and not has_interval:
         parsed_in_user_tz = parsed.astimezone(user_zone)
         # «завтра» / «в субботу» / «15 мая» dateparser обычно возвращает с time=00:00
