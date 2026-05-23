@@ -8,7 +8,7 @@ import { BookmarkCard } from "../components/ds/BookmarkCard";
 import { SuggestionPager } from "../components/ds/SuggestionPager";
 import { api, type Bookmark } from "../lib/api";
 import { bookmarkToChatRow, bookmarkToCard, matchesFilter } from "../lib/adapters";
-import { formatRelativeDate } from "../lib/formatters";
+import { formatDaySeparator } from "../lib/formatters";
 
 type Filter = "all" | "fav" | "task" | "voice";
 
@@ -322,8 +322,7 @@ function ChatView({
   const rows: ({ sep: string } | { b: Bookmark })[] = [];
   let lastDay = "";
   for (const b of items) {
-    const day = formatRelativeDate(b.created_at);
-    const dayKey = /^\d{2}:\d{2}$/.test(day) ? "сегодня" : day;
+    const dayKey = formatDaySeparator(b.created_at);
     if (dayKey !== lastDay) {
       rows.push({ sep: dayKey });
       lastDay = dayKey;

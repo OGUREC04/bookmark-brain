@@ -45,12 +45,11 @@ function TabItem({
           flexDirection: "column",
           alignItems: "center",
           gap: 3,
-          padding: active ? "7px 14px 6px" : "7px 8px 6px",
+          padding: "7px 10px 6px",
           borderRadius: 16,
           background: active ? "var(--brand-primary-tint)" : "transparent",
           color: active ? "var(--brand-primary-press)" : "var(--fg-3)",
-          transition:
-            "background 220ms var(--ease-out), color 220ms var(--ease-out), padding 220ms var(--ease-out)",
+          transition: "background 220ms var(--ease-out), color 220ms var(--ease-out)",
           minWidth: 0,
           maxWidth: "100%",
         }}

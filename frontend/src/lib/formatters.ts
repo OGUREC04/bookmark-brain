@@ -47,6 +47,30 @@ export function formatRelativeDate(iso: string): string {
 }
 
 /**
+ * Метка разделителя дней в ленте.
+ * - сегодня → "сегодня"
+ * - вчера → "вчера"
+ * - 2-6 дней (эта неделя) → "16.05 пт"
+ * - >=7 дней → "16.05"
+ */
+export function formatDaySeparator(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const target = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const diffDays = Math.floor((today.getTime() - target.getTime()) / 86_400_000);
+
+  if (diffDays === 0) return "сегодня";
+  if (diffDays === 1) return "вчера";
+
+  const date = `${pad2(d.getDate())}.${pad2(d.getMonth() + 1)}`;
+  if (diffDays > 1 && diffDays < 7) return `${date} ${DAYS_SHORT[d.getDay()]}`;
+  return date;
+}
+
+/**
  * Форматирование fire_at напоминания.
  * - <1ч до → "через 30 мин"
  * - сегодня после now → "сегодня 19:00"
