@@ -4,14 +4,13 @@
 длинная прелюдия не должны детектиться как task_list.
 """
 import pytest
-
 from app.services.task_list_detector import (
     AD_PATTERNS,
     MAX_PREAMBLE_WORDS,
     MAX_TASK_LENGTH,
+    _is_preamble_line,
     detect,
 )
-
 
 # ── Положительные кейсы (должно детектить) ──
 
@@ -28,6 +27,36 @@ def test_explicit_trigger_forces_list():
     result = detect(text)
     assert result.is_list is True
     assert result.forced_by_user is True
+
+
+def test_forced_drops_leading_preamble():
+    """«Сегодня нужно» — вводная преамбула, не пункт. forced newline-split
+    должен её снять (баг: голосовой список плодил её пунктом №1)."""
+    text = "Список задач:\nСегодня нужно\nпозвонить маме\nкупить хлеб"
+    result = detect(text)
+    assert result.is_list is True
+    assert result.tasks == ["позвонить маме", "купить хлеб"]
+
+
+def test_forced_keeps_action_with_preamble_word():
+    """«Сделать отчёт» содержит преамбульное слово «сделать», но «отчёт» —
+    контентное слово → это реальный пункт, НЕ дропаем."""
+    text = "Список задач:\nсделать отчёт\nпозвонить маме"
+    result = detect(text)
+    assert result.is_list is True
+    assert "сделать отчёт" in result.tasks
+
+
+def test_is_preamble_line_unit():
+    # Чистая преамбула — все слова преамбульные/филлеры
+    assert _is_preamble_line("Сегодня нужно") is True
+    assert _is_preamble_line("Мне надо.") is True
+    assert _is_preamble_line("Так, короче") is True
+    # Реальный пункт с контентным словом
+    assert _is_preamble_line("сделать отчёт") is False
+    assert _is_preamble_line("позвонить маме") is False
+    # Слишком длинная — не преамбула
+    assert _is_preamble_line("нужно " * 10) is False
 
 
 def test_inline_comma_list_detected():

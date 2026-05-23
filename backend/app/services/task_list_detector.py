@@ -76,6 +76,59 @@ MAX_TASK_LENGTH = 100
 # это статья с нумерацией, не список задач.
 MAX_PREAMBLE_WORDS = 25
 
+# Слова-преамбулы голосовой диктовки. «Сегодня нужно», «Мне надо»,
+# «Так, короче» — вводные перед самим списком, не пункты. Зеркало
+# bot/services/voice_list._PREAMBLE_WORDS, но backend — источник правды
+# для structured_data, поэтому фильтруем здесь независимо от того,
+# препроцессил ли бот (текст / форвард / другой клиент могут не).
+PREAMBLE_WORDS = (
+    "нужно", "надо", "сделать", "сегодня", "завтра",
+    "запиши", "запомни", "вот", "так", "короче", "значит",
+)
+# Филлеры-связки: сами по себе не преамбула, но допустимы внутри неё
+# («Мне надо», «Так короче»). Реального пункта-существительного не несут.
+PREAMBLE_FILLER = (
+    "мне", "нам", "я", "это", "что", "ну", "и", "а", "тут", "там",
+)
+# Преамбула — короткая (≤6 слов, ≤40 симв) строка.
+MAX_PREAMBLE_LINE_WORDS = 6
+MAX_PREAMBLE_LINE_CHARS = 40
+
+
+def _is_preamble_line(line: str) -> bool:
+    """True если строка — чистая вводная преамбула («Сегодня нужно.»).
+
+    Требуем: короткая (≤6 слов, ≤40 симв), есть хоть одно преамбульное
+    слово, И ВСЕ слова — преамбульные/филлеры. Если есть хоть одно
+    «контентное» слово («сделать отчёт» → «отчёт») — это реальный пункт,
+    не дропаем.
+    """
+    norm = line.strip().lower()
+    if not norm or len(norm) > MAX_PREAMBLE_LINE_CHARS:
+        return False
+    # Чистим пунктуацию у каждого слова («так,» → «так»), чтобы запятые
+    # в середине не ломали матч.
+    words = [w.strip(".:!,;-—") for w in norm.split()]
+    words = [w for w in words if w]
+    if not words or len(words) > MAX_PREAMBLE_LINE_WORDS:
+        return False
+    allowed = set(PREAMBLE_WORDS) | set(PREAMBLE_FILLER)
+    has_preamble_word = any(w in PREAMBLE_WORDS for w in words)
+    all_allowed = all(w in allowed for w in words)
+    return has_preamble_word and all_allowed
+
+
+def _drop_leading_preamble(lines: list[str]) -> list[str]:
+    """Снимает ведущие строки-преамбулы до первого реального пункта.
+
+    Дропаем только В НАЧАЛЕ — преамбульное слово в середине списка
+    («2. надо позвонить») это валидный пункт, не трогаем.
+    """
+    i = 0
+    while i < len(lines) and _is_preamble_line(lines[i]):
+        i += 1
+    return lines[i:]
+
 
 @dataclass
 class TaskListDetection:
@@ -235,11 +288,13 @@ def detect(text: str, ai_item_type: str | None = None) -> TaskListDetection:
     elif forced:
         # Юзер попросил список, но маркеров нет — разбиваем по переносам
         lines = [l.strip() for l in content.split("\n") if l.strip()]
+        # Снимаем ведущую преамбулу («Сегодня нужно.») — не пункт.
+        lines = _drop_leading_preamble(lines)
         if len(lines) >= 2:
             tasks = lines
         else:
             # Одна строка без запятых — один пункт
-            tasks = [content.strip()] if content.strip() else []
+            tasks = [lines[0]] if lines else []
 
     if not tasks:
         return TaskListDetection(False, forced, [], stripped_text)
