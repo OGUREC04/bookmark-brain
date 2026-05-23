@@ -117,3 +117,77 @@ class TestPendingRetry:
         store = AsyncMock()
         await _resave_pending(store, 100, None, None, {"kind": "explicit", "text": "x"})
         store.store_reminder_pending_explicit.assert_not_awaited()
+
+
+class TestDatePhraseCombine:
+    """Phase 2.7: pending с date_phrase («напомни 25 мая» без часа) —
+    reply «в 9» комбинируется в «25 мая в 9»."""
+
+    def _make_msg(self, reply_text: str):
+        rt = MagicMock()
+        rt.message_id = 555
+        rt.text = "🔔 Напомню «1 июня экзамен» 25 мая — во сколько?"
+        rt.caption = None
+        rt.from_user = MagicMock(is_bot=True)
+        msg = MagicMock()
+        msg.reply_to_message = rt
+        msg.chat = MagicMock(id=100)
+        msg.text = reply_text
+        msg.from_user = MagicMock(id=7)
+        msg.answer = AsyncMock(return_value=MagicMock(message_id=888))
+        return msg
+
+    def _patch_common(self, monkeypatch):
+        import bot.common.auth
+        import bot.handlers.reminders.reply as rep
+
+        async def _fake_ensure(*_a, **_k):
+            return "tok"
+        monkeypatch.setattr(bot.common.auth, "ensure_user", _fake_ensure)
+
+        async def _fake_tz(*_a, **_k):
+            return "Europe/Moscow"
+        monkeypatch.setattr(rep, "get_user_tz_name", _fake_tz)
+        # Нет TG datetime-entity в reply
+        monkeypatch.setattr(rep, "extract_first_datetime_entity", lambda *_a, **_k: None)
+        return rep
+
+    async def test_hour_reply_combines_with_date_phrase(self, monkeypatch):
+        rep = self._patch_common(monkeypatch)
+        msg = self._make_msg("в 9")
+        store = AsyncMock()
+        store.get_reminder_fallback = AsyncMock(return_value=None)
+        store.pop_reminder_snooze = AsyncMock(return_value=None)
+        store.pop_reminder_pending = AsyncMock(return_value={
+            "kind": "explicit", "text": "1 июня экзамен", "date_phrase": "25 мая",
+        })
+        api = AsyncMock()
+        api.create_reminder = AsyncMock()
+
+        ok = await rep.handle_reminder_reply(msg, api, store)
+        assert ok is True
+        api.create_reminder.assert_awaited_once()
+        # fire_at = 25 мая (комбинация даты и часа), текст из pending
+        fire_at_iso = api.create_reminder.await_args.args[1]
+        assert "-05-25" in fire_at_iso
+        payload = api.create_reminder.await_args.kwargs["payload"]
+        assert payload["text"] == "1 июня экзамен"
+
+    async def test_day_reply_overrides_date_phrase(self, monkeypatch):
+        """Юзер ответил «Завтра» (день, не час) — комбинация «25 мая Завтра»
+        не парсится → honorим reply как новую дату, не падаем в ошибку."""
+        rep = self._patch_common(monkeypatch)
+        msg = self._make_msg("завтра в 10")
+        store = AsyncMock()
+        store.get_reminder_fallback = AsyncMock(return_value=None)
+        store.pop_reminder_snooze = AsyncMock(return_value=None)
+        store.pop_reminder_pending = AsyncMock(return_value={
+            "kind": "explicit", "text": "1 июня экзамен", "date_phrase": "25 мая",
+        })
+        api = AsyncMock()
+        api.create_reminder = AsyncMock()
+
+        ok = await rep.handle_reminder_reply(msg, api, store)
+        assert ok is True
+        # Создалось напоминание (standalone «завтра в 10»), не ошибка
+        api.create_reminder.assert_awaited_once()
