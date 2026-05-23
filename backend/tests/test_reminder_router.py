@@ -357,3 +357,60 @@ def test_unparseable_date_does_not_count() -> None:
     )
     assert d.dated_items == []
     assert d.form == ReminderForm.NONE
+
+
+# ──────────────────────────────────────────────────
+# B2 audit logging (reminder_route_audit) — не ломает route()
+# ──────────────────────────────────────────────────
+
+
+@freeze_time(NOW_UTC)
+class TestRouteAudit:
+    def test_audit_logged_on_comparable_form(self, caplog) -> None:
+        import logging
+        cls = _cls(
+            items=[{"text": "молоко", "raw_date_phrase": "завтра в 9"}],
+            single=True, hint="single_reminder",
+        )
+        with caplog.at_level(logging.INFO, logger="app.services.reminder_router"):
+            d = route(text="купить молоко завтра в 9", classification=cls, now=NOW_UTC)
+        assert d.form == ReminderForm.SINGLE_REMINDER
+        recs = [r for r in caplog.records if "reminder_route_audit" in r.getMessage()]
+        assert len(recs) == 1
+        assert "agree=True" in recs[0].getMessage()
+
+    def test_audit_disagreement_logged(self, caplog) -> None:
+        import logging
+        # router → single_reminder, но AI hint = task_list_no_reminders (расхождение)
+        cls = _cls(
+            items=[{"text": "молоко", "raw_date_phrase": "завтра в 9"}],
+            single=True, hint="task_list_no_reminders",
+        )
+        with caplog.at_level(logging.INFO, logger="app.services.reminder_router"):
+            route(text="купить молоко завтра в 9", classification=cls, now=NOW_UTC)
+        recs = [r for r in caplog.records if "reminder_route_audit" in r.getMessage()]
+        assert "agree=False" in recs[0].getMessage()
+
+    def test_audit_none_hint_no_crash(self) -> None:
+        # hint=None не должен бросать (or "none")
+        cls = _cls(
+            items=[{"text": "молоко", "raw_date_phrase": "завтра в 9"}],
+            single=True, hint=None,
+        )
+        d = route(text="купить молоко завтра в 9", classification=cls, now=NOW_UTC)
+        assert d.form == ReminderForm.SINGLE_REMINDER
+
+    def test_audit_skipped_on_ask_state(self, caplog) -> None:
+        import logging
+        # 1 дата + multi-item → NEEDS_BUTTON_CHOICE (ask-состояние, аудита нет)
+        cls = _cls(
+            items=[
+                {"text": "a", "raw_date_phrase": "завтра в 9"},
+                {"text": "b", "raw_date_phrase": None},
+            ],
+            single=False, hint="task_list_with_reminders",
+        )
+        with caplog.at_level(logging.INFO, logger="app.services.reminder_router"):
+            d = route(text="дела", classification=cls, now=NOW_UTC)
+        assert d.form == ReminderForm.NEEDS_BUTTON_CHOICE
+        assert not any("reminder_route_audit" in r.getMessage() for r in caplog.records)
