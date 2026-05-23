@@ -240,3 +240,26 @@ class TestNeedTextReply:
         assert ok is True
         # Реконструкция «<текст> <дата>»
         assert called["args"] == "купить торт 25 мая"
+
+
+class TestDecodePendingNeedText:
+    """Regression: _decode_pending должен распознавать kind=need_text
+    (баг: декодился как мусорный bookmark → reply «про что» падал в
+    «не понял время»)."""
+
+    def test_need_text_envelope_round_trips(self):
+        import json
+
+        from bot.state_store import StateStore
+        raw = json.dumps({"kind": "need_text", "date_phrase": "25 мая"})
+        decoded = StateStore._decode_pending(raw)
+        assert decoded == {"kind": "need_text", "date_phrase": "25 мая"}
+
+    def test_explicit_with_date_phrase_round_trips(self):
+        import json
+
+        from bot.state_store import StateStore
+        raw = json.dumps({"kind": "explicit", "text": "x", "date_phrase": "25 мая"})
+        decoded = StateStore._decode_pending(raw)
+        assert decoded["kind"] == "explicit"
+        assert decoded["date_phrase"] == "25 мая"

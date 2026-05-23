@@ -418,7 +418,9 @@ class StateStore:
         if raw.startswith("{"):
             try:
                 data = json.loads(raw)
-                if isinstance(data, dict) and data.get("kind") in ("bookmark", "explicit"):
+                if isinstance(data, dict) and data.get("kind") in (
+                    "bookmark", "explicit", "need_text",
+                ):
                     return data
             except (json.JSONDecodeError, TypeError):
                 pass
