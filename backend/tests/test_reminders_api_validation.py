@@ -183,3 +183,44 @@ class TestListUpcoming:
 def test_kind_is_reminder():
     """Защита от опечатки в const — kind должен быть 'reminder'."""
     assert REMINDER_KIND == "reminder"
+
+
+class TestReminderDedup:
+    """E15: exact-dedup (тот же текст + та же минута) → возвращаем
+    существующий, не плодим дубль."""
+
+    async def test_exact_duplicate_returns_existing(self, user, session):
+        existing = MagicMock()
+        existing.id = uuid4()
+        result = MagicMock()
+        result.scalars = MagicMock(
+            return_value=MagicMock(first=MagicMock(return_value=existing))
+        )
+        session.execute = AsyncMock(return_value=result)
+        body = ReminderCreate(
+            fire_at=datetime.now(timezone.utc) + timedelta(hours=1),
+            payload={"text": "купить хлеб"},
+        )
+        out = await create_reminder(body, user, session)
+        assert out is existing
+        session.add.assert_not_called()
+
+    async def test_different_text_creates_new(self, user, session):
+        result = MagicMock()
+        result.scalars = MagicMock(
+            return_value=MagicMock(first=MagicMock(return_value=None))
+        )
+        session.execute = AsyncMock(return_value=result)
+        body = ReminderCreate(
+            fire_at=datetime.now(timezone.utc) + timedelta(hours=1),
+            payload={"text": "новое дело"},
+        )
+        await create_reminder(body, user, session)
+        session.add.assert_called_once()
+
+    async def test_no_text_skips_dedup(self, user, session):
+        body = ReminderCreate(
+            fire_at=datetime.now(timezone.utc) + timedelta(hours=1),
+        )
+        await create_reminder(body, user, session)
+        session.add.assert_called_once()

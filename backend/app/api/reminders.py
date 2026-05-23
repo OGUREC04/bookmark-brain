@@ -18,7 +18,7 @@ from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -87,6 +87,31 @@ async def create_reminder(
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail="Bookmark not found"
             )
+
+    # E15 exact-dedup: тот же текст + та же МИНУТА fire_at среди pending →
+    # не плодим дубль, возвращаем существующий (идемпотентно). Ловит
+    # случайные двойные «напомни …». Разный текст / время — создаём как есть.
+    new_text = (body.payload or {}).get("text")
+    if new_text and new_text.strip():
+        minute_start = fire_at.replace(second=0, microsecond=0)
+        dup = await session.execute(
+            select(ScheduledMessage).where(
+                ScheduledMessage.user_id == current_user.id,
+                ScheduledMessage.kind == REMINDER_KIND,
+                ScheduledMessage.status == "pending",
+                ScheduledMessage.fire_at >= minute_start,
+                ScheduledMessage.fire_at < minute_start + timedelta(minutes=1),
+                func.lower(func.trim(ScheduledMessage.payload["text"].astext))
+                == new_text.strip().lower(),
+            )
+        )
+        existing = dup.scalars().first()
+        if existing is not None:
+            logger.info(
+                f"reminder dedup: вернул существующий {existing.id} "
+                f"(text+minute совпали) вместо дубля для user {current_user.id}"
+            )
+            return existing
 
     reminder = ScheduledMessage(
         user_id=current_user.id,
