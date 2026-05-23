@@ -15,7 +15,8 @@ from sqlalchemy import (
     UniqueConstraint,
     func,
 )
-from sqlalchemy.dialects.postgresql import ENUM as PG_ENUM, JSONB, TSVECTOR, UUID
+from sqlalchemy.dialects.postgresql import ENUM as PG_ENUM
+from sqlalchemy.dialects.postgresql import JSONB, TSVECTOR, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -329,4 +330,32 @@ class ScheduledMessage(Base):
         "Bookmark",
         foreign_keys=[bookmark_id],
         lazy="noload",
+    )
+
+
+class AnalyticsEvent(Base):
+    """Generic product-analytics event store (Phase M1, ADR 0010).
+
+    Один append-only event-store для ВСЕХ продуктовых метрик-событий
+    (высокая кардинальность, запрос GROUP BY постфактум). НЕ для системных
+    метрик (latency/токены) — те пойдут в Prometheus отдельно (events vs
+    metrics — разные хранилища, унификация на уровне дашборда Grafana).
+
+    Партиционирована помесячно по ts (миграция a8b9...): retention =
+    DROP PARTITION, без bloat/VACUUM-боли. PK композитный (id, ts) — Postgres
+    требует partition key в PK. Пишется через emit_event() из всех 3 процессов.
+    """
+
+    __tablename__ = "analytics_events"
+
+    id: Mapped[int] = mapped_column(
+        BigInteger, primary_key=True, autoincrement=True,
+    )
+    ts: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), primary_key=True, server_default=func.now(),
+    )
+    event_name: Mapped[str] = mapped_column(String(64), nullable=False)
+    source: Mapped[str] = mapped_column(String(16), nullable=False)
+    dimensions: Mapped[dict] = mapped_column(
+        JSONB, server_default="{}", default=dict, nullable=False,
     )

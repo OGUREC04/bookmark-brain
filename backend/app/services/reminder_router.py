@@ -130,6 +130,21 @@ _TIME_OR_PART_OF_DAY_RE = re.compile(
 )
 
 
+# Терминальные формы-классификации (сравнимы с AI reminder_form_hint).
+# ask-состояния (needs_hour / needs_button_choice / strong_3button) — это
+# «спросить юзера», не классификация → в аудит расхождений не идут.
+_TERMINAL_FORMS = frozenset({
+    "none", "single_reminder", "composite_reminder",
+    "task_list_with_reminders", "task_list_no_reminders",
+})
+
+
+def is_terminal_form(form: ReminderForm) -> bool:
+    """True если форма — терминальная классификация (сравнима с AI hint),
+    а не ask-состояние. Используется для B2-аудита (лог + emit_event)."""
+    return form.value in _TERMINAL_FORMS
+
+
 def _resolve_item(item: ReminderItem, user_tz: str, now: datetime | None) -> ResolvedItem:
     """Прогоняет raw_date_phrase через nl_date.parse() → ResolvedItem."""
     if not item.raw_date_phrase:
@@ -181,20 +196,13 @@ def route(
     dated = [i for i in items if i.fire_at is not None]
     needs_hour = [i for i in items if i.status == ParseStatus.NEEDS_HOUR]
 
-    # Терминальные формы-классификации (сравнимы с AI form_hint).
-    # ask-состояния (needs_hour / needs_button_choice / strong_3button) —
-    # это «спросить юзера», не классификация, в аудит не идут.
-    _COMPARABLE_FORMS = frozenset({
-        "none", "single_reminder", "composite_reminder",
-        "task_list_with_reminders", "task_list_no_reminders",
-    })
-
     def _decision(form: ReminderForm) -> RouterDecision:
         # B2 measurement: логируем расхождение router-решения и
         # холистической категории AI (reminder_form_hint). По этим данным
         # выберем архитектуру (router-primary / AI-primary / disagreement).
-        # Чистое измерение — на поведение НЕ влияет.
-        if form.value in _COMPARABLE_FORMS:
+        # Чистое измерение — на поведение НЕ влияет. Queryable-аудит в
+        # analytics_events пишет caller (bookmark_processor) через emit_event.
+        if is_terminal_form(form):
             hint = (classification.reminder_form_hint or "none").strip().lower()
             logger.info(
                 "reminder_route_audit: router=%s ai_hint=%s agree=%s "

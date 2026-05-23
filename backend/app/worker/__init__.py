@@ -73,6 +73,7 @@ from .scheduled import (
     _format_reminder_text,
     _reminder_buttons,
     _save_reminder_redis_state,
+    analytics_partition_maintenance,
     auto_done_reminders,
     retry_failed_task,
     retry_partial_embeddings,
@@ -105,6 +106,9 @@ class WorkerSettings:
         cron(scheduled_dispatcher, minute=set(range(60)), run_at_startup=False),
         # Раз в час, в :15 (чтобы не совпадало с пиком dispatcher на :00)
         cron(auto_done_reminders, minute={15}, run_at_startup=False),
+        # Phase M1: катим месячные партиции analytics_events + retention.
+        # run_at_startup=True — гарантируем что партиции есть сразу.
+        cron(analytics_partition_maintenance, hour=4, minute=30, run_at_startup=True),
     ]
     redis_settings = RedisSettings.from_dsn(settings.REDIS_URL)
     max_jobs = 5
@@ -152,6 +156,7 @@ __all__ = [
     "_store_dedup_alert",
     "_store_general_dedup",
     "aioredis_from_url",
+    "analytics_partition_maintenance",
     "auto_done_reminders",
     "process_bookmark_task",
     "retry_failed_task",

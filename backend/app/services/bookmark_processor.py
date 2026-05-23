@@ -2,16 +2,18 @@ import logging
 from datetime import datetime, timezone
 from uuid import UUID
 
-from sqlalchemy import select, update, func
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Bookmark, Tag, BookmarkTag, User
+from app.models import Bookmark, BookmarkTag, Tag, User
 from app.services.ai_classifier import BaseClassifier, ClassificationError, RetryableError
 from app.services.article_fetcher import fetch_article
 from app.services.embeddings import BaseEmbeddingService, EmbeddingError, RetryableEmbeddingError
 from app.services.reminder_intent import detect_reminder_intent
-from app.services.reminder_router import ReminderForm, route as route_reminder
-from app.services.task_list_detector import build_structured_data, detect as detect_task_list
+from app.services.reminder_router import ReminderForm
+from app.services.reminder_router import route as route_reminder
+from app.services.task_list_detector import build_structured_data
+from app.services.task_list_detector import detect as detect_task_list
 
 logger = logging.getLogger(__name__)
 
@@ -169,6 +171,7 @@ class BookmarkProcessor:
                 # ("до вторника", "сегодня-завтра" → deadline поле)
                 try:
                     from datetime import date as _date
+
                     from app.services.task_list_editor import apply_nl_edit
                     _today = _date.today().isoformat()
                     structured = await apply_nl_edit(
@@ -259,6 +262,24 @@ class BookmarkProcessor:
                 classification=classification,
                 user_tz=user_tz,
             )
+            # B2 queryable-аудит: пишем расхождение router-решения и AI-hint
+            # в analytics_events. Только терминальные формы. Fire-and-forget
+            # (своя сессия, сбой не ломает классификацию).
+            from app.services.analytics import emit_event
+            from app.services.reminder_router import is_terminal_form
+            if is_terminal_form(decision.form):
+                hint = (classification.reminder_form_hint or "none").strip().lower()
+                await emit_event(
+                    name="reminder_router_decision",
+                    source="worker",
+                    router_form=decision.form.value,
+                    ai_hint=hint,
+                    agree=(decision.form.value == hint),
+                    dated_count=len(decision.dated_items),
+                    single=classification.single_statement,
+                    strong=decision.strong_intent,
+                    explicit=decision.explicit_trigger,
+                )
             if decision.form != ReminderForm.NONE:
                 # Мерджим в structured_data, не перезатирая task_list если он есть.
                 # `dict(...)` создаёт КОПИЮ — присваивание new-dict-object меняет

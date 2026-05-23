@@ -307,9 +307,14 @@ async def retry_partial_embeddings(ctx: dict) -> None:
     Max 5 retries per bookmark, circuit breaker after 5 consecutive failures.
     """
     from datetime import datetime, timezone
+
     from app.database import async_session
     from app.models import Bookmark
-    from app.services.embeddings import create_embedding_service, EmbeddingError, RetryableEmbeddingError
+    from app.services.embeddings import (
+        EmbeddingError,
+        RetryableEmbeddingError,
+        create_embedding_service,
+    )
 
     MAX_EMBEDDING_RETRIES = 5
     CIRCUIT_BREAKER_THRESHOLD = 5
@@ -406,6 +411,7 @@ async def stale_list_nudge(ctx: dict) -> None:
     Не напоминает повторно (Redis nudged:{bookmark_id} TTL 7 дней).
     """
     from sqlalchemy import and_, text
+
     from app.database import async_session
     from app.models import Bookmark, User
 
@@ -437,6 +443,7 @@ async def stale_list_nudge(ctx: dict) -> None:
 
     # Фильтруем: done < total И не nudged (atomic SET NX)
     import json
+
     import redis.asyncio as aioredis
     r: aioredis.Redis | None = None
     nudge_count = 0
@@ -506,3 +513,76 @@ async def stale_list_nudge(ctx: dict) -> None:
             await r.aclose()
 
     logger.info(f"Stale list nudge: sent {nudge_count} nudges")
+
+
+# ──────────────────────────────────────────────────
+# analytics_events partition maintenance (Phase M1, ADR 0010)
+# ──────────────────────────────────────────────────
+
+# Сколько месяцев храним аналитические события. Старше — DROP PARTITION.
+ANALYTICS_RETENTION_MONTHS = 6
+
+
+def _month_partition(year: int, month: int) -> tuple[str, str, str]:
+    """(имя_партиции, начало, конец) для месяца. Границы RANGE [from, to)."""
+    ny, nm = (year + 1, 1) if month == 12 else (year, month + 1)
+    return (
+        f"analytics_events_{year:04d}_{month:02d}",
+        f"{year:04d}-{month:02d}-01",
+        f"{ny:04d}-{nm:02d}-01",
+    )
+
+
+async def analytics_partition_maintenance(ctx: dict) -> None:
+    """Cron (раз в сутки + на старте): катит месячные партиции
+    analytics_events вперёд и дропает старше retention.
+
+    DROP PARTITION = чистый retention без bloat/VACUUM-боли. Партиции на
+    текущий+следующий месяц всегда есть → данные не попадают в DEFAULT,
+    retention работает по-месячно.
+    """
+    from datetime import datetime, timezone
+
+    from sqlalchemy import text as sa_text
+
+    now = datetime.now(timezone.utc)
+    # 1. Создаём партиции на текущий + следующий месяц (idempotent).
+    months = [(now.year, now.month)]
+    months.append((now.year + 1, 1) if now.month == 12 else (now.year, now.month + 1))
+
+    created = 0
+    async with async_session() as session:
+        for year, month in months:
+            name, start, end = _month_partition(year, month)
+            await session.execute(sa_text(
+                f"CREATE TABLE IF NOT EXISTS {name} PARTITION OF analytics_events "
+                f"FOR VALUES FROM ('{start}') TO ('{end}')"
+            ))
+            created += 1
+        await session.commit()
+
+        # 2. Дропаем партиции старше retention.
+        cutoff_idx = now.year * 12 + (now.month - 1) - ANALYTICS_RETENTION_MONTHS
+        rows = (await session.execute(sa_text(
+            "SELECT child.relname FROM pg_inherits "
+            "JOIN pg_class parent ON pg_inherits.inhparent = parent.oid "
+            "JOIN pg_class child ON pg_inherits.inhrelid = child.oid "
+            "WHERE parent.relname = 'analytics_events'"
+        ))).scalars().all()
+
+        dropped = 0
+        for relname in rows:
+            # ждём формат analytics_events_YYYY_MM (default-партицию пропускаем)
+            parts = relname.rsplit("_", 2)
+            if len(parts) != 3 or not (parts[1].isdigit() and parts[2].isdigit()):
+                continue
+            p_idx = int(parts[1]) * 12 + (int(parts[2]) - 1)
+            if p_idx < cutoff_idx:
+                await session.execute(sa_text(f"DROP TABLE IF EXISTS {relname}"))
+                dropped += 1
+        await session.commit()
+
+    logger.info(
+        f"analytics partition maintenance: ensured {created} month(s), "
+        f"dropped {dropped} old (retention={ANALYTICS_RETENTION_MONTHS}mo)"
+    )
