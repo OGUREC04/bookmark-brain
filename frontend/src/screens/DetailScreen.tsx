@@ -3,6 +3,7 @@
 import { cloneElement } from "react";
 import { Icons, ExtraIcons } from "../components/ds/icons";
 import { Glyph, TagChip } from "../components/ds/atoms";
+import { TaskListEditor } from "../components/ds/TaskListEditor";
 import { type Bookmark } from "../lib/api";
 import { hostOf } from "../lib/adapters";
 import { formatRelativeDate } from "../lib/formatters";
@@ -18,14 +19,20 @@ export function DetailScreen({
   bookmark,
   onBack,
   onMore,
+  onChanged,
+  onToast,
 }: {
   bookmark: Bookmark;
   onBack: () => void;
   onMore: () => void;
+  /** Список отредактирован → родитель обновляет ленту. */
+  onChanged?: () => void;
+  /** Тост (например, ошибка сохранения списка). */
+  onToast?: (msg: string) => void;
 }) {
   const title = bookmark.title || (bookmark.raw_text ?? "").slice(0, 80) || "без названия";
   const host = bookmark.url ? hostOf(bookmark.url) : null;
-  const tasks = bookmark.structured_data?.type === "task_list" ? bookmark.structured_data.tasks : null;
+  const isTaskList = bookmark.structured_data?.type === "task_list";
 
   return (
     <div style={{ padding: "6px 0 calc(116px + env(safe-area-inset-bottom, 0px))" }}>
@@ -135,40 +142,8 @@ export function DetailScreen({
             </p>
           )}
 
-          {tasks && tasks.length > 0 && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 8, margin: "0 0 14px" }}>
-              {tasks.map((t, i) => (
-                <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
-                  <span
-                    style={{
-                      width: 18,
-                      height: 18,
-                      borderRadius: 6,
-                      flexShrink: 0,
-                      marginTop: 1,
-                      border: t.done ? "none" : "1.5px solid var(--border-strong)",
-                      background: t.done ? "var(--brand-primary)" : "transparent",
-                      color: "var(--fg-on-brand)",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                    }}
-                  >
-                    {t.done && cloneElement(Icons.check, { size: 11, sw: 2.5 } as never)}
-                  </span>
-                  <span
-                    style={{
-                      fontSize: 14.5,
-                      color: t.done ? "var(--fg-3)" : "var(--fg-1)",
-                      textDecoration: t.done ? "line-through" : "none",
-                      lineHeight: 1.4,
-                    }}
-                  >
-                    {t.text}
-                  </span>
-                </div>
-              ))}
-            </div>
+          {isTaskList && (
+            <TaskListEditor bookmark={bookmark} onCommitted={onChanged} onError={onToast} />
           )}
 
           {bookmark.raw_text && bookmark.raw_text !== title && (

@@ -132,7 +132,13 @@ export function App() {
     >
       <div key={detail ? `d-${detail.id}` : searchOpen ? "search" : tab} className="screen-fade">
         {detail ? (
-          <DetailScreen bookmark={detail} onBack={() => setDetail(null)} onMore={() => openActions(detail)} />
+          <DetailScreen
+            bookmark={detail}
+            onBack={() => setDetail(null)}
+            onMore={() => openActions(detail)}
+            onChanged={reload}
+            onToast={setToast}
+          />
         ) : searchOpen ? (
           <SearchScreen onBack={() => setSearchOpen(false)} onOpen={comingSoon} />
         ) : tab === "mysli" ? (
