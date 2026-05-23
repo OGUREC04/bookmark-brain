@@ -9,9 +9,6 @@ from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
 import pytest
-from fastapi import HTTPException
-from pydantic import ValidationError
-
 from app.api.reminders import (
     REMINDER_KIND,
     cancel_reminder,
@@ -20,7 +17,8 @@ from app.api.reminders import (
     update_reminder,
 )
 from app.schemas import ReminderCreate, ReminderUpdate
-
+from fastapi import HTTPException
+from pydantic import ValidationError
 
 # ──────────────────────────────────────────────────
 # Schemas
@@ -82,6 +80,7 @@ def session():
 
 class TestCreateReminderValidation:
     async def test_rejects_past_fire_at(self, user, session):
+        # За пределами grace (1 час назад) — всё ещё 400.
         body = ReminderCreate(
             fire_at=datetime.now(timezone.utc) - timedelta(hours=1)
         )
@@ -90,12 +89,22 @@ class TestCreateReminderValidation:
         assert exc.value.status_code == 400
         assert "future" in exc.value.detail.lower()
 
-    async def test_rejects_now_exactly(self, user, session):
-        # fire_at = now (без буфера) — отклоняем
+    async def test_now_exactly_clamped_not_rejected(self, user, session):
+        """bookmark-brain-bne: fire_at = now в пределах grace → НЕ 400,
+        поджимается к now+буфер и создаётся. Раньше строгий <= now давал
+        400 на граничном/чуть-просроченном времени из бота."""
         body = ReminderCreate(fire_at=datetime.now(timezone.utc))
-        with pytest.raises(HTTPException) as exc:
-            await create_reminder(body, user, session)
-        assert exc.value.status_code == 400
+        await create_reminder(body, user, session)
+        session.add.assert_called_once()
+
+    async def test_marginally_past_within_grace_clamped(self, user, session):
+        """fire_at на 20с в прошлом (толерантность nl_date.parse) → clamp,
+        не 400."""
+        body = ReminderCreate(
+            fire_at=datetime.now(timezone.utc) - timedelta(seconds=20)
+        )
+        await create_reminder(body, user, session)
+        session.add.assert_called_once()
 
     async def test_naive_datetime_treated_as_utc(self, user, session):
         # Naive future → допустим (бэкенд считает UTC)

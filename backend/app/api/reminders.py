@@ -14,7 +14,7 @@ Endpoints:
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -38,6 +38,14 @@ router = APIRouter(prefix="/api/v1/reminders", tags=["reminders"])
 
 REMINDER_KIND = "reminder"
 
+# Толерантность к «чуть-в-прошлом» fire_at. nl_date.parse допускает время
+# до 30 сек в прошлом (возвращает OK, не IN_PAST), плюс между парсингом в
+# боте и проверкой здесь проходит сетевой round-trip. Строгий `<= now`
+# реджектил такие граничные значения как 400 (bookmark-brain-bne).
+# Принимаем fire_at в окне [now - grace, ∞); если он в прошлом-но-в-grace,
+# поджимаем к «сейчас» чтобы сработало немедленно.
+_PAST_GRACE_SECONDS = 120
+
 
 @router.post(
     "/",
@@ -50,16 +58,21 @@ async def create_reminder(
     session: AsyncSession = Depends(get_session),
 ):
     """Создать новое напоминание для текущего пользователя."""
-    # Валидация: fire_at должен быть в будущем
+    # Валидация: fire_at должен быть в будущем (с grace на граничные значения).
     now = datetime.now(timezone.utc)
     fire_at = body.fire_at
     if fire_at.tzinfo is None:
+        # Naive datetime — трактуем как UTC (клиент обязан слать UTC ISO).
         fire_at = fire_at.replace(tzinfo=timezone.utc)
-    if fire_at <= now:
+    if fire_at < now - timedelta(seconds=_PAST_GRACE_SECONDS):
+        # Явно в прошлом (за пределами grace) — это ошибка.
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="fire_at must be in the future",
         )
+    if fire_at <= now:
+        # В пределах grace, но уже прошло — поджимаем к «сейчас+5с».
+        fire_at = now + timedelta(seconds=5)
 
     # Если bookmark_id задан — проверить что он принадлежит юзеру (IDOR-защита)
     if body.bookmark_id is not None:
@@ -249,13 +262,13 @@ async def apply_reminder_decision(
     Идемпотентность не гарантируется на этом уровне — повторный POST создаст
     дубли. Bot Redis-anti-double блокирует повторные клики по той же кнопке.
     """
+    from app.services.nl_date import ParseStatus
     from app.services.reminder_creator import (
         create_composite_reminder,
         create_per_item_reminders,
         create_single_reminder,
     )
-    from app.services.reminder_router import ResolvedItem, ReminderForm, RouterDecision
-    from app.services.nl_date import ParseStatus
+    from app.services.reminder_router import ReminderForm, ResolvedItem, RouterDecision
 
     # Загружаем bookmark с проверкой владения
     result = await session.execute(
