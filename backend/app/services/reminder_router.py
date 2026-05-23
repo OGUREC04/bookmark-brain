@@ -31,7 +31,8 @@ from datetime import datetime
 from enum import Enum
 
 from app.schemas import AIClassification, ReminderItem
-from app.services.nl_date import ParseResult, ParseStatus, parse as nl_date_parse
+from app.services.nl_date import ParseResult, ParseStatus
+from app.services.nl_date import parse as nl_date_parse
 
 logger = logging.getLogger(__name__)
 
@@ -180,7 +181,27 @@ def route(
     dated = [i for i in items if i.fire_at is not None]
     needs_hour = [i for i in items if i.status == ParseStatus.NEEDS_HOUR]
 
+    # Терминальные формы-классификации (сравнимы с AI form_hint).
+    # ask-состояния (needs_hour / needs_button_choice / strong_3button) —
+    # это «спросить юзера», не классификация, в аудит не идут.
+    _COMPARABLE_FORMS = frozenset({
+        "none", "single_reminder", "composite_reminder",
+        "task_list_with_reminders", "task_list_no_reminders",
+    })
+
     def _decision(form: ReminderForm) -> RouterDecision:
+        # B2 measurement: логируем расхождение router-решения и
+        # холистической категории AI (reminder_form_hint). По этим данным
+        # выберем архитектуру (router-primary / AI-primary / disagreement).
+        # Чистое измерение — на поведение НЕ влияет.
+        if form.value in _COMPARABLE_FORMS:
+            hint = (classification.reminder_form_hint or "none").strip().lower()
+            logger.info(
+                "reminder_route_audit: router=%s ai_hint=%s agree=%s "
+                "dated=%d single=%s strong=%s explicit=%s",
+                form.value, hint, form.value == hint, len(dated),
+                single, strong_intent, explicit,
+            )
         return RouterDecision(
             form=form,
             items=items,
