@@ -13,6 +13,7 @@
 - `install.bat` — разовая установка venv + requirements (запускать один раз после клонирования или при обновлении requirements)
 - `start.bat` — запуск всех сервисов, использует venv
 - `stop.bat` — остановка сервисов
+- `refresh-ngrok-bot.bat` — **если ngrok отвалился/сменил URL посреди сессии** (Mini App показывает `ERR_NGROK_3200` / offline). Получает текущий ngrok URL (рестартит ngrok если мёртв), обновляет `MINI_APP_URL` в `.env`, перезапускает только бота (бэкенд/воркер не трогает). Закрывает классический рассинхрон «ngrok сменился → бот держит старый menu button».
 
 Если cmd-Python не видит модуль, а bash видит — **НЕ копайся в PYTHONPATH**, просто запусти `install.bat`.
 
@@ -62,10 +63,19 @@ cd "D:/projects/bookmark-brain" && python -m bot.main
 
 ### 5. Frontend (Vite dev server, порт 3000)
 
+> **Фронтенд вынесен в ОТДЕЛЬНЫЙ репо** `bookmark-brain-miniapp`
+> (соседняя папка `D:\projects\bookmark-brain-miniapp`,
+> https://github.com/OGUREC04/bookmark-brain-miniapp). В монорепо его больше нет.
+
+```bash
+cd "D:/projects/bookmark-brain-miniapp" && npm run dev
 ```
-mcp__Claude_Preview__preview_start с name="frontend"
-```
-Это поднимает Vite dev server для Mini App.
+Запускать с `run_in_background: true`. Vite слушает :3000 и **проксирует `/api` →
+`localhost:8000`** (бэкенд из монорепо), так что менять ничего не нужно — backend,
+worker, bot, ngrok по-прежнему стартуют из монорепо. ngrok указывает на :3000
+независимо от того, из какого репо поднят Vite.
+
+Вся НОВАЯ работа по UI — в `bookmark-brain-miniapp`, НЕ в монорепо.
 
 ### 6. ngrok (HTTPS-туннель для Telegram Mini App)
 
@@ -85,7 +95,7 @@ curl -s http://127.0.0.1:4040/api/tunnels | grep -o "https://[^\"]*ngrok[^\"]*" 
 
 Когда стартуют независимые сервисы, **запускай их одновременно** одним сообщением с несколькими `Bash` tool calls (Docker не нужен в параллель — проверь что он уже up):
 - Backend, Worker, Bot, ngrok можно стартовать параллельно
-- Frontend через `preview_start` — отдельно
+- Frontend — `npm run dev` из соседнего репо `bookmark-brain-miniapp` (отдельно)
 
 ## Типовые ошибки и решения
 
@@ -94,9 +104,10 @@ curl -s http://127.0.0.1:4040/api/tunnels | grep -o "https://[^\"]*ngrok[^\"]*" 
 | `TelegramConflictError` у бота | Убить все python.exe кроме бэкенда, подождать 12 сек, запустить заново |
 | `redis.TimeoutError` в воркере при старте | Перезапустить воркер (один раз бывает флаки) |
 | PowerShell: `ModuleNotFoundError: No module named 'arq'` | Юзер использует системный Python 3.14 с user site-packages. Явно `C:\Python314\python.exe` + если нет модуля — `python -m pip install --user <pkg>`. **НЕ** `pip install -r requirements.txt` — там pydantic-core падает при компиляции (нет msvcrt.lib). |
-| Vite: `Blocked request. This host is not allowed` | В `frontend/vite.config.ts` уже стоит `allowedHosts: true`, `host: true`. Если нет — добавить. |
+| Vite: `Blocked request. This host is not allowed` | В `bookmark-brain-miniapp/vite.config.ts` уже стоит `allowedHosts: true`, `host: true`. Если нет — добавить. |
 | Mini App: `Auth failed` | Бэкенд не запущен или упал. Проверь `/health`. |
 | Бот не отвечает на сообщения | Процесс бота умер. Проверь `bot.log` / task output. |
+| Mini App: `ERR_NGROK_3200` / endpoint offline | ngrok сменил URL, бот держит старый menu button. Запусти `refresh-ngrok-bot.bat` (или вручную: get ngrok URL → `update_env.py MINI_APP_URL <url>` → kill `python -m bot.main` → подожди 12с → старт бота). Потом **hard-close Mini App** в Telegram (свайп + ×), не refresh — WebView кеширует. |
 
 ## Зависимости между сервисами
 
