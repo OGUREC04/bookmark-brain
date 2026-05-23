@@ -131,10 +131,28 @@ async def process_explicit_remind_args(
         return
 
     if parse_result.status == ParseStatus.NEEDS_HOUR:
-        await message.answer(
-            "Уточни время (например «в 9»). " + TIME_EXAMPLES,
+        # Дата есть (time_part = «25 мая» / «в субботу»), но без часа.
+        # Сохраняем pending с date_phrase — reply «в 9» скомбинируется в
+        # «<date> в 9». Иначе reply со временем терял бы дату и текст.
+        display = _cap_text(text_part or args, limit=200)
+        prompt = await message.answer(
+            _reply_prompt(
+                f"🔔 Напомню «<b>{safe(display)}</b>» "
+                f"<b>{safe(time_part)}</b> — во сколько? (например «в 9»)"
+            ),
             parse_mode="HTML",
         )
+        if prompt is not None and getattr(prompt, "message_id", None) is not None:
+            try:
+                await store.store_reminder_pending_explicit(
+                    message.chat.id, prompt.message_id,
+                    _cap_text(text_part or args),
+                    date_phrase=time_part,
+                )
+            except Exception as e:
+                logger.warning(
+                    f"explicit_remind NEEDS_HOUR pending save failed: {e}"
+                )
         return
 
     if parse_result.status == ParseStatus.UNPARSEABLE or parse_result.dt is None:

@@ -97,6 +97,50 @@ class TestSplitTextAndTime:
         assert text == "просто заметка без времени"
         assert time is None
 
+    # ── Phase 2.7: ведущая дата (front-date idiom) ──
+
+    def test_leading_date_comma_chto(self):
+        """Скрин-баг: «25 мая, что 1 июня экзамен» → триггер 25 мая,
+        текст про 1 июня, вторая дата НЕ становится триггером."""
+        from bot.common import split_remind_text_and_time
+        text, time = split_remind_text_and_time("25 мая, что 1 июня экзамен")
+        assert time == "25 мая"
+        assert text == "1 июня экзамен"
+
+    def test_leading_date_chto_no_comma(self):
+        from bot.common import split_remind_text_and_time
+        text, time = split_remind_text_and_time("завтра что позвонить маме")
+        assert time == "завтра"
+        assert text == "позвонить маме"
+
+    def test_leading_date_pro(self):
+        from bot.common import split_remind_text_and_time
+        text, time = split_remind_text_and_time("в субботу про встречу")
+        assert time == "в субботу"
+        assert text == "встречу"
+
+    def test_comma_in_text_not_misfire(self):
+        """Запятая в перечислении НЕ должна ловиться как граница даты —
+        head «купить молоко» не парсится как дата → tail-search."""
+        from bot.common import split_remind_text_and_time
+        text, time = split_remind_text_and_time("купить молоко, хлеб завтра")
+        assert time == "завтра"
+        assert "молоко" in text and "хлеб" in text
+
+    def test_pro_at_start_falls_to_tail(self):
+        """«про встречу завтра» — про в начале, head пустой → tail-search."""
+        from bot.common import split_remind_text_and_time
+        text, time = split_remind_text_and_time("про встречу завтра")
+        assert time == "завтра"
+        assert "встречу" in text
+
+    def test_trailing_date_still_works(self):
+        """Regression: хвостовая дата без границы — tail-search как раньше."""
+        from bot.common import split_remind_text_and_time
+        text, time = split_remind_text_and_time("позвонить маме завтра утром")
+        assert text == "позвонить маме"
+        assert "завтра" in time
+
     def test_empty_input(self):
         from bot.common import split_remind_text_and_time
         text, time = split_remind_text_and_time("")

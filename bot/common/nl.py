@@ -44,15 +44,57 @@ def extract_explicit_remind_body(text: str) -> str | None:
     return text.strip()[m.end():].strip()
 
 
+# Структурная граница «дата ↔ текст» в идиоме
+# «напомни <дата>[,] [что|чтобы|про] <текст>».
+# Запятая / «что» / «чтобы» / «про» — разделитель: часть ДО = кандидат на
+# дату-триггер, часть ПОСЛЕ = текст напоминания. Покрывает ведущую дату
+# («Напомни 25 мая, что 1 июня экзамен»), которую tail-search не видит.
+_IDIOM_BOUNDARY_RE = re.compile(
+    r",|\bчто\b|\bчтобы\b|\bчтоб\b|\bпро\b",
+    re.IGNORECASE,
+)
+# Связки в начале текста-остатка — срезаем («что 1 июня…» → «1 июня…»).
+_TAIL_LEAD_RE = re.compile(r"^(?:что|чтобы|чтоб|про)\b\s*", re.IGNORECASE)
+
+
+def _try_leading_date_idiom(
+    args: str, user_tz: str,
+) -> tuple[str, str] | None:
+    """«напомни <дата>[,] [что|про] <текст>» → ``(text, date)`` или None.
+
+    Дата стоит ПЕРЕД структурной границей (запятая/«что»/«про»). При двух
+    датах ПЕРВАЯ (до границы) = триггер, вторая остаётся в тексте события.
+    Принимаем head как дату при OK/IN_PAST/NEEDS_HOUR (голая дата без часа —
+    тоже дата, час спросят downstream).
+    """
+    from bot.services.nl_date import ParseStatus, parse
+
+    m = _IDIOM_BOUNDARY_RE.search(args)
+    if m is None:
+        return None
+    head = args[: m.start()].strip().strip(",.;:").strip()
+    tail = _TAIL_LEAD_RE.sub("", args[m.end():].strip()).strip()
+    if not head or not tail:
+        return None
+    result = parse(head, user_tz=user_tz)
+    if result.status in (
+        ParseStatus.OK, ParseStatus.IN_PAST, ParseStatus.NEEDS_HOUR,
+    ):
+        return tail, head
+    return None
+
+
 def split_remind_text_and_time(
     args: str, user_tz: str = DEFAULT_TZ,
 ) -> tuple[str, str | None]:
     """Split /remind args into (reminder text, time part).
 
-    Strategy: try parsing the WHOLE thing as time — if ParseStatus.OK then
-    there is no separate time. Otherwise search a time phrase from the end:
-    the last 2-5 tokens go to the parser; if OK that is the time and the
-    rest is text. If nothing parses, the whole input is text without time.
+    Strategy:
+    1. Front-date idiom «<дата>[,] [что|про] <текст>» — дата в НАЧАЛЕ
+       (см. ``_try_leading_date_idiom``).
+    2. Tail-search: последние 1-5 токенов как время; если OK — это время,
+       остальное текст. Дата в КОНЦЕ.
+    3. Ничего не распознано → весь ввод это текст, time=None.
 
     Returns ``(text, time_part_or_None)``.
     """
@@ -61,6 +103,11 @@ def split_remind_text_and_time(
     args = args.strip()
     if not args:
         return "", None
+
+    # 1. Ведущая дата по структурной границе (запятая/«что»/«про»).
+    idiom = _try_leading_date_idiom(args, user_tz)
+    if idiom is not None:
+        return idiom
 
     tokens = args.split()
     n = len(tokens)

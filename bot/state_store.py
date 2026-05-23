@@ -448,13 +448,22 @@ class StateStore:
 
     async def store_reminder_pending_explicit(
         self, chat_id: int, msg_id: int, text: str,
+        date_phrase: str | None = None,
     ) -> None:
-        """Explicit /remind без времени — ждём reply со временем."""
+        """Explicit /remind без времени — ждём reply со временем.
+
+        ``date_phrase`` — если дата уже известна («25 мая»), но без часа
+        (NEEDS_HOUR): reply со временем («в 9») скомбинируется в полный
+        момент «<date_phrase> <reply>». None — ждём время целиком.
+        """
         import json
         r = await self._get()
+        envelope: dict = {"kind": "explicit", "text": text}
+        if date_phrase:
+            envelope["date_phrase"] = date_phrase
         await r.set(
             f"reminder_pending:{chat_id}:{msg_id}",
-            json.dumps({"kind": "explicit", "text": text}),
+            json.dumps(envelope),
             ex=self._REMINDER_PENDING_TTL,
         )
 

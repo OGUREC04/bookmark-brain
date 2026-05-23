@@ -184,7 +184,14 @@ async def handle_reminder_reply(message: Message, api, store) -> bool:
         )
 
     from bot.services.nl_date import ParseStatus, parse
-    result = parse(text, user_tz=user_tz_name)
+    # Если pending несёт date_phrase («напомни 25 мая» без часа) — reply это
+    # ЧАС; комбинируем «<date_phrase> <reply>» чтобы собрать полный момент.
+    date_phrase = (
+        pending_bid.get("date_phrase")
+        if isinstance(pending_bid, dict) else None
+    )
+    parse_input = f"{date_phrase} {text}" if date_phrase else text
+    result = parse(parse_input, user_tz=user_tz_name)
 
     if result.status == ParseStatus.UNPARSEABLE:
         m = await message.answer(
