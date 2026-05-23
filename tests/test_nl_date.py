@@ -160,6 +160,19 @@ class TestAbsoluteDate:
         assert result.status == ParseStatus.NEEDS_HOUR
         assert result.dt is None
 
+    def test_past_date_no_year_rolls_to_next_year(self) -> None:
+        """E8: дата без года, уже прошедшая в этом году → следующий год
+        (PREFER_DATES_FROM=future). now=13 мая 2026 → «10 мая в 9» = 2027."""
+        result = parse("10 мая в 9", user_tz="Europe/Moscow", now=NOW_UTC)
+        assert result.status == ParseStatus.OK
+        assert result.dt == _expect_msk(2027, 5, 10, 9, 0).astimezone(timezone.utc)
+
+    def test_1_january_rolls_to_next_year(self) -> None:
+        """E8: «1 января в 9» в мае → 1 января следующего года, не прошлое."""
+        result = parse("1 января в 9", user_tz="Europe/Moscow", now=NOW_UTC)
+        assert result.status == ParseStatus.OK
+        assert result.dt == _expect_msk(2027, 1, 1, 9, 0).astimezone(timezone.utc)
+
 
 # ──────────────────────────────────────────────────
 # Группа 5: Прошлое — не создавать reminder

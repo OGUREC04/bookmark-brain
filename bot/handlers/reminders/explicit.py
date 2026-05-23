@@ -77,6 +77,25 @@ async def process_explicit_remind_args(
     user_tz_name = await get_user_tz_name(api, token)
     text_part, time_part = split_remind_text_and_time(args, user_tz_name)
 
+    # E5: дата есть, текста нет («Напомни 25 мая») → спрашиваем «про что?»,
+    # запоминаем дату; reply-текст реконструирует «<текст> <дата>».
+    if time_part is not None and not text_part:
+        prompt = await message.answer(
+            _reply_prompt(
+                f"📝 Про что напомнить <b>{safe(time_part)}</b>?",
+                examples=None,
+            ),
+            parse_mode="HTML",
+        )
+        if prompt is not None and getattr(prompt, "message_id", None) is not None:
+            try:
+                await store.store_reminder_pending_need_text(
+                    message.chat.id, prompt.message_id, _cap_text(time_part),
+                )
+            except Exception as e:
+                logger.warning(f"explicit_remind need_text save failed: {e}")
+        return
+
     if time_part is None:
         display_text = _cap_text(text_part or args, limit=200)
         prompt = await message.answer(

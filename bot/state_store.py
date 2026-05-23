@@ -467,6 +467,20 @@ class StateStore:
             ex=self._REMINDER_PENDING_TTL,
         )
 
+    async def store_reminder_pending_need_text(
+        self, chat_id: int, msg_id: int, date_phrase: str,
+    ) -> None:
+        """E5: «Напомни 25 мая» — дата есть, текста нет. Ждём reply с
+        ТЕКСТОМ; он реконструирует «<текст> <date_phrase>» и пройдёт через
+        обычный explicit-pipeline."""
+        import json
+        r = await self._get()
+        await r.set(
+            f"reminder_pending:{chat_id}:{msg_id}",
+            json.dumps({"kind": "need_text", "date_phrase": date_phrase}),
+            ex=self._REMINDER_PENDING_TTL,
+        )
+
     async def delete_reminder_pending(
         self, chat_id: int, msg_id: int,
     ) -> None:

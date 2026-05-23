@@ -146,6 +146,25 @@ async def handle_reminder_reply(message: Message, api, store) -> bool:
         )
         return True
 
+    # E5: pending kind=need_text — reply это ТЕКСТ напоминания (дата уже
+    # известна). Реконструируем «<текст> <date_phrase>» и прогоняем через
+    # обычный explicit-pipeline (он сам создаст или спросит час).
+    if isinstance(pending_bid, dict) and pending_bid.get("kind") == "need_text":
+        reply_text = (message.text or "").strip()
+        if not reply_text:
+            m = await message.answer("Напиши про что напомнить.", parse_mode=None)
+            await _resave_pending(
+                store, chat_id, getattr(m, "message_id", None),
+                snooze_rid, pending_bid,
+            )
+            return True
+        date_phrase = pending_bid.get("date_phrase", "")
+        from .explicit import process_explicit_remind_args
+        await process_explicit_remind_args(
+            message, f"{reply_text} {date_phrase}".strip(), api, store,
+        )
+        return True
+
     text = (message.text or "").strip()
     if not text:
         m = await message.answer(

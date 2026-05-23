@@ -141,6 +141,29 @@ class TestSplitTextAndTime:
         assert text == "позвонить маме"
         assert "завтра" in time
 
+    # ── E5: дата без текста → ("", date) ──
+
+    def test_date_only_returns_empty_text(self):
+        """«25 мая» без текста → ('', '25 мая') — пустой текст сигналит
+        date-only (caller спросит «про что?»). Не фрагментируем в ('25','мая')."""
+        from bot.common import split_remind_text_and_time
+        text, time = split_remind_text_and_time("25 мая")
+        assert text == ""
+        assert time == "25 мая"
+
+    def test_bare_relative_date_only(self):
+        from bot.common import split_remind_text_and_time
+        text, time = split_remind_text_and_time("завтра")
+        assert text == ""
+        assert time == "завтра"
+
+    def test_text_plus_trailing_date_not_date_only(self):
+        """Реконструкция need_text: «купить торт 25 мая» — текст ЕСТЬ."""
+        from bot.common import split_remind_text_and_time
+        text, time = split_remind_text_and_time("купить торт 25 мая")
+        assert text == "купить торт"
+        assert time == "25 мая"
+
     def test_empty_input(self):
         from bot.common import split_remind_text_and_time
         text, time = split_remind_text_and_time("")

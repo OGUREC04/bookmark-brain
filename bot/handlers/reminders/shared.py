@@ -118,14 +118,15 @@ def _reply_prompt(question: str, examples: str = TIME_EXAMPLES) -> str:
     См. bookmark-brain-4dr.
 
     ``examples`` — TIME_EXAMPLES (дата+час) по умолчанию; для вопроса
-    «во сколько?» (дата уже известна) передавай HOUR_EXAMPLES.
+    «во сколько?» (дата уже известна) передавай HOUR_EXAMPLES; None — не
+    показывать примеры (например вопрос «про что?» — ответ это текст).
     """
-    return (
+    base = (
         f"{question}\n\n"
-        f"↩️ <b>Сделай Reply</b> на это сообщение со временем "
-        f"(зажми/свайпни сообщение → «Ответить»).\n\n"
-        f"{examples}"
+        f"↩️ <b>Сделай Reply</b> на это сообщение "
+        f"(зажми/свайпни сообщение → «Ответить»)."
     )
+    return f"{base}\n\n{examples}" if examples else base
 
 
 

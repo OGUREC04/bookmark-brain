@@ -191,3 +191,52 @@ class TestDatePhraseCombine:
         assert ok is True
         # Создалось напоминание (standalone «завтра в 10»), не ошибка
         api.create_reminder.assert_awaited_once()
+
+
+class TestNeedTextReply:
+    """E5: pending kind=need_text — reply это ТЕКСТ; реконструируем
+    «<текст> <date_phrase>» и прогоняем через explicit-pipeline."""
+
+    async def test_reply_reconstructs_args(self, monkeypatch):
+        import bot.common.auth
+        import bot.handlers.reminders.reply as rep
+
+        async def _fake_ensure(*_a, **_k):
+            return "tok"
+        monkeypatch.setattr(bot.common.auth, "ensure_user", _fake_ensure)
+
+        async def _fake_tz(*_a, **_k):
+            return "Europe/Moscow"
+        monkeypatch.setattr(rep, "get_user_tz_name", _fake_tz)
+
+        rt = MagicMock()
+        rt.message_id = 555
+        rt.text = "📝 Про что напомнить 25 мая?"
+        rt.caption = None
+        rt.from_user = MagicMock(is_bot=True)
+        msg = MagicMock()
+        msg.reply_to_message = rt
+        msg.chat = MagicMock(id=100)
+        msg.text = "купить торт"
+        msg.from_user = MagicMock(id=7)
+        msg.answer = AsyncMock(return_value=MagicMock(message_id=888))
+
+        store = AsyncMock()
+        store.get_reminder_fallback = AsyncMock(return_value=None)
+        store.pop_reminder_snooze = AsyncMock(return_value=None)
+        store.pop_reminder_pending = AsyncMock(return_value={
+            "kind": "need_text", "date_phrase": "25 мая",
+        })
+
+        called = {}
+        async def _fake_process(message, args, api, store):
+            called["args"] = args
+        monkeypatch.setattr(
+            "bot.handlers.reminders.explicit.process_explicit_remind_args",
+            _fake_process,
+        )
+
+        ok = await rep.handle_reminder_reply(msg, AsyncMock(), store)
+        assert ok is True
+        # Реконструкция «<текст> <дата>»
+        assert called["args"] == "купить торт 25 мая"

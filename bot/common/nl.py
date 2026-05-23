@@ -109,6 +109,15 @@ def split_remind_text_and_time(
     if idiom is not None:
         return idiom
 
+    # 2. Весь args — это дата БЕЗ текста («25 мая», «завтра»)? Тогда
+    # ("", args) — пустой текст сигналит «дата-only» (caller спросит «про
+    # что?»). Без этого tail-search фрагментирует «25 мая» → («25»,«мая»).
+    whole = parse(args, user_tz=user_tz)
+    if whole.status in (
+        ParseStatus.OK, ParseStatus.IN_PAST, ParseStatus.NEEDS_HOUR,
+    ):
+        return "", args
+
     tokens = args.split()
     n = len(tokens)
 
