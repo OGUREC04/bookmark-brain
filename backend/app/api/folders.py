@@ -10,7 +10,6 @@ from app.database import get_session
 from app.models import Bookmark, Folder, User
 from app.schemas import (
     BookmarkListResponse,
-    BookmarkResponse,
     FolderCreate,
     FolderResponse,
     FolderUpdate,

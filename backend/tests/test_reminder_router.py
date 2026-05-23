@@ -16,15 +16,13 @@ from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
 import pytest
-from freezegun import freeze_time
-
 from app.schemas import AIClassification, ReminderItem
 from app.services.reminder_router import (
     ReminderForm,
     RouterDecision,
     route,
 )
-
+from freezegun import freeze_time
 
 # Фиксированное «сейчас»: 13 мая 2026, 12:00 MSK = 09:00 UTC
 NOW_MSK = datetime(2026, 5, 13, 12, 0, tzinfo=ZoneInfo("Europe/Moscow"))

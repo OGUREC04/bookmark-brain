@@ -6,9 +6,9 @@ from __future__ import annotations
 
 import sys
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
-from pathlib import Path
 
 # Добавляем root и bot в sys.path для импортов из bot/*
 _ROOT = Path(__file__).parent.parent.parent
@@ -16,7 +16,6 @@ if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
 import pytest
-
 
 # ──────────────────────────────────────────────────
 # T15: nl_date — utrom/dnyom/vecherom/nochyu mapping
@@ -111,7 +110,7 @@ class TestF5AutoDoneGuard:
 class TestF1PermanentFailureNotify:
     async def test_send_message_called_after_marking_failed(self):
         """После status='failed' worker шлёт ⚠️ юзеру."""
-        from app.worker import scheduled_dispatcher, MAX_REMINDER_RETRIES
+        from app.worker import MAX_REMINDER_RETRIES, scheduled_dispatcher
 
         # Setup: 1 due reminder, retry_count уже на пределе, send падает
         sm_id = uuid4()
@@ -177,6 +176,7 @@ class TestF4SnoozeOrder:
     async def test_edit_failure_does_not_store_state(self):
         """Если edit_text упал — store_reminder_snooze НЕ вызывается."""
         from uuid import uuid4
+
         from bot.handlers.reminders import cb_snooze_reminder
 
         cb = AsyncMock()

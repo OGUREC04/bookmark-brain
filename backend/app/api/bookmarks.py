@@ -6,6 +6,7 @@ logger = logging.getLogger(__name__)
 
 from arq.connections import ArqRedis, create_pool
 from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel
 from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,8 +16,6 @@ from app.auth import get_current_user
 from app.config import get_settings
 from app.database import get_session
 from app.models import Bookmark, BookmarkTag, Tag, User
-from pydantic import BaseModel
-
 from app.schemas import (
     BookmarkCreate,
     BookmarkListResponse,

@@ -3,9 +3,8 @@ import asyncio
 import logging
 import sys
 
-from arq.worker import create_worker, get_kwargs
-
 from app.worker import WorkerSettings
+from arq.worker import create_worker
 
 # Без этого arq пишет через logger.info и в stdout НИЧЕГО не видно —
 # выглядит будто worker завис, хотя он штатно опрашивает Redis.

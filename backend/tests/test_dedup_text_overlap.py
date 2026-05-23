@@ -5,8 +5,7 @@
   (overlap считается симметрично: max от обеих сторон)
 - Служебные строки (📋, Reply:, Выполнено:, ☐) не учитываются
 """
-from app.services.dedup_checker import _text_overlap, _meaningful_lines
-
+from app.services.dedup_checker import _meaningful_lines, _text_overlap
 
 # ── Симметричный overlap ─────────────────────────────
 

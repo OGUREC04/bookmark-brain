@@ -9,14 +9,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from bot.services.extractor import (
+    MAX_CHARS,
     EmptyDocumentError,
     EncryptedPDFError,
     ExtractError,
-    MAX_CHARS,
     detect_format,
     extract_text,
 )
-
 
 # ── Format detection ─────────────────────────────────────────
 

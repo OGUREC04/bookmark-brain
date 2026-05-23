@@ -54,7 +54,7 @@ class TestCapText:
         assert _cap_text("hello") == "hello"
 
     def test_long_text_truncated(self):
-        from bot.handlers.reminders import _cap_text, MAX_REMINDER_TEXT_LEN
+        from bot.handlers.reminders import MAX_REMINDER_TEXT_LEN, _cap_text
         long = "x" * (MAX_REMINDER_TEXT_LEN + 100)
         out = _cap_text(long)
         assert len(out) == MAX_REMINDER_TEXT_LEN

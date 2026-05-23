@@ -11,7 +11,6 @@ from uuid import uuid4
 
 import pytest
 
-
 # ──────────────────────────────────────────────────
 # Helpers
 # ──────────────────────────────────────────────────
@@ -165,7 +164,7 @@ class TestScheduledDispatcher:
         # Redis key reminder:{chat_id}:{message_id} → {sm_id}
         mock_redis.set.assert_called()
         keys_set = [c.args[0] for c in mock_redis.set.call_args_list]
-        assert any(f"reminder:999:12345" == k for k in keys_set)
+        assert any("reminder:999:12345" == k for k in keys_set)
 
     async def test_cas_lock_lost_skips(self, mock_session):
         """CAS UPDATE не вернул строку (другой воркер захватил) → skip, не падаем."""

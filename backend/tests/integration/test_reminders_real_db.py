@@ -43,7 +43,7 @@ async def db_user_id():
     tg_id = _TG_ID_COUNTER
 
     from app.database import async_session
-    from app.models import User, ScheduledMessage
+    from app.models import ScheduledMessage, User
     from sqlalchemy import delete
 
     async with async_session() as session:
@@ -136,7 +136,8 @@ class TestWorkerSQLOnRealDB:
         """SELECT due из scheduled_dispatcher с JOIN users."""
         from app.database import async_session
         from app.models import ScheduledMessage
-        from sqlalchemy import text as sa_text, delete
+        from sqlalchemy import delete
+        from sqlalchemy import text as sa_text
 
         async with async_session() as session:
             # Создать due reminder
@@ -193,7 +194,8 @@ class TestWorkerSQLOnRealDB:
         fire_at в будущем."""
         from app.database import async_session
         from app.models import ScheduledMessage
-        from sqlalchemy import text as sa_text, delete, select
+        from sqlalchemy import delete, select
+        from sqlalchemy import text as sa_text
 
         # Создать «снуженный» reminder: status='sent', sent_at=сутки назад,
         # но fire_at в будущем (юзер продлил после первой отправки).
@@ -252,7 +254,8 @@ class TestWorkerSQLOnRealDB:
         """F5: auto_done корректно cleanup'ит старые sent с fire_at в прошлом."""
         from app.database import async_session
         from app.models import ScheduledMessage
-        from sqlalchemy import text as sa_text, delete, select
+        from sqlalchemy import delete, select
+        from sqlalchemy import text as sa_text
 
         async with async_session() as session:
             r = ScheduledMessage(
@@ -311,12 +314,14 @@ class TestRemindersAPIRealDB:
     async def test_create_list_cancel_full_flow(self, db_user_id):
         """API integration test."""
         from app.api.reminders import (
-            create_reminder, list_upcoming, cancel_reminder,
+            cancel_reminder,
+            create_reminder,
+            list_upcoming,
         )
-        from app.schemas import ReminderCreate
         from app.database import async_session
-        from app.models import User, ScheduledMessage
-        from sqlalchemy import select, delete
+        from app.models import ScheduledMessage, User
+        from app.schemas import ReminderCreate
+        from sqlalchemy import delete, select
 
         async with async_session() as session:
             user_result = await session.execute(

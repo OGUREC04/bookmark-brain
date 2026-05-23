@@ -17,6 +17,7 @@ not only in CI.
 """
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 import sys
@@ -37,12 +38,20 @@ def _lint_imports_cmd() -> list[str]:
 
 def test_import_linter_contracts_hold():
     """All import-linter contracts in pyproject.toml must be KEPT."""
+    # Force the child interpreter into UTF-8 so its banner/contract output
+    # (which contains box-drawing + arrow glyphs like «↔») doesn't crash with
+    # UnicodeEncodeError when its stdout pipe inherits a legacy code page
+    # (e.g. cp1251 on Windows). We also decode the captured bytes as UTF-8.
+    env = {**os.environ, "PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8"}
     try:
         proc = subprocess.run(
             _lint_imports_cmd(),
             cwd=_REPO_ROOT,
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
+            env=env,
             timeout=120,
         )
     except FileNotFoundError:

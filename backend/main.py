@@ -1,14 +1,13 @@
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-
-from app.config import get_settings
 from app.api.bookmarks import router as bookmarks_router
 from app.api.folders import router as folders_router
 from app.api.reminders import router as reminders_router
 from app.api.search import router as search_router
 from app.api.users import router as users_router
+from app.config import get_settings
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 settings = get_settings()
 

@@ -20,7 +20,7 @@ from datetime import date, datetime, time, timezone
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import select, text as sa_text
+from sqlalchemy import text as sa_text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import ScheduledMessage
@@ -148,8 +148,6 @@ async def apply_cascade(
         bid=str(bookmark_id),
     ))
     rems = list(rems_result.mappings().all())
-
-    now = datetime.now(timezone.utc)
 
     # Pass 1: для каждого reminder'а — что с пунктом?
     for rem in rems:

@@ -15,7 +15,6 @@ if str(_BACKEND) not in sys.path:
 
 import pytest
 
-
 # ──────────────────────────────────────────────────
 # Detector: is_strong_intent
 # ──────────────────────────────────────────────────
@@ -133,6 +132,7 @@ class TestStrongIntentPromptHandler:
 
     async def test_non_strong_message_skips(self, api, store):
         from aiogram.dispatcher.event.bases import SkipHandler
+
         from bot.handlers.reminders import handle_strong_intent_message
         msg = _make_msg("статья про React")
 
@@ -157,9 +157,10 @@ class TestStrongIntentPromptHandler:
 
 class TestStrongChoiceCancel:
     async def test_x_deletes_prompt_no_db_write(self, api, store):
-        from bot.handlers.reminders import cb_strong_choice
         # State есть в Redis
         import json
+
+        from bot.handlers.reminders import cb_strong_choice
         state_json = json.dumps({"text": "надо купить хлеб", "source_msg_id": 42, "parsed_dt_iso": None})
         store.pop_reminder_strong = AsyncMock(return_value=json.loads(state_json))
 
@@ -173,8 +174,9 @@ class TestStrongChoiceCancel:
 
 class TestStrongChoiceNote:
     async def test_note_creates_bookmark_with_anti_double_flag(self, api, store):
-        from bot.handlers.reminders import cb_strong_choice
         import json
+
+        from bot.handlers.reminders import cb_strong_choice
         state_json = json.dumps({
             "text": "надо купить хлеб",
             "source_msg_id": 42,
@@ -200,8 +202,9 @@ class TestStrongChoiceNote:
 
 class TestStrongChoiceRemind:
     async def test_remind_with_parsed_time_creates_immediately(self, api, store):
-        from bot.handlers.reminders import cb_strong_choice
         import json
+
+        from bot.handlers.reminders import cb_strong_choice
         state_json = json.dumps({
             "text": "купить хлеб",
             "source_msg_id": 42,
@@ -220,8 +223,9 @@ class TestStrongChoiceRemind:
         api.create_bookmark.assert_not_called()
 
     async def test_remind_without_time_asks_reply(self, api, store):
-        from bot.handlers.reminders import cb_strong_choice
         import json
+
+        from bot.handlers.reminders import cb_strong_choice
         state_json = json.dumps({
             "text": "купить хлеб",
             "source_msg_id": 42,

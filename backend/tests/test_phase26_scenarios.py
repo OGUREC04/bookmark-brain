@@ -14,8 +14,6 @@ from unittest.mock import AsyncMock, MagicMock
 from zoneinfo import ZoneInfo
 
 import pytest
-from freezegun import freeze_time
-
 from app.schemas import AIClassification, ReminderItem
 from app.services.reminder_creator import (
     create_composite_reminder,
@@ -23,7 +21,7 @@ from app.services.reminder_creator import (
     create_single_reminder,
 )
 from app.services.reminder_router import ReminderForm, route
-
+from freezegun import freeze_time
 
 NOW_MSK = datetime(2026, 5, 13, 12, 0, tzinfo=ZoneInfo("Europe/Moscow"))
 NOW_UTC = NOW_MSK.astimezone(timezone.utc)

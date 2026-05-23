@@ -8,9 +8,8 @@
 from __future__ import annotations
 
 import pytest
-from pydantic import ValidationError
-
 from app.schemas import AIClassification, ReminderItem
+from pydantic import ValidationError
 
 
 def _minimal_payload(**overrides) -> dict:

@@ -157,6 +157,7 @@ class TestDeleteFailFallback:
         ранее silent swallow и re-render выполнялся успешно. Регрессия-тест:
         re-render выполняется НЕЗАВИСИМО от delete-результата."""
         from aiogram.exceptions import TelegramBadRequest
+
         from bot.handlers.tasks import cb_dedup_merge
 
         cb = _make_callback("new-bid")
@@ -182,7 +183,9 @@ class TestDeleteFailFallback:
         """Silent failure hunter: delete_message failure ДОЛЖЕН логироваться
         как WARNING (не debug, не swallow без логов)."""
         import logging
+
         from aiogram.exceptions import TelegramBadRequest
+
         from bot.handlers.tasks import cb_dedup_merge
 
         cb = _make_callback("new-bid")

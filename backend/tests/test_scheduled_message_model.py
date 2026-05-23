@@ -9,9 +9,8 @@ character varying`.
 """
 from __future__ import annotations
 
-from sqlalchemy.dialects.postgresql import ENUM as PG_ENUM
-
 from app.models import ScheduledMessage
+from sqlalchemy.dialects.postgresql import ENUM as PG_ENUM
 
 
 def _column_type(name: str):

@@ -3,20 +3,19 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from unittest.mock import AsyncMock, patch, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
 
 from bot.services.stt import (
+    _MAX_FILE_SIZE_YANDEX,
     STTError,
     WhisperSTTService,
     YandexSTTService,
-    create_stt_service,
     _validate_file,
-    _MAX_FILE_SIZE_YANDEX,
+    create_stt_service,
 )
-
 
 # ── Factory tests ─────────────────────────────────────────────
 

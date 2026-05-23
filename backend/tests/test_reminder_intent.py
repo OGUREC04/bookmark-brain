@@ -11,9 +11,7 @@
 from __future__ import annotations
 
 import pytest
-
 from app.services.reminder_intent import detect_reminder_intent
-
 
 # ──────────────────────────────────────────────────
 # Positive cases — should detect

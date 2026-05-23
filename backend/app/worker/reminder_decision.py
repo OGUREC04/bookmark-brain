@@ -174,10 +174,11 @@ async def _auto_create_per_item(bookmark, chat_id: int, dated: list[dict]) -> bo
     """
     if not dated:
         return False
-    from app.services.reminder_creator import create_per_item_reminders
-    from app.services.reminder_router import ResolvedItem, RouterDecision, ReminderForm
-    from app.services.nl_date import ParseStatus
     from datetime import datetime, timezone
+
+    from app.services.nl_date import ParseStatus
+    from app.services.reminder_creator import create_per_item_reminders
+    from app.services.reminder_router import ReminderForm, ResolvedItem, RouterDecision
 
     # Reconstruct decision из persisted dict (минимально для creator'а)
     resolved: list[ResolvedItem] = []
@@ -242,10 +243,11 @@ async def _auto_create_per_item(bookmark, chat_id: int, dated: list[dict]) -> bo
 
 async def _auto_create_single(bookmark, chat_id: int, dated: dict) -> bool:
     """T-Phase2.6 auto: SINGLE_REMINDER без 3-button."""
+    from datetime import datetime, timezone
+
+    from app.services.nl_date import ParseStatus
     from app.services.reminder_creator import create_single_reminder
     from app.services.reminder_router import ResolvedItem
-    from app.services.nl_date import ParseStatus
-    from datetime import datetime, timezone
 
     try:
         dt = datetime.fromisoformat(dated["fire_at_utc"])

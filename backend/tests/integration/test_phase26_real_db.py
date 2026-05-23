@@ -364,11 +364,11 @@ class TestApplyDecisionEndpoint:
         self, bookmark_with_decision, db_user_id,
     ):
         """Первый apply создаёт reminder'ы + ставит флаг. Второй — 409."""
-        from main import app
         from app.auth import create_access_token
         from app.database import async_session
         from app.models import User
         from httpx import ASGITransport, AsyncClient
+        from main import app
         from sqlalchemy import select
 
         # Получаем telegram_id для токена
@@ -406,13 +406,13 @@ class TestApplyDecisionEndpoint:
         self, bookmark_with_decision,
     ):
         """Token чужого юзера → 404 (не палим существование)."""
-        from main import app
         from app.auth import create_access_token
-        from httpx import ASGITransport, AsyncClient
 
         # Создаём второго юзера прямо в тесте
         from app.database import async_session
         from app.models import User
+        from httpx import ASGITransport, AsyncClient
+        from main import app
         from sqlalchemy import delete
 
         global _TG_ID_COUNTER
@@ -447,12 +447,12 @@ class TestApplyDecisionEndpoint:
 
     async def test_apply_returns_409_when_no_decision(self, db_user_id):
         """Bookmark без structured_data.reminder_decision → 409."""
-        from main import app
         from app.auth import create_access_token
         from app.database import async_session
         from app.models import Bookmark, User
-        from sqlalchemy import delete, select
         from httpx import ASGITransport, AsyncClient
+        from main import app
+        from sqlalchemy import delete, select
 
         async with async_session() as session:
             bm = Bookmark(

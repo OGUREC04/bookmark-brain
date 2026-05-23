@@ -19,11 +19,10 @@ if str(_BACKEND) not in sys.path:
     sys.path.insert(0, str(_BACKEND))
 
 import pytest
-
 from aiogram.exceptions import TelegramBadRequest
-
 from app.services.task_list_renderer import LIST_HEADER as BACKEND_HEADER
 from app.services.task_list_renderer import render_task_list_text
+
 from bot.handlers.tasks.shared import (
     LIST_HEADER,
     _all_tasks_done,

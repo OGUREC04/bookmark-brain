@@ -6,7 +6,6 @@ from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-
 from app.services.reminder_cascade import (
     CascadeResult,
     _norm,

@@ -336,9 +336,9 @@ class TestConfirmDoesNotDeleteMedia:
         })
         store = AsyncMock()
         bot = AsyncMock()
-        import bot.handlers.settings
+        import bot.handlers.settings as settings_mod
         async def _silent(*_a, **_k): return True
-        monkeypatch.setattr(bot.handlers.settings, "is_silent", _silent)
+        monkeypatch.setattr(settings_mod, "is_silent", _silent)
         # patch the helper we delegate to
         import bot.handlers.tasks.confirm as cf
         created = AsyncMock(return_value=999)

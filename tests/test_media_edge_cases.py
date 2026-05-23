@@ -40,25 +40,14 @@ def fake_stt():
     return stt
 
 
-def _patch_deps(stt_service=None, ensure_user_token="test-jwt", is_silent=False):
-    """Return a dict of patches for _process_audio dependencies."""
-    patches = {
-        "ensure_user": patch(
-            "bot.handlers.media._process_audio.__code__",  # placeholder
-        ),
-    }
-    # We'll use a different approach — patch at call site
-    return stt_service, ensure_user_token, is_silent
-
-
 # ─── Edge Case 1: Short voice (<2 seconds) ───────────────────
 
 
 @pytest.mark.asyncio
 async def test_short_voice_rejected(mock_message, mock_api, mock_store):
     """Voice <2s should be rejected without calling STT."""
-    from bot.handlers.media import _process_audio, _MIN_DURATION_SEC
     import bot.handlers.media as media_mod
+    from bot.handlers.media import _MIN_DURATION_SEC, _process_audio
 
     # Set up STT so we can verify it's NOT called
     fake_stt = AsyncMock()
@@ -90,8 +79,8 @@ async def test_short_voice_rejected(mock_message, mock_api, mock_store):
 @pytest.mark.asyncio
 async def test_exactly_2s_voice_not_rejected(mock_message, mock_api, mock_store):
     """Voice exactly at 2s threshold should proceed (not rejected)."""
-    from bot.handlers.media import _process_audio
     import bot.handlers.media as media_mod
+    from bot.handlers.media import _process_audio
 
     fake_stt = AsyncMock()
     fake_stt.transcribe = AsyncMock(return_value="Текст")
@@ -128,8 +117,8 @@ async def test_exactly_2s_voice_not_rejected(mock_message, mock_api, mock_store)
 @pytest.mark.asyncio
 async def test_none_duration_not_rejected(mock_message, mock_api, mock_store):
     """Voice with duration=None (unknown) should proceed."""
-    from bot.handlers.media import _process_audio
     import bot.handlers.media as media_mod
+    from bot.handlers.media import _process_audio
 
     fake_stt = AsyncMock()
     fake_stt.transcribe = AsyncMock(return_value="Текст")
@@ -167,8 +156,8 @@ async def test_none_duration_not_rejected(mock_message, mock_api, mock_store):
 @pytest.mark.asyncio
 async def test_large_file_rejected(mock_message, mock_api, mock_store):
     """File >20 MB should be rejected with clear size message."""
-    from bot.handlers.media import _process_audio, _TG_MAX_FILE_SIZE
     import bot.handlers.media as media_mod
+    from bot.handlers.media import _TG_MAX_FILE_SIZE, _process_audio
 
     fake_stt = AsyncMock()
     media_mod._stt = fake_stt
@@ -197,8 +186,8 @@ async def test_large_file_rejected(mock_message, mock_api, mock_store):
 @pytest.mark.asyncio
 async def test_file_at_limit_not_rejected(mock_message, mock_api, mock_store):
     """File exactly at 20 MB should proceed."""
-    from bot.handlers.media import _process_audio, _TG_MAX_FILE_SIZE
     import bot.handlers.media as media_mod
+    from bot.handlers.media import _TG_MAX_FILE_SIZE, _process_audio
 
     fake_stt = AsyncMock()
     fake_stt.transcribe = AsyncMock(return_value="Текст")
@@ -236,8 +225,8 @@ async def test_file_at_limit_not_rejected(mock_message, mock_api, mock_store):
 @pytest.mark.asyncio
 async def test_backend_fail_keeps_transcription(mock_message, mock_api, mock_store):
     """If backend fails after STT, transcription reply should stay visible."""
-    from bot.handlers.media import _process_audio
     import bot.handlers.media as media_mod
+    from bot.handlers.media import _process_audio
 
     fake_stt = AsyncMock()
     fake_stt.transcribe = AsyncMock(return_value="Важный текст из голосового")
@@ -287,8 +276,8 @@ async def test_backend_fail_keeps_transcription(mock_message, mock_api, mock_sto
 @pytest.mark.asyncio
 async def test_group_fallback_when_reactions_fail(mock_message, mock_api, mock_store):
     """In groups where reactions are blocked, send text fallback."""
-    from bot.handlers.media import _process_audio
     import bot.handlers.media as media_mod
+    from bot.handlers.media import _process_audio
 
     fake_stt = AsyncMock()
     fake_stt.transcribe = AsyncMock(return_value="Текст из группы")
@@ -346,8 +335,8 @@ async def test_group_fallback_when_reactions_fail(mock_message, mock_api, mock_s
 @pytest.mark.asyncio
 async def test_private_chat_uses_reaction_not_text(mock_message, mock_api, mock_store):
     """In private chat where reactions work, no text hint is sent."""
-    from bot.handlers.media import _process_audio
     import bot.handlers.media as media_mod
+    from bot.handlers.media import _process_audio
 
     fake_stt = AsyncMock()
     fake_stt.transcribe = AsyncMock(return_value="Текст")
@@ -401,8 +390,8 @@ async def test_private_chat_uses_reaction_not_text(mock_message, mock_api, mock_
 @pytest.mark.asyncio
 async def test_stt_not_configured(mock_message, mock_api, mock_store):
     """When WHISPER_API_KEY is empty, show clear error."""
-    from bot.handlers.media import _process_audio
     import bot.handlers.media as media_mod
+    from bot.handlers.media import _process_audio
 
     # Ensure STT is None (no key)
     media_mod._stt = None
@@ -437,8 +426,8 @@ async def test_stt_not_configured(mock_message, mock_api, mock_store):
 @pytest.mark.asyncio
 async def test_happy_path_voice(mock_message, mock_api, mock_store):
     """Full successful flow: download → STT → reply → bookmark."""
-    from bot.handlers.media import _process_audio
     import bot.handlers.media as media_mod
+    from bot.handlers.media import _process_audio
 
     transcription = "Купи молоко и хлеб по дороге домой"
     fake_stt = AsyncMock()
@@ -488,8 +477,8 @@ async def test_happy_path_voice(mock_message, mock_api, mock_store):
 @pytest.mark.asyncio
 async def test_happy_path_with_caption(mock_message, mock_api, mock_store):
     """Voice with caption: caption prepended to transcription in raw_text."""
-    from bot.handlers.media import _process_audio
     import bot.handlers.media as media_mod
+    from bot.handlers.media import _process_audio
 
     transcription = "длинное описание проекта"
     fake_stt = AsyncMock()
@@ -561,7 +550,7 @@ class TestWhisperSTTService:
 
     @pytest.mark.asyncio
     async def test_transcribe_missing_file(self, tmp_path):
-        from bot.services.stt import WhisperSTTService, STTError
+        from bot.services.stt import STTError, WhisperSTTService
 
         svc = WhisperSTTService("test-key")
         with pytest.raises(STTError, match="not found"):
@@ -569,7 +558,7 @@ class TestWhisperSTTService:
 
     @pytest.mark.asyncio
     async def test_transcribe_empty_file(self, tmp_path):
-        from bot.services.stt import WhisperSTTService, STTError
+        from bot.services.stt import STTError, WhisperSTTService
 
         empty_file = tmp_path / "empty.ogg"
         empty_file.write_bytes(b"")
@@ -579,7 +568,7 @@ class TestWhisperSTTService:
 
     @pytest.mark.asyncio
     async def test_transcribe_oversized_file(self, tmp_path):
-        from bot.services.stt import WhisperSTTService, STTError, _MAX_FILE_SIZE_WHISPER
+        from bot.services.stt import _MAX_FILE_SIZE_WHISPER, STTError, WhisperSTTService
 
         big_file = tmp_path / "big.ogg"
         # Create a file just over the limit (write sparse)
