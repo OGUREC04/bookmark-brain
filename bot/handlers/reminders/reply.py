@@ -13,7 +13,13 @@ from datetime import datetime, timedelta, timezone
 from aiogram import F, Router
 from aiogram.types import Message
 
-from bot.common import TIME_EXAMPLES, format_fire_at, get_user_tz_name, safe
+from bot.common import (
+    HOUR_EXAMPLES,
+    TIME_EXAMPLES,
+    format_fire_at,
+    get_user_tz_name,
+    safe,
+)
 
 from .list import handle_reminders_list_reply
 from .shared import (
@@ -229,8 +235,11 @@ async def handle_reminder_reply(message: Message, api, store) -> bool:
         )
         return True
     if result.status == ParseStatus.NEEDS_TIME:
+        # Если дата уже известна (date_phrase) — спрашиваем только час,
+        # примеры с датой («15 мая») были бы невалидны.
+        examples = HOUR_EXAMPLES if date_phrase else TIME_EXAMPLES
         m = await message.answer(
-            "Уточни время (например «в 9» или «в 18:30»). " + TIME_EXAMPLES,
+            "Уточни время (например «в 9» или «в 18:30»). " + examples,
             parse_mode="HTML",
         )
         await _resave_pending(

@@ -13,6 +13,7 @@ from __future__ import annotations
 from .auth import ensure_user
 from .datetime import (
     DEFAULT_TZ,
+    HOUR_EXAMPLES,
     TIME_EXAMPLES,
     format_fire_at,
     get_user_tz_name,
@@ -28,6 +29,7 @@ from .text import safe
 __all__ = [
     "DEFAULT_TZ",
     "EXPLICIT_REMIND_PREFIX_RE",
+    "HOUR_EXAMPLES",
     "TIME_EXAMPLES",
     "ensure_user",
     "extract_explicit_remind_body",

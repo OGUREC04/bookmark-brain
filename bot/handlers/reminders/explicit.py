@@ -21,6 +21,7 @@ from aiogram.filters import Command, CommandObject
 from aiogram.types import Message
 
 from bot.common import (
+    HOUR_EXAMPLES,
     TIME_EXAMPLES,
     format_fire_at,
     get_user_tz_name,
@@ -137,8 +138,9 @@ async def process_explicit_remind_args(
         display = _cap_text(text_part or args, limit=200)
         prompt = await message.answer(
             _reply_prompt(
-                f"🔔 Напомню «<b>{safe(display)}</b>» "
-                f"<b>{safe(time_part)}</b> — во сколько? (например «в 9»)"
+                f"🔔 Напоминание <b>{safe(time_part)}</b>: "
+                f"«<b>{safe(display)}</b>».\nВо сколько напомнить?",
+                examples=HOUR_EXAMPLES,
             ),
             parse_mode="HTML",
         )

@@ -109,19 +109,22 @@ def extract_first_datetime_entity(message: Message) -> datetime | None:
                     continue
     return None
 
-def _reply_prompt(question: str) -> str:
+def _reply_prompt(question: str, examples: str = TIME_EXAMPLES) -> str:
     """Унифицированный текст prompt'а для ввода времени через reply.
 
     UX: Reply подсвечено максимально явно — отдельная строка с ↩️ + жирный
     текст + конкретный пример. Без этого юзеры шлют next-message вместо
     reply и попадают в catch-all → save_yes/no → «Не сохраняю».
     См. bookmark-brain-4dr.
+
+    ``examples`` — TIME_EXAMPLES (дата+час) по умолчанию; для вопроса
+    «во сколько?» (дата уже известна) передавай HOUR_EXAMPLES.
     """
     return (
         f"{question}\n\n"
         f"↩️ <b>Сделай Reply</b> на это сообщение со временем "
         f"(зажми/свайпни сообщение → «Ответить»).\n\n"
-        f"{TIME_EXAMPLES}"
+        f"{examples}"
     )
 
 

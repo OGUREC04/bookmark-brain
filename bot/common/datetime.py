@@ -14,13 +14,23 @@ logger = logging.getLogger(__name__)
 # Default timezone — used when users.timezone is empty or unparseable.
 DEFAULT_TZ = "Europe/Moscow"
 
-# Reply examples shown when asking the user for a time.
+# Reply examples shown when asking the user for a full time (дата+час).
 TIME_EXAMPLES = (
     "Примеры:\n"
     "• <code>через час</code>\n"
     "• <code>завтра в 9</code>\n"
     "• <code>в субботу в 18</code>\n"
     "• <code>15 мая</code>"
+)
+
+# Reply examples когда дата УЖЕ известна и нужен только ЧАС («во сколько?»).
+# Примеры с датой («15 мая», «завтра») тут невалидны — спрашиваем время суток.
+HOUR_EXAMPLES = (
+    "Примеры:\n"
+    "• <code>в 9</code>\n"
+    "• <code>в 18:30</code>\n"
+    "• <code>утром</code>\n"
+    "• <code>вечером</code>"
 )
 
 
