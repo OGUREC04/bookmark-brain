@@ -57,6 +57,7 @@ def _is_valid_uuid(s: str | None) -> bool:
 
 async def _send_reminder_confirmation_with_chip(
     message: Message, fire_at: datetime, reminder_text: str, tz_name: str,
+    deduplicated: bool = False,
 ) -> None:
     """Подтверждение reminder с полным форматом даты для авто-детекции
     клиентом Telegram.
@@ -81,8 +82,12 @@ async def _send_reminder_confirmation_with_chip(
     local = fire_at.astimezone(tz)
     formatted_full = local.strftime("%d.%m.%Y %H:%M")
 
+    # E15: на дубле (тот же текст+минута) бэкенд вернул существующее
+    # напоминание — пишем «👌 Уже напомню…», чтобы юзер понял что нового
+    # будильника не появилось (а не подумал что наплодил дублей).
+    prefix = "👌 Уже напомню" if deduplicated else "🔔 Напомню"
     await message.answer(
-        f"🔔 Напомню <b>{safe(formatted_full)}</b> — «{safe(short_text)}»",
+        f"{prefix} <b>{safe(formatted_full)}</b> — «{safe(short_text)}»",
         parse_mode="HTML",
     )
 

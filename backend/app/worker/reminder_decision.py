@@ -37,8 +37,12 @@ def _format_fire_at_local(fire_at: datetime, user_tz: str) -> str:
     return local.strftime("%d.%m %H:%M")
 
 
-def _confirmation_text_single(text: str, fire_at_local: str) -> str:
-    return f"🔔 Напомню «{(text or '').strip()[:80]}» — {fire_at_local}"
+def _confirmation_text_single(
+    text: str, fire_at_local: str, deduplicated: bool = False,
+) -> str:
+    # E15: на дубле напоминание не создаётся заново — пишем «Уже напомню».
+    prefix = "👌 Уже напомню" if deduplicated else "🔔 Напомню"
+    return f"{prefix} «{(text or '').strip()[:80]}» — {fire_at_local}"
 
 
 def _confirmation_text_per_item(count: int) -> str:
@@ -266,6 +270,7 @@ async def _auto_create_single(bookmark, chat_id: int, dated: dict) -> bool:
     try:
         async with async_session() as session:
             from app.models import Bookmark as _Bookmark
+            from app.services.reminder_creator import find_duplicate_reminder
             res = await session.execute(
                 select(_Bookmark).where(
                     _Bookmark.id == bookmark.id,
@@ -275,6 +280,11 @@ async def _auto_create_single(bookmark, chat_id: int, dated: dict) -> bool:
             bm = res.scalar_one_or_none()
             if bm is None:
                 return False
+            # E15: до создания проверяем, не дубль ли (тот же текст+минута) —
+            # чтобы подтверждение было «👌 Уже напомню…», а не «🔔 Напомню…».
+            is_dup = (await find_duplicate_reminder(
+                session, bm.user_id, item.text, item.fire_at,
+            )) is not None
             # CAS-захват флага до создания reminder'а (см. _auto_create_per_item).
             claimed = await _mark_decision_applied_cas(session, bm.id, bm.user_id)
             if not claimed:
@@ -296,7 +306,9 @@ async def _auto_create_single(bookmark, chat_id: int, dated: dict) -> bool:
             return False
         asyncio.create_task(_send_message(
             chat_id,
-            _confirmation_text_single(item.text, _format_fire_at_local(dt, user_tz)),
+            _confirmation_text_single(
+                item.text, _format_fire_at_local(dt, user_tz), deduplicated=is_dup,
+            ),
         ))
         logger.info(
             "Phase 2.6 auto single: created reminder %s for bookmark %s",

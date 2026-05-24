@@ -103,7 +103,9 @@ async def create_reminder(
             f"reminder dedup: вернул существующий {existing.id} "
             f"(text+minute совпали) вместо дубля для user {current_user.id}"
         )
-        return existing
+        resp = _to_reminder_response(existing, include_bookmark=False)
+        resp.deduplicated = True
+        return resp
 
     reminder = ScheduledMessage(
         user_id=current_user.id,

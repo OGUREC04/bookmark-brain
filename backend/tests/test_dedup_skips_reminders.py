@@ -46,3 +46,19 @@ class TestHasReminderIntent:
     def test_malformed_decision_is_safe(self):
         assert _has_reminder_intent({"reminder_decision": "oops"}) is False
         assert _has_reminder_intent({"reminder_decision": {}}) is False
+
+
+class TestConfirmationWording:
+    """E15: worker-подтверждение различает новый reminder vs дубль."""
+
+    def test_new_reminder_wording(self):
+        from app.worker.reminder_decision import _confirmation_text_single
+        txt = _confirmation_text_single("купить хлеб", "25.05 10:00")
+        assert txt.startswith("🔔 Напомню")
+        assert "купить хлеб" in txt
+
+    def test_duplicate_wording(self):
+        from app.worker.reminder_decision import _confirmation_text_single
+        txt = _confirmation_text_single("купить хлеб", "25.05 10:00", deduplicated=True)
+        assert txt.startswith("👌 Уже напомню")
+        assert "купить хлеб" in txt

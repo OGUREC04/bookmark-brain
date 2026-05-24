@@ -114,6 +114,35 @@ class TestCreateReminderValidation:
         await create_reminder(body, user, session)
         session.add.assert_called_once()
 
+    async def test_dedup_returns_existing_with_flag(self, user, session):
+        """E15: повтор (тот же текст+минута) → existing + deduplicated=True,
+        новый ScheduledMessage НЕ добавляется. Бот по флагу пишет «Уже напомню»."""
+        from unittest.mock import patch
+
+        from app.api import reminders as rem
+        from app.schemas import ReminderResponse
+
+        existing = MagicMock()
+        base = ReminderResponse(
+            id=uuid4(), bookmark_id=None, kind="reminder",
+            fire_at=datetime(2030, 1, 1, tzinfo=timezone.utc),
+            status="pending", payload={"text": "купить хлеб"},
+            created_at=datetime(2030, 1, 1, tzinfo=timezone.utc),
+        )
+        body = ReminderCreate(
+            fire_at=datetime(2030, 1, 1, tzinfo=timezone.utc),
+            payload={"text": "купить хлеб"},
+        )
+        with (
+            patch("app.services.reminder_creator.find_duplicate_reminder",
+                  AsyncMock(return_value=existing)),
+            patch.object(rem, "_to_reminder_response", return_value=base),
+        ):
+            out = await create_reminder(body, user, session)
+
+        assert out.deduplicated is True
+        session.add.assert_not_called()  # дубль не создан
+
 
 # ──────────────────────────────────────────────────
 # update_reminder — IDOR + fire_at validation
@@ -190,8 +219,17 @@ class TestReminderDedup:
     существующий, не плодим дубль."""
 
     async def test_exact_duplicate_returns_existing(self, user, session):
+        # existing — с реальными атрибутами, т.к. _to_reminder_response
+        # сериализует его в ReminderResponse (deduplicated=True).
         existing = MagicMock()
         existing.id = uuid4()
+        existing.bookmark_id = None
+        existing.kind = "reminder"
+        existing.fire_at = datetime(2030, 1, 1, tzinfo=timezone.utc)
+        existing.status = "pending"
+        existing.payload = {"text": "купить хлеб"}
+        existing.created_at = datetime(2030, 1, 1, tzinfo=timezone.utc)
+        existing.sent_at = None
         result = MagicMock()
         result.scalars = MagicMock(
             return_value=MagicMock(first=MagicMock(return_value=existing))
@@ -202,8 +240,9 @@ class TestReminderDedup:
             payload={"text": "купить хлеб"},
         )
         out = await create_reminder(body, user, session)
-        assert out is existing
-        session.add.assert_not_called()
+        assert out.deduplicated is True
+        assert out.id == existing.id
+        session.add.assert_not_called()  # дубль не создан
 
     async def test_different_text_creates_new(self, user, session):
         result = MagicMock()

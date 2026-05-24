@@ -125,7 +125,7 @@ async def process_explicit_remind_args(
             )
             return
         try:
-            await api.create_reminder(
+            created = await api.create_reminder(
                 token, entity_dt.isoformat(),
                 bookmark_id=None,
                 payload={"text": text_part, "source": "explicit_remind"},
@@ -139,6 +139,7 @@ async def process_explicit_remind_args(
             return
         await _send_reminder_confirmation_with_chip(
             message, entity_dt, text_part, user_tz_name,
+            deduplicated=bool((created or {}).get("deduplicated")),
         )
         return
 
@@ -203,7 +204,7 @@ async def process_explicit_remind_args(
         return
 
     try:
-        await api.create_reminder(
+        created = await api.create_reminder(
             token,
             parse_result.dt.isoformat(),
             bookmark_id=None,
@@ -219,6 +220,7 @@ async def process_explicit_remind_args(
 
     await _send_reminder_confirmation_with_chip(
         message, parse_result.dt, text_part, user_tz_name,
+        deduplicated=bool((created or {}).get("deduplicated")),
     )
 
 

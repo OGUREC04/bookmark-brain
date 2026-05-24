@@ -271,6 +271,10 @@ class ReminderResponse(BaseModel):
     bookmark_title: str | None = None
     bookmark_raw_text: str | None = None
 
+    # E15: True если вернули существующее напоминание вместо создания дубля
+    # (тот же текст + минута). Бот показывает «👌 Уже напомню…» вместо «🔔 Напомню…».
+    deduplicated: bool = False
+
 
 class ReminderListResponse(BaseModel):
     items: list[ReminderResponse]
