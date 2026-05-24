@@ -465,3 +465,39 @@ async def process_bookmark_task(
 
     await embedding_service.close()
     logger.info(f"Task completed for bookmark {bookmark_id} in {duration:.1f}s")
+
+
+async def redispatch_reminder_task(
+    ctx: dict,
+    bookmark_id: str,
+    chat_id: int | None = None,
+) -> bool:
+    """Re-dispatch persisted `reminder_decision` для одной закладки (ied).
+
+    Контекст: при near-duplicate `process_bookmark_task` пропускает
+    `_dispatch_reminder_decision` (см. `near_dup_handled`). Если юзер потом
+    выбирает «сохрани как новую», reminder'ы из уже сохранённого decision
+    иначе теряются. Эта джоба переигрывает dispatch по persisted decision.
+
+    Идемпотентна: `_dispatch_reminder_decision` защищён CAS-флагом
+    `reminder_decision_applied`, так что повторный вызов (или гонка с
+    auto-create) не плодит дубли.
+
+    Returns True если decision был обработан.
+    """
+    from app.database import async_session
+    from app.models import Bookmark
+
+    try:
+        async with async_session() as session:
+            res = await session.execute(
+                select(Bookmark).where(Bookmark.id == UUID(bookmark_id))
+            )
+            bookmark = res.scalar_one_or_none()
+            if bookmark is None:
+                logger.warning("redispatch_reminder_task: bookmark %s not found", bookmark_id)
+                return False
+            return await _dispatch_reminder_decision(bookmark=bookmark, chat_id=chat_id)
+    except Exception as e:
+        logger.warning("redispatch_reminder_task failed for %s: %s", bookmark_id, e)
+        return False

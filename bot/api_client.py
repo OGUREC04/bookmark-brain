@@ -131,6 +131,25 @@ class BackendClient:
         response.raise_for_status()
         return response.json()
 
+    async def redispatch_reminders(
+        self, token: str, bookmark_id: str, chat_id: int | None = None,
+    ) -> dict:
+        """POST /api/v1/reminders/redispatch/{bookmark_id} — ied.
+
+        Переигрывает сохранённый reminder_decision (near-dup пропустил dispatch,
+        юзер выбрал «сохрани как новую»). Идемпотентно на бэкенде.
+        """
+        params: dict = {}
+        if chat_id is not None:
+            params["chat_id"] = chat_id
+        response = await self.client.post(
+            f"/api/v1/reminders/redispatch/{bookmark_id}",
+            headers={"Authorization": f"Bearer {token}"},
+            params=params,
+        )
+        response.raise_for_status()
+        return response.json()
+
     async def list_upcoming_reminders(self, token: str, limit: int = 50) -> dict:
         """GET /api/v1/reminders/upcoming."""
         response = await self.client.get(

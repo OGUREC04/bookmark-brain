@@ -399,6 +399,81 @@ class TestDedupUpdateRerendersTaskList:
             "handle_pending_dedup intent=update task_list не показал список"
         )
 
+    async def test_general_dedup_save_new_redispatches_reminders(self):
+        """ied: «сохрани как новую» при near-dup должен переиграть
+        reminder_decision (worker пропустил dispatch). Иначе напоминание
+        из near-dup'нутого сообщения тихо теряется."""
+        from bot.handlers.tasks import _handle_general_dedup_reply
+
+        msg, _ = _make_reply_message("сохрани как новую")
+        api = AsyncMock()
+        # Новая закладка — НЕ task_list (near-dup только на non-task-list),
+        # materialize будет no-op, redispatch — основное действие.
+        api.get_bookmark = AsyncMock(return_value={
+            "id": "new-bid", "title": "Купить хлеб", "structured_data": None,
+        })
+        api.redispatch_reminders = AsyncMock(return_value={"enqueued": True})
+
+        store = AsyncMock()
+        store.pop_general_dedup = AsyncMock()
+        store.clear_pending_dedup = AsyncMock()
+
+        dedup = {"new_bid": "new-bid", "old_bid": "old-bid", "src_msg_id": 42}
+
+        await _handle_general_dedup_reply(msg, api, store, dedup)
+
+        api.redispatch_reminders.assert_awaited_once()
+        # chat_id передан как keyword
+        assert api.redispatch_reminders.await_args.kwargs.get("chat_id") == 100
+        # bookmark_id = new_bid
+        assert "new-bid" in api.redispatch_reminders.await_args.args
+
+    async def test_pending_dedup_save_new_redispatches_reminders(self):
+        """Тот же ied-кейс для handle_pending_dedup (без reply)."""
+        from bot.handlers.tasks import handle_pending_dedup
+
+        msg = _make_pending_message("сохрани как новую")
+        api = AsyncMock()
+        api.get_bookmark = AsyncMock(return_value={
+            "id": "new-bid", "title": "Купить хлеб", "structured_data": None,
+        })
+        api.redispatch_reminders = AsyncMock(return_value={"enqueued": True})
+
+        store = AsyncMock()
+        store.pop_general_dedup = AsyncMock()
+        store.clear_pending_dedup = AsyncMock()
+
+        dedup = {"new_bid": "new-bid", "old_bid": "old-bid", "src_msg_id": 42}
+
+        await handle_pending_dedup(
+            msg, api, store, dedup, intent="save_new", alert_msg_id=555,
+        )
+
+        api.redispatch_reminders.assert_awaited_once()
+        assert api.redispatch_reminders.await_args.kwargs.get("chat_id") == 100
+
+    async def test_redispatch_failure_does_not_crash_save_new(self):
+        """Best-effort: если redispatch упал (backend 500), save_new всё равно
+        отрабатывает без исключения наружу."""
+        from bot.handlers.tasks import _handle_general_dedup_reply
+
+        msg, _ = _make_reply_message("оставь обе")
+        api = AsyncMock()
+        api.get_bookmark = AsyncMock(return_value={
+            "id": "new-bid", "title": "X", "structured_data": None,
+        })
+        api.redispatch_reminders = AsyncMock(side_effect=Exception("backend 500"))
+
+        store = AsyncMock()
+        store.pop_general_dedup = AsyncMock()
+        store.clear_pending_dedup = AsyncMock()
+
+        dedup = {"new_bid": "new-bid", "old_bid": "old-bid", "src_msg_id": 42}
+
+        # Не должно бросить
+        await _handle_general_dedup_reply(msg, api, store, dedup)
+        api.redispatch_reminders.assert_awaited_once()
+
     async def test_user_source_message_deleted_on_update(self):
         """Юзер-сообщение со списком (которое он отправил, забыв про старый)
         должно быть удалено — иначе остаётся дубликат текста в чате."""

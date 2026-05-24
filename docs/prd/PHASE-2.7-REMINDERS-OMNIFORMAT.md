@@ -1,11 +1,28 @@
 # PRD: Phase 2.7 — Reminders Omniformat
 
-**Статус:** v1 — Draft (2026-05-23)
+**Статус:** v1 — Draft (2026-05-23) · частично реализована (2026-05-24)
 **Дата:** 2026-05-23
 **Фаза:** Phase 2.7
 **Зависит от:** Phase 2.5 Reminders MVP (в проде), Phase 2.6 Reminders × Task Lists (shipped)
 **Оценка:** ~8–10 часов работы (2 dev-сессии)
 **Bead:** `bookmark-brain-*` (explicit leading-date bug + омниформат)
+
+> **Реализовано (2026-05-24):**
+> - **`s44`** — front-date idiom «Напомни 25 мая, что …» + NEEDS_HOUR pending (US-1) ✅
+> - **`f27` / B3** — composite_reminder dispatch: `create_composite_reminder` + apply-decision
+>   endpoint обрабатывает форму, достижим через 3-кнопку «🔔» ✅
+> - **`0zz` / E15** — dedup напоминаний: реализован как **silent exact-dedup**
+>   (тот же текст + та же минута → возвращаем существующий, `create_reminder`),
+>   а не «Warn». Разные дела на одно время остаются (политика «Allow different»). ✅
+> - **`ied`** — re-dispatch reminder_decision после near-dup «сохрани как новую»:
+>   arq-джоба `redispatch_reminder_task` + endpoint `POST /reminders/redispatch/{id}`,
+>   бот зовёт из обоих save_new-флоу. Идемпотентно через CAS-флаг. ✅
+>
+> **Отложено:**
+> - **`vou` / E7** — две даты без разделителя → AI fallback. Зависит от Phase 3
+>   (AI-fallback wiring, FR-5) — в explicit-пути fallback'а пока нет.
+> - **`nj8` / B2** — выбор архитектуры классификации по `reminder_route_audit`.
+>   Замер-задача, ждёт накопления данных (~неделя).
 
 ---
 

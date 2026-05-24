@@ -63,6 +63,22 @@ async def _materialize_if_task_list(
     )
 
 
+async def _redispatch_reminders_after_save_new(
+    api, token: str, new_bid: str, chat_id: int,
+) -> None:
+    """ied: near-dup заставил worker пропустить reminder-dispatch. После
+    «сохрани как новую» досоздаём reminder'ы из persisted reminder_decision.
+
+    Best-effort: бэкенд идемпотентен (CAS-флаг), на «нет decision» — no-op.
+    Раньше при near-dup + reminder-intent + «оставить обе» напоминания тихо
+    терялись (см. bookmark-brain-ied).
+    """
+    try:
+        await api.redispatch_reminders(token, new_bid, chat_id=chat_id)
+    except Exception as e:
+        logger.debug(f"_redispatch_reminders {new_bid} failed: {e}")
+
+
 async def _react_src(bot, chat_id: int, src_msg_id, emoji: str) -> None:
     """#10: вернуть реакцию на исходное сообщение юзера.
 
@@ -481,6 +497,8 @@ async def _handle_general_dedup_reply(
             message.bot, chat_id, token, api, store,
             new_bid, src_msg_id, message.from_user.id,
         )
+        # ied: near-dup также пропустил reminder-dispatch — досоздаём.
+        await _redispatch_reminders_after_save_new(api, token, new_bid, chat_id)
 
     elif intent == "update":
         # См. docs/bugs/2026-05-11-task-list-duplicates-and-merge-ui.md
@@ -593,6 +611,8 @@ async def handle_pending_dedup(
             bot, chat_id, token, api, store,
             new_bid, src_msg_id, message.from_user.id,
         )
+        # ied: near-dup также пропустил reminder-dispatch — досоздаём.
+        await _redispatch_reminders_after_save_new(api, token, new_bid, chat_id)
 
     elif intent == "update":
         # См. docs/bugs/2026-05-11-task-list-duplicates-and-merge-ui.md

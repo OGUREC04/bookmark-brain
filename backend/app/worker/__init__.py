@@ -42,7 +42,11 @@ from .dedup import (
     _store_dedup_alert,
     _store_general_dedup,
 )
-from .processing import _result_buttons, process_bookmark_task
+from .processing import (
+    _result_buttons,
+    process_bookmark_task,
+    redispatch_reminder_task,
+)
 from .reminder_decision import (
     _ask_hour_text,
     _auto_create_per_item,
@@ -96,7 +100,7 @@ settings = get_settings()
 
 
 class WorkerSettings:
-    functions = [process_bookmark_task]
+    functions = [process_bookmark_task, redispatch_reminder_task]
     cron_jobs = [
         cron(retry_failed_task, hour=3, minute=0),
         cron(retry_partial_embeddings, hour=5, minute=0),
@@ -159,6 +163,7 @@ __all__ = [
     "analytics_partition_maintenance",
     "auto_done_reminders",
     "process_bookmark_task",
+    "redispatch_reminder_task",
     "retry_failed_task",
     "retry_partial_embeddings",
     "scheduled_dispatcher",

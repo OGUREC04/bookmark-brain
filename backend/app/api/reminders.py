@@ -199,6 +199,48 @@ async def cancel_all_pending(
     return {"cancelled": result.rowcount}
 
 
+@router.post("/redispatch/{bookmark_id}")
+async def redispatch_reminder_decision(
+    bookmark_id: UUID,
+    chat_id: int | None = Query(
+        default=None,
+        description="Чат для UI/уведомления reminder'а (DM chat_id бота).",
+    ),
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    """Переигрывает сохранённый `reminder_decision` закладки (ied).
+
+    Контекст: при near-duplicate worker пропускает dispatch reminder'ов
+    (юзер ещё выбирает что делать с дублем). Если он жмёт «сохрани как
+    новую», reminder'ы из persisted decision иначе теряются. Бот зовёт этот
+    endpoint → enqueue arq-джобы `redispatch_reminder_task`.
+
+    Идемпотентно: сам dispatch защищён CAS-флагом `reminder_decision_applied`.
+    Возвращает {"enqueued": bool} — False если decision нет или уже применён.
+    """
+    result = await session.execute(
+        select(Bookmark).where(
+            Bookmark.id == bookmark_id,
+            Bookmark.user_id == current_user.id,
+        )
+    )
+    bookmark = result.scalar_one_or_none()
+    if bookmark is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Bookmark not found")
+
+    structured = bookmark.structured_data or {}
+    decision = structured.get("reminder_decision") if isinstance(structured, dict) else None
+    if not isinstance(decision, dict) or structured.get("reminder_decision_applied"):
+        return {"enqueued": False}
+
+    from app.api.bookmarks import get_arq_pool
+
+    pool = await get_arq_pool()
+    await pool.enqueue_job("redispatch_reminder_task", str(bookmark_id), chat_id)
+    return {"enqueued": True}
+
+
 @router.get("/upcoming", response_model=ReminderListResponse)
 async def list_upcoming(
     current_user: User = Depends(get_current_user),
