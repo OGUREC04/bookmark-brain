@@ -218,14 +218,41 @@ class BackendClient:
     async def get_bookmarks(
         self, token: str, page: int = 1, per_page: int = 20,
         structured_type: str | None = None,
+        is_archived: bool | None = None,
     ) -> dict:
         params: dict = {"page": page, "per_page": per_page}
         if structured_type is not None:
             params["structured_type"] = structured_type
+        if is_archived is not None:
+            params["is_archived"] = is_archived
         response = await self.client.get(
             "/api/v1/bookmarks/",
             headers={"Authorization": f"Bearer {token}"},
             params=params,
+        )
+        response.raise_for_status()
+        return response.json()
+
+    async def archive_all_task_lists(self, token: str) -> dict:
+        """POST /api/v1/bookmarks/archive-all-task-lists — /clearlists.
+
+        Архивирует все неархивные task_list'ы. Возвращает {"archived": N}.
+        """
+        response = await self.client.post(
+            "/api/v1/bookmarks/archive-all-task-lists",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        response.raise_for_status()
+        return response.json()
+
+    async def cancel_all_reminders(self, token: str) -> dict:
+        """POST /api/v1/reminders/cancel-all — /clearreminders.
+
+        Отменяет все pending напоминания. Возвращает {"cancelled": N}.
+        """
+        response = await self.client.post(
+            "/api/v1/reminders/cancel-all",
+            headers={"Authorization": f"Bearer {token}"},
         )
         response.raise_for_status()
         return response.json()

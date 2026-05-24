@@ -213,6 +213,30 @@ async def list_bookmarks(
     )
 
 
+@router.post("/archive-all-task-lists")
+async def archive_all_task_lists(
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    """Bulk-архивирование всех неархивных task_list'ов юзера (/clearlists).
+
+    Обратимо: ставит is_archived=true, не удаляет записи. Списки исчезают
+    из /lists и поиска, но остаются в БД. Возвращает {"archived": N}.
+    """
+    stmt = (
+        update(Bookmark)
+        .where(
+            Bookmark.user_id == current_user.id,
+            Bookmark.is_archived == False,  # noqa: E712 — SQL boolean comparison
+            Bookmark.structured_data["type"].astext == "task_list",
+        )
+        .values(is_archived=True)
+    )
+    result = await session.execute(stmt)
+    await session.flush()
+    return {"archived": result.rowcount}
+
+
 @router.get("/random", response_model=BookmarkResponse | None)
 async def random_bookmark(
     current_user: User = Depends(get_current_user),

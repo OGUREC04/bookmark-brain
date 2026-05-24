@@ -25,6 +25,7 @@ from bot.config import get_settings
 from bot.handlers import (
     bookmark_view,
     clean,
+    clear,
     documents,
     media,
     random,
@@ -107,6 +108,7 @@ async def main():
     dp.include_router(settings_handler.router)
     dp.include_router(timezone_handler.router)
     dp.include_router(clean.router)
+    dp.include_router(clear.router)   # /clearlists, /clearreminders — до catch-all
     dp.include_router(media.router)   # voice, video_note, audio — до catch-all
     dp.include_router(documents.router)  # PDF/DOCX/TXT/MD — до catch-all в start
     dp.include_router(bookmark_view.router)  # view: callback — раньше start

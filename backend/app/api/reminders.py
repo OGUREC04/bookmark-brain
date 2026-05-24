@@ -173,6 +173,32 @@ async def cancel_reminder(
     await session.flush()
 
 
+@router.post("/cancel-all")
+async def cancel_all_pending(
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    """Bulk-отмена всех pending напоминаний юзера (/clearreminders).
+
+    Ставит status=cancelled (история сохраняется). Уже отправленные/отменённые
+    не трогаются. Возвращает {"cancelled": N}.
+    """
+    from sqlalchemy import update
+
+    stmt = (
+        update(ScheduledMessage)
+        .where(
+            ScheduledMessage.user_id == current_user.id,
+            ScheduledMessage.kind == REMINDER_KIND,
+            ScheduledMessage.status == "pending",
+        )
+        .values(status="cancelled", cancelled_at=datetime.now(timezone.utc))
+    )
+    result = await session.execute(stmt)
+    await session.flush()
+    return {"cancelled": result.rowcount}
+
+
 @router.get("/upcoming", response_model=ReminderListResponse)
 async def list_upcoming(
     current_user: User = Depends(get_current_user),
