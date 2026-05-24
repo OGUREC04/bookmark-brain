@@ -404,11 +404,19 @@ async def retry_partial_embeddings(ctx: dict) -> None:
     await embedding_service.close()
 
 
+# Анти-спам: максимум nudge'ей на одного юзера за один прогон крона.
+# Без лимита прогон шлёт по сообщению на КАЖДЫЙ незакрытый список — у юзера
+# с накопленными списками это 20+ сообщений за раз. Пингуем только самый
+# залежавшийся список; остальные — в следующие прогоны (по мере закрытия).
+_MAX_NUDGES_PER_USER_PER_RUN = 1
+
+
 async def stale_list_nudge(ctx: dict) -> None:
     """Cron: утреннее напоминание о незакрытых списках задач.
 
     Ищет task_list'ы старше 24ч с done < total, отправляет nudge в Telegram.
     Не напоминает повторно (Redis nudged:{bookmark_id} TTL 7 дней).
+    Не больше ``_MAX_NUDGES_PER_USER_PER_RUN`` на юзера за прогон (анти-спам).
     """
     from sqlalchemy import and_, text
 
@@ -419,7 +427,9 @@ async def stale_list_nudge(ctx: dict) -> None:
 
     async with async_session() as session:
         # Ищем task_list'ы: ai_status completed/partial, не archived,
-        # structured_data.type = 'task_list', старше 24ч
+        # structured_data.type = 'task_list', старше 24ч.
+        # Сортировка по created_at ASC — самые залежавшиеся первыми, чтобы
+        # под per-user лимит попадал самый старый незакрытый список.
         result = await session.execute(
             select(Bookmark, User.telegram_id).join(
                 User, Bookmark.user_id == User.id,
@@ -433,7 +443,7 @@ async def stale_list_nudge(ctx: dict) -> None:
                         "NOW() - INTERVAL '24 hours'"
                     ),
                 )
-            )
+            ).order_by(Bookmark.created_at.asc())
         )
         rows = result.all()
 
@@ -447,6 +457,8 @@ async def stale_list_nudge(ctx: dict) -> None:
     import redis.asyncio as aioredis
     r: aioredis.Redis | None = None
     nudge_count = 0
+    # Сколько nudge'ей уже отправлено каждому юзеру в ЭТОМ прогоне (анти-спам).
+    sent_per_user: dict[int, int] = {}
 
     try:
         r = aioredis.from_url(settings.REDIS_URL, decode_responses=True)
@@ -460,6 +472,11 @@ async def stale_list_nudge(ctx: dict) -> None:
             done = sum(1 for t in tasks if t.get("done"))
             if done >= total:
                 continue  # Все выполнены
+
+            # Анти-спам: лимит на юзера за прогон. rows отсортированы по
+            # created_at ASC → под лимит попадает самый залежавшийся список.
+            if sent_per_user.get(telegram_id, 0) >= _MAX_NUDGES_PER_USER_PER_RUN:
+                continue
 
             bid = str(bookmark.id)
 
@@ -507,6 +524,7 @@ async def stale_list_nudge(ctx: dict) -> None:
                     ex=2 * 3600,  # 2ч TTL
                 )
                 nudge_count += 1
+                sent_per_user[telegram_id] = sent_per_user.get(telegram_id, 0) + 1
                 logger.info(f"Nudge sent for {bid} to {telegram_id}")
     finally:
         if r is not None:
