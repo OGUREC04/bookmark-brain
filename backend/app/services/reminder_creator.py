@@ -21,6 +21,7 @@ import logging
 from datetime import datetime, timedelta
 from uuid import UUID
 
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Bookmark, ScheduledMessage
@@ -29,6 +30,38 @@ from app.services.reminder_router import ResolvedItem, RouterDecision
 logger = logging.getLogger(__name__)
 
 REMINDER_KIND = "reminder"
+
+
+async def find_duplicate_reminder(
+    session: AsyncSession,
+    user_id,
+    text: str | None,
+    fire_at: datetime,
+) -> ScheduledMessage | None:
+    """E15: ищет pending reminder того же юзера с тем же текстом и в ту же минуту.
+
+    Единый источник дедупликации для ВСЕХ путей создания (explicit /remind через
+    API, AI auto-create в воркере, apply-decision). Без него повторное
+    «купить хлеб завтра в 9» плодит дубли на один момент времени.
+
+    Сравнение: нормализованный текст (trim+lower) + совпадение по минуте fire_at.
+    Разный текст / другая минута → не дубль. Пустой текст → не дедупим (None).
+    """
+    if not text or not text.strip():
+        return None
+    minute_start = fire_at.replace(second=0, microsecond=0)
+    res = await session.execute(
+        select(ScheduledMessage).where(
+            ScheduledMessage.user_id == user_id,
+            ScheduledMessage.kind == REMINDER_KIND,
+            ScheduledMessage.status == "pending",
+            ScheduledMessage.fire_at >= minute_start,
+            ScheduledMessage.fire_at < minute_start + timedelta(minutes=1),
+            func.lower(func.trim(ScheduledMessage.payload["text"].astext))
+            == text.strip().lower(),
+        )
+    )
+    return res.scalars().first()
 
 # Допуск на латентность парсинга / round-trip от AI до БД. Без него reminder'ы
 # созданные «через минуту» рискуют попасть в условие fire_at<=now к моменту
@@ -134,6 +167,16 @@ async def create_composite_reminder(
         )
         return None
     payload_text = (text or bookmark.raw_text or "")[:2000].strip()
+    # E15: повтор того же текста на ту же минуту → возвращаем существующий.
+    existing = await find_duplicate_reminder(
+        session, bookmark.user_id, payload_text, fire_at,
+    )
+    if existing is not None:
+        logger.info(
+            "create_composite: dedup → existing %s for bookmark %s",
+            existing.id, bookmark.id,
+        )
+        return existing
     payload = _build_composite_payload(text=payload_text)
     reminder = ScheduledMessage(
         user_id=bookmark.user_id,
@@ -167,6 +210,18 @@ async def create_single_reminder(
             bookmark.id, item.fire_at,
         )
         return None
+    # E15: повтор того же текста на ту же минуту → возвращаем существующий
+    # (так повторное «купить хлеб завтра в 9» не плодит дубли). Зеркалит
+    # дедуп explicit-пути в API create_reminder.
+    existing = await find_duplicate_reminder(
+        session, bookmark.user_id, item.text, item.fire_at,
+    )
+    if existing is not None:
+        logger.info(
+            "create_single: dedup → existing %s for bookmark %s",
+            existing.id, bookmark.id,
+        )
+        return existing
     payload = _build_single_payload(text=item.text, source=source)
     reminder = ScheduledMessage(
         user_id=bookmark.user_id,

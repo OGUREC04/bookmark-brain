@@ -18,7 +18,7 @@ from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -91,27 +91,19 @@ async def create_reminder(
     # E15 exact-dedup: тот же текст + та же МИНУТА fire_at среди pending →
     # не плодим дубль, возвращаем существующий (идемпотентно). Ловит
     # случайные двойные «напомни …». Разный текст / время — создаём как есть.
+    # Единый helper переиспользуется и в worker-путях (reminder_creator).
+    from app.services.reminder_creator import find_duplicate_reminder
+
     new_text = (body.payload or {}).get("text")
-    if new_text and new_text.strip():
-        minute_start = fire_at.replace(second=0, microsecond=0)
-        dup = await session.execute(
-            select(ScheduledMessage).where(
-                ScheduledMessage.user_id == current_user.id,
-                ScheduledMessage.kind == REMINDER_KIND,
-                ScheduledMessage.status == "pending",
-                ScheduledMessage.fire_at >= minute_start,
-                ScheduledMessage.fire_at < minute_start + timedelta(minutes=1),
-                func.lower(func.trim(ScheduledMessage.payload["text"].astext))
-                == new_text.strip().lower(),
-            )
+    existing = await find_duplicate_reminder(
+        session, current_user.id, new_text, fire_at,
+    )
+    if existing is not None:
+        logger.info(
+            f"reminder dedup: вернул существующий {existing.id} "
+            f"(text+minute совпали) вместо дубля для user {current_user.id}"
         )
-        existing = dup.scalars().first()
-        if existing is not None:
-            logger.info(
-                f"reminder dedup: вернул существующий {existing.id} "
-                f"(text+minute совпали) вместо дубля для user {current_user.id}"
-            )
-            return existing
+        return existing
 
     reminder = ScheduledMessage(
         user_id=current_user.id,

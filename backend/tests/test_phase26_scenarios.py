@@ -48,6 +48,10 @@ def _make_session() -> MagicMock:
     s = MagicMock()
     s.add = MagicMock()
     s.flush = AsyncMock()
+    # E15 dedup-запрос → «дубля нет» (creator идёт в обычный insert).
+    _no_dup = MagicMock()
+    _no_dup.scalars.return_value.first.return_value = None
+    s.execute = AsyncMock(return_value=_no_dup)
     return s
 
 

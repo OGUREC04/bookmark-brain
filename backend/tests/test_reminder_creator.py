@@ -31,10 +31,17 @@ def _make_bookmark() -> MagicMock:
 
 
 def _make_session() -> MagicMock:
-    """Mock сессии — captures `.add()` calls."""
+    """Mock сессии — captures `.add()` calls.
+
+    E15 dedup-запрос (find_duplicate_reminder) → возвращаем «дубля нет»,
+    чтобы creator'ы шли в обычный insert-путь.
+    """
     session = MagicMock()
     session.add = MagicMock()
     session.flush = AsyncMock()
+    _no_dup = MagicMock()
+    _no_dup.scalars.return_value.first.return_value = None
+    session.execute = AsyncMock(return_value=_no_dup)
     return session
 
 
@@ -245,3 +252,64 @@ async def test_single_default_source() -> None:
     reminder = await create_single_reminder(session, bm, item, now=NOW)
     assert reminder is not None
     assert reminder.payload["source"] == "single_reminder_auto"
+
+
+# ──────────────────────────────────────────────────
+# E15 dedup — все creator-пути не плодят дубли
+# ──────────────────────────────────────────────────
+
+
+def _session_with_existing(existing) -> MagicMock:
+    """Mock-сессия, у которой find_duplicate_reminder вернёт `existing`."""
+    s = MagicMock()
+    s.add = MagicMock()
+    s.flush = AsyncMock()
+    res = MagicMock()
+    res.scalars.return_value.first.return_value = existing
+    s.execute = AsyncMock(return_value=res)
+    return s
+
+
+@pytest.mark.asyncio
+async def test_single_dedup_returns_existing_no_insert() -> None:
+    """E15: повтор «купить хлеб» на ту же минуту → existing, без нового insert.
+
+    Регрессия bug 2026-05-24: AI auto-create путь плодил дубли (3× «купить
+    хлеб завтра в 10» = 3 reminder'а), т.к. E15 был только в API create."""
+    bm = _make_bookmark()
+    existing = MagicMock()
+    session = _session_with_existing(existing)
+    fire = NOW + timedelta(days=1)
+    item = _resolved("купить хлеб", fire)
+
+    reminder = await create_single_reminder(session, bm, item, now=NOW)
+
+    assert reminder is existing
+    session.add.assert_not_called()  # дубль НЕ создан
+
+
+@pytest.mark.asyncio
+async def test_composite_dedup_returns_existing_no_insert() -> None:
+    bm = _make_bookmark()
+    existing = MagicMock()
+    session = _session_with_existing(existing)
+    fire = NOW + timedelta(days=1)
+
+    reminder = await create_composite_reminder(
+        session, bm, fire_at=fire, now=NOW, text="к пятнице отчёт",
+    )
+
+    assert reminder is existing
+    session.add.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_find_duplicate_reminder_skips_empty_text() -> None:
+    """Пустой текст не дедупим (нечего сравнивать) — и не делаем лишний запрос."""
+    from app.services.reminder_creator import find_duplicate_reminder
+
+    session = MagicMock()
+    session.execute = AsyncMock()
+    out = await find_duplicate_reminder(session, uuid.uuid4(), "  ", NOW)
+    assert out is None
+    session.execute.assert_not_called()
