@@ -269,8 +269,46 @@ async def update_bookmark(
         raise HTTPException(status_code=404, detail="Bookmark not found")
 
     update_data = data.model_dump(exclude_unset=True)
+
+    # Снимок structured_data ДО присваивания — нужен для cascade-диффа.
+    old_structured = (
+        bookmark.structured_data if "structured_data" in update_data else None
+    )
+
     for field, value in update_data.items():
         setattr(bookmark, field, value)
+
+    # Cascade на reminder'ы task_list при изменении structured_data (Mini App
+    # редактирует дедлайны/пункты). apply_cascade — единый источник правды для
+    # create/reschedule/cancel; PATCH теперь тоже его триггерит, не только
+    # nl-edit. Best-effort: падение каскада не валит основной апдейт.
+    if "structured_data" in update_data:
+        try:
+            from app.services.reminder_cascade import (
+                apply_cascade,
+                cascade_signature,
+            )
+            old_snapshot = (
+                dict(old_structured) if isinstance(old_structured, dict) else None
+            )
+            new_structured = bookmark.structured_data
+            # Дешёвый guard: если набор (текст, дедлайн) не изменился — каскад
+            # пропускаем (напр. переключили только галочку done).
+            if cascade_signature(old_snapshot) != cascade_signature(new_structured):
+                await apply_cascade(
+                    session,
+                    bookmark_id=bookmark.id,
+                    user_id=current_user.id,
+                    old_structured=old_snapshot,
+                    new_structured=new_structured,
+                    user_tz=current_user.timezone or "Europe/Moscow",
+                )
+        except Exception as e:
+            import logging as _logging
+            _logging.getLogger(__name__).warning(
+                "reminder cascade failed on PATCH for bookmark %s: %s",
+                bookmark.id, e,
+            )
 
     return bookmark
 

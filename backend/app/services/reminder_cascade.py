@@ -1,9 +1,16 @@
-"""Phase 2.6 T9 — каскад reminder'ов при NL-edit task_list.
+"""Каскад reminder'ов при изменении `bookmark.structured_data` (task_list).
 
-При апдейте `bookmark.structured_data` через `apply_nl_edit`:
+Вызывается из двух мест с одним и тем же контрактом old→new diff:
+  • NL-edit (`POST /bookmarks/{id}/nl-edit`)
+  • PATCH `/bookmarks/{id}` (Mini App редактирует дедлайны/пункты)
+
+Реконсиляция:
   • Удалили пункт где висел reminder → cancel reminder
   • Добавили пункт с deadline → создаём новый reminder (fire_at = deadline + 9:00 user_tz)
   • Изменили deadline у пункта → переставляем fire_at у reminder'а
+  • Сняли deadline у живого пункта → cancel reminder, НО только если он был
+    создан каскадом (`source == "cascade_added"`); вручную поставленные
+    напоминания не трогаем
 
 Match по нормализованному тексту пункта (lowercase + strip), потому что
 `item_index` в payload — снапшот старой позиции, который сдвигается при
@@ -69,6 +76,23 @@ def _plural(n: int) -> str:
 
 def _norm(s: str | None) -> str:
     return (s or "").strip().lower()
+
+
+def cascade_signature(structured: dict | None) -> set[tuple[str, str]]:
+    """Сигнатура task_list для дешёвого guard'а перед cascade.
+
+    Множество `(нормализованный текст, deadline)` по всем пунктам. Если
+    сигнатура не изменилась — cascade можно пропустить целиком (например,
+    переключили только галочку `done`, текст и дедлайны прежние).
+    """
+    if not isinstance(structured, dict):
+        return set()
+    out: set[tuple[str, str]] = set()
+    for t in structured.get("tasks", []) or []:
+        norm = _norm(t.get("text"))
+        if norm:
+            out.add((norm, t.get("deadline") or ""))
+    return out
 
 
 def _parse_deadline_to_utc(deadline_str: str, user_tz: str) -> datetime | None:
@@ -170,26 +194,44 @@ async def apply_cascade(
 
         # Пункт жив — проверяем deadline
         new_deadline = new_item.get("deadline")
-        if new_deadline:
-            new_fire_at = _parse_deadline_to_utc(new_deadline, user_tz)
-            if new_fire_at is None:
-                continue  # невалидный/прошедший deadline — не трогаем
-            # Если час совпадает с текущим fire_at — пропускаем
-            current_fire_at = rem["fire_at"]
-            if current_fire_at and abs((current_fire_at - new_fire_at).total_seconds()) < 60:
-                continue
-            await session.execute(sa_text(
-                """
-                UPDATE scheduled_messages
-                SET fire_at = :fire_at, status = 'pending', sent_at = NULL
-                WHERE id = :id AND status = 'pending'
-                """
-            ).bindparams(id=rid, fire_at=new_fire_at))
-            result.rescheduled.append(rid)
-            logger.info(
-                "cascade: rescheduled reminder %s on bookmark %s → %s",
-                rid, bookmark_id, new_fire_at.isoformat(),
-            )
+        if not new_deadline:
+            # Дедлайн сняли у живого пункта → отменяем напоминание, но только
+            # если оно создано каскадом из дедлайна. Вручную поставленные
+            # (source != "cascade_added") не трогаем — они не привязаны к дедлайну.
+            if payload.get("source") == "cascade_added":
+                await session.execute(sa_text(
+                    """
+                    UPDATE scheduled_messages
+                    SET status = 'cancelled', cancelled_at = NOW()
+                    WHERE id = :id AND status = 'pending'
+                    """
+                ).bindparams(id=rid))
+                result.cancelled.append(rid)
+                logger.info(
+                    "cascade: cancelled reminder %s on bookmark %s (deadline cleared)",
+                    rid, bookmark_id,
+                )
+            continue
+
+        new_fire_at = _parse_deadline_to_utc(new_deadline, user_tz)
+        if new_fire_at is None:
+            continue  # невалидный/прошедший deadline — не трогаем
+        # Если час совпадает с текущим fire_at — пропускаем
+        current_fire_at = rem["fire_at"]
+        if current_fire_at and abs((current_fire_at - new_fire_at).total_seconds()) < 60:
+            continue
+        await session.execute(sa_text(
+            """
+            UPDATE scheduled_messages
+            SET fire_at = :fire_at, status = 'pending', sent_at = NULL
+            WHERE id = :id AND status = 'pending'
+            """
+        ).bindparams(id=rid, fire_at=new_fire_at))
+        result.rescheduled.append(rid)
+        logger.info(
+            "cascade: rescheduled reminder %s on bookmark %s → %s",
+            rid, bookmark_id, new_fire_at.isoformat(),
+        )
 
     # Pass 2: новые пункты с deadline'ом, у которых ещё нет reminder'а.
     # Получаем актуальные text'ы reminder'ов (после Pass 1 они могут быть cancelled).

@@ -29,7 +29,7 @@
 - `GET /bookmarks/` — список с пагинацией (query: `limit`, `offset`, `category`, `is_archived`). Возвращает `BookmarkListResponse` с `total` и `items`.
 - `GET /bookmarks/random` — случайная закладка юзера.
 - `GET /bookmarks/{id}` — одна закладка.
-- `PATCH /bookmarks/{id}` — обновить (title, raw_text, is_favorite, is_archived и т.д.).
+- `PATCH /bookmarks/{id}` — обновить (title, raw_text, is_favorite, is_archived, `structured_data` и т.д.). При изменении `structured_data` task_list'а бэк автоматически запускает reminder-cascade (создаёт/переносит/отменяет напоминания по дедлайнам пунктов) — единый источник правды наравне с nl-edit. `deadline` пункта — дата `YYYY-MM-DD` (без времени); напоминание ставится на 09:00 в таймзоне юзера. Снятие дедлайна у живого пункта отменяет только каскадом созданное напоминание; чистый тоггл `done` cascade не триггерит.
 - `DELETE /bookmarks/{id}` — удалить.
 - `POST /bookmarks/{id}/reprocess` — заново прогнать через AI-пайплайн.
 - `POST /bookmarks/reprocess-all` — принудительно переобработать все. Долгая операция.

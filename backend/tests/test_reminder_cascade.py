@@ -12,6 +12,7 @@ from app.services.reminder_cascade import (
     _parse_deadline_to_utc,
     _plural,
     apply_cascade,
+    cascade_signature,
 )
 
 
@@ -249,4 +250,97 @@ async def test_cascade_ignores_invalid_deadline_for_new_item():
         session, bookmark_id=uuid.uuid4(), user_id=uuid.uuid4(),
         old_structured=old, new_structured=new,
     )
+    assert result.created == []
+
+
+# ──────────────────────────────────────────────────
+# cascade_signature — guard для PATCH (пропуск холостых пересчётов)
+# ──────────────────────────────────────────────────
+
+
+def test_signature_ignores_done_toggle():
+    """Галочка done не входит в сигнатуру → тоггл не триггерит cascade."""
+    a = {"tasks": [{"text": "молоко", "done": False}]}
+    b = {"tasks": [{"text": "молоко", "done": True}]}
+    assert cascade_signature(a) == cascade_signature(b)
+
+
+def test_signature_detects_deadline_change():
+    """Смена дедлайна меняет сигнатуру → cascade нужен."""
+    a = {"tasks": [{"text": "врач", "deadline": "2099-05-15"}]}
+    b = {"tasks": [{"text": "врач", "deadline": "2099-05-16"}]}
+    assert cascade_signature(a) != cascade_signature(b)
+
+
+def test_signature_detects_deadline_cleared():
+    """Снятие дедлайна меняет сигнатуру."""
+    a = {"tasks": [{"text": "врач", "deadline": "2099-05-15"}]}
+    b = {"tasks": [{"text": "врач"}]}
+    assert cascade_signature(a) != cascade_signature(b)
+
+
+def test_signature_detects_membership_change():
+    """Добавление/удаление пункта меняет сигнатуру."""
+    a = {"tasks": [{"text": "молоко"}]}
+    b = {"tasks": [{"text": "молоко"}, {"text": "хлеб"}]}
+    assert cascade_signature(a) != cascade_signature(b)
+
+
+def test_signature_handles_none_and_empty():
+    assert cascade_signature(None) == set()
+    assert cascade_signature({}) == set()
+    assert cascade_signature({"tasks": []}) == set()
+
+
+# ──────────────────────────────────────────────────
+# Снятие дедлайна у живого пункта → cancel (только cascade_added)
+# ──────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_cancel_when_deadline_cleared_cascade_added():
+    """Дедлайн сняли у живого пункта, reminder создан каскадом → cancel."""
+    rid = uuid.uuid4()
+    session = _make_session(
+        pending_rems=[{
+            "id": rid,
+            "fire_at": datetime(2099, 5, 15, 6, 0, tzinfo=timezone.utc),
+            "payload": {"text": "врач", "source": "cascade_added"},
+            "status": "pending",
+        }],
+        pending_after_pass1=[],
+    )
+    old = {"tasks": [{"text": "врач", "deadline": "2099-05-15"}]}
+    new = {"tasks": [{"text": "врач"}]}  # пункт жив, дедлайн снят
+    result = await apply_cascade(
+        session, bookmark_id=uuid.uuid4(), user_id=uuid.uuid4(),
+        old_structured=old, new_structured=new, user_tz="Europe/Moscow",
+    )
+    assert result.cancelled == [rid]
+    assert result.rescheduled == []
+    assert result.created == []
+
+
+@pytest.mark.asyncio
+async def test_keep_when_deadline_cleared_manual_reminder():
+    """Дедлайн сняли, но reminder поставлен вручную (source != cascade_added)
+    → НЕ трогаем."""
+    rid = uuid.uuid4()
+    session = _make_session(
+        pending_rems=[{
+            "id": rid,
+            "fire_at": datetime(2099, 5, 15, 6, 0, tzinfo=timezone.utc),
+            "payload": {"text": "врач", "source": "explicit"},
+            "status": "pending",
+        }],
+        pending_after_pass1=[("врач",)],
+    )
+    old = {"tasks": [{"text": "врач", "deadline": "2099-05-15"}]}
+    new = {"tasks": [{"text": "врач"}]}
+    result = await apply_cascade(
+        session, bookmark_id=uuid.uuid4(), user_id=uuid.uuid4(),
+        old_structured=old, new_structured=new, user_tz="Europe/Moscow",
+    )
+    assert result.cancelled == []
+    assert result.rescheduled == []
     assert result.created == []
