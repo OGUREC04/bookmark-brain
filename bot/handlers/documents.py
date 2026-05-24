@@ -10,6 +10,7 @@ import tempfile
 from pathlib import Path
 
 from aiogram import F, Router, types
+from aiogram.utils.chat_action import ChatActionSender
 
 from bot.services.extractor import (
     EmptyDocumentError,
@@ -93,25 +94,29 @@ async def handle_document(message: types.Message, api, store=None):
 
     tmp_path: Path | None = None
     try:
-        file = await message.bot.get_file(doc.file_id)
-        if file.file_path is None:
-            await safe_react(message, "\U0001f44e")
-            await ephemeral_error(
-                message,
-                "Не удалось скачать файл. Возможно, он слишком большой (>20 МБ).",
+        # «отправляет файл…» пока качаем и извлекаем текст из документа.
+        async with ChatActionSender(
+            bot=message.bot, chat_id=message.chat.id, action="upload_document",
+        ):
+            file = await message.bot.get_file(doc.file_id)
+            if file.file_path is None:
+                await safe_react(message, "\U0001f44e")
+                await ephemeral_error(
+                    message,
+                    "Не удалось скачать файл. Возможно, он слишком большой (>20 МБ).",
+                )
+                return
+
+            tmp_dir = Path(tempfile.gettempdir()) / "bookmark-brain-docs"
+            tmp_dir.mkdir(exist_ok=True)
+            tmp_path = tmp_dir / f"{message.chat.id}_{message.message_id}{suffix}"
+            await message.bot.download_file(file.file_path, destination=tmp_path)
+            logger.info(
+                "Downloaded document %s (%s, %d bytes) -> %s",
+                doc.file_name, fmt, file_size, tmp_path,
             )
-            return
 
-        tmp_dir = Path(tempfile.gettempdir()) / "bookmark-brain-docs"
-        tmp_dir.mkdir(exist_ok=True)
-        tmp_path = tmp_dir / f"{message.chat.id}_{message.message_id}{suffix}"
-        await message.bot.download_file(file.file_path, destination=tmp_path)
-        logger.info(
-            "Downloaded document %s (%s, %d bytes) -> %s",
-            doc.file_name, fmt, file_size, tmp_path,
-        )
-
-        result = await extract_text(tmp_path, fmt)
+            result = await extract_text(tmp_path, fmt)
 
     except EncryptedPDFError as e:
         logger.info("Encrypted PDF rejected: %s", e)

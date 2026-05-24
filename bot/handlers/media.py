@@ -10,6 +10,7 @@ import tempfile
 from pathlib import Path
 
 from aiogram import F, Router, types
+from aiogram.utils.chat_action import ChatActionSender
 
 from bot import onboarding
 from bot.config import get_settings
@@ -223,38 +224,43 @@ async def _process_audio(
 
     # Download file from Telegram
     tmp_path: Path | None = None
+    # «записывает голосовое…» / «отправляет голосовое…» пока качаем и распознаём.
+    chat_action = "record_voice" if content_type in ("voice", "video_note") else "upload_voice"
     try:
-        file = await message.bot.get_file(file_id)
-        if file.file_path is None:
-            await safe_react(message, "\U0001f44e")
-            await ephemeral_error(
-                message,
-                "Не удалось скачать файл. Возможно, он слишком большой (>20 МБ).",
+        async with ChatActionSender(
+            bot=message.bot, chat_id=message.chat.id, action=chat_action,
+        ):
+            file = await message.bot.get_file(file_id)
+            if file.file_path is None:
+                await safe_react(message, "\U0001f44e")
+                await ephemeral_error(
+                    message,
+                    "Не удалось скачать файл. Возможно, он слишком большой (>20 МБ).",
+                )
+                return
+
+            # Create temp file
+            tmp_dir = Path(tempfile.gettempdir()) / "bookmark-brain-stt"
+            tmp_dir.mkdir(exist_ok=True)
+            tmp_path = tmp_dir / f"{message.chat.id}_{message.message_id}{ext}"
+
+            await message.bot.download_file(file.file_path, destination=tmp_path)
+            logger.info(
+                "Downloaded %s (%s, %ds) -> %s",
+                content_type, file_id[:20], duration or 0, tmp_path,
             )
-            return
 
-        # Create temp file
-        tmp_dir = Path(tempfile.gettempdir()) / "bookmark-brain-stt"
-        tmp_dir.mkdir(exist_ok=True)
-        tmp_path = tmp_dir / f"{message.chat.id}_{message.message_id}{ext}"
-
-        await message.bot.download_file(file.file_path, destination=tmp_path)
-        logger.info(
-            "Downloaded %s (%s, %ds) -> %s",
-            content_type, file_id[:20], duration or 0, tmp_path,
-        )
-
-        # Transcribe.
-        # Hybrid Yandex принимает duration kwarg — внутри роутит между sync и async.
-        # Whisper и одиночный YandexSTTService не принимают duration → передаём только для Hybrid.
-        if isinstance(stt, YandexHybridSTTService):
-            text = await stt.transcribe(
-                tmp_path,
-                duration=float(duration) if duration is not None else None,
-            )
-        else:
-            # language=None → Whisper auto-detects (supports multilingual input)
-            text = await stt.transcribe(tmp_path)
+            # Transcribe.
+            # Hybrid Yandex принимает duration kwarg — внутри роутит между sync и async.
+            # Whisper и одиночный YandexSTTService не принимают duration → передаём только для Hybrid.
+            if isinstance(stt, YandexHybridSTTService):
+                text = await stt.transcribe(
+                    tmp_path,
+                    duration=float(duration) if duration is not None else None,
+                )
+            else:
+                # language=None → Whisper auto-detects (supports multilingual input)
+                text = await stt.transcribe(tmp_path)
 
     except STTError as e:
         logger.error("STT failed: %s", e)

@@ -2,6 +2,7 @@ import logging
 
 from aiogram import Router, types
 from aiogram.filters import Command
+from aiogram.utils.chat_action import ChatActionSender
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +47,9 @@ async def cmd_search(message: types.Message, api):
         return
 
     try:
-        data = await api.search_bookmarks(token, query, limit=5)
+        # «печатает…» пока ищем по базе.
+        async with ChatActionSender(bot=message.bot, chat_id=message.chat.id, action="typing"):
+            data = await api.search_bookmarks(token, query, limit=5)
     except Exception as e:
         logger.error(f"Search failed: {e}")
         await message.answer("Ошибка поиска. Попробуй позже.")
