@@ -36,6 +36,35 @@ logger = logging.getLogger(__name__)
 settings = get_settings()
 
 
+# Phase 2.7: формы reminder_decision, при которых сообщение — напоминание,
+# а не закладка. Такие НЕ гоняем через general dedup: реминдер «купить хлеб
+# завтра в 9» — действие во времени, а не дубль старой заметки про хлеб.
+# Точные дубли реминдеров (тот же текст + минута) ловит E15 в create_reminder.
+# Зеркалит исключение для task_list (_is_task_list_early). См. dedup×reminder bug.
+_REMINDER_INTENT_FORMS = frozenset({
+    "single_reminder",
+    "composite_reminder",
+    "needs_button_choice",
+    "needs_hour",
+    "strong_intent_3button",
+})
+
+
+def _has_reminder_intent(structured) -> bool:
+    """True если у закладки есть reminder-intent (см. _REMINDER_INTENT_FORMS).
+
+    Такие сообщения пропускают general dedup — иначе напоминание матчится
+    как дубль старой заметки, реминдер не создаётся, а юзеру показывается
+    бессмысленный алерт без даты/времени (bug 2026-05-24).
+    """
+    if not isinstance(structured, dict):
+        return False
+    decision = structured.get("reminder_decision")
+    if not isinstance(decision, dict):
+        return False
+    return decision.get("form") in _REMINDER_INTENT_FORMS
+
+
 def _result_buttons(bookmark_id: str) -> dict:
     """Inline-кнопки для результата обработки."""
     return {
@@ -131,9 +160,16 @@ async def process_bookmark_task(
             and isinstance(bookmark.structured_data, dict)
             and bookmark.structured_data.get("type") == "task_list"
         )
+        # Phase 2.7: напоминания пропускают general dedup (как и task_list).
+        # Иначе «купить хлеб завтра в 9» матчится со старой заметкой про хлеб,
+        # реминдер не создаётся, а алерт показывается без даты/времени.
+        _reminder_intent_early = bool(
+            bookmark and _has_reminder_intent(bookmark.structured_data)
+        )
         near_dup_handled = False
         if (
             not _is_task_list_early
+            and not _reminder_intent_early
             and bookmark
             and bookmark.ai_status in ("completed", "partial")
             and can_notify
