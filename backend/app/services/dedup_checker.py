@@ -2,7 +2,10 @@
 
 1. find_near_duplicate — двухуровневый:
    Pass 1: embedding cosine > 0.85 (семантический)
-   Pass 2: text overlap > 60% по raw_text (ловит копипаст с эмодзи/форматированием)
+   Pass 2: text overlap > 60% (ловит копипаст с эмодзи/форматированием)
+   Для task_list ↔ task_list overlap считается по ПУНКТАМ
+   (`structured_data.tasks[].text`), а не по raw_text — чтобы бот-генерённый
+   заголовок/подсказки не влияли на сравнение (bug u4z).
 2. find_similar_unclosed_task_list — cosine > 0.7, только незакрытые task_list
 
 Используется worker'ом после создания embedding.
@@ -85,12 +88,65 @@ def _text_overlap(new_text: str, existing_text: str) -> float:
     return max(matched / len(new_lines), matched / len(existing_lines))
 
 
+def _task_items(structured: dict | None) -> set[str]:
+    """Нормализованные тексты пунктов task_list.
+
+    Берём ТОЛЬКО `structured_data.tasks[].text` — это чистый смысл пункта,
+    без бот-генерённого заголовка/подсказок/маркеров. Сравнение по этому
+    множеству устойчиво к тому, как список отрендерен (bug u4z).
+    """
+    if not isinstance(structured, dict):
+        return set()
+    out: set[str] = set()
+    for t in structured.get("tasks", []) or []:
+        if not isinstance(t, dict):
+            continue
+        norm = _normalize_line(str(t.get("text", "")))
+        if len(norm) >= 3:
+            out.add(norm)
+    return out
+
+
+def _task_list_overlap(new_s: dict | None, existing_s: dict | None) -> float | None:
+    """Overlap по пунктам двух task_list'ов (симметричный).
+
+    Возвращает None, если хотя бы один из них не task_list с пунктами —
+    тогда caller падает обратно на текстовый overlap по raw_text.
+    """
+    new_items = _task_items(new_s)
+    existing_items = _task_items(existing_s)
+    if not new_items or not existing_items:
+        return None
+    matched = len(new_items & existing_items)
+    if matched == 0:
+        return 0.0
+    return max(matched / len(new_items), matched / len(existing_items))
+
+
+def _dup_overlap(
+    new_text: str,
+    new_structured: dict | None,
+    existing_text: str,
+    existing_structured: dict | None,
+) -> float:
+    """Единая мера дубликатности.
+
+    task_list ↔ task_list → сравнение по ПУНКТАМ (без бот-заголовка/подсказок).
+    Иначе — по смысловым строкам raw_text.
+    """
+    item_overlap = _task_list_overlap(new_structured, existing_structured)
+    if item_overlap is not None:
+        return item_overlap
+    return _text_overlap(new_text, existing_text)
+
+
 async def find_near_duplicate(
     session: AsyncSession,
     bookmark_id: UUID,
     user_id: UUID,
     embedding: list[float] | None,
     raw_text: str = "",
+    new_structured: dict | None = None,
 ) -> dict | None:
     """Ищет дубликат: embedding (cosine > 0.85) + text overlap (> 60%).
 
@@ -140,20 +196,21 @@ async def find_near_duplicate(
     # Pass 1: проверяем embedding-кандидатов на text overlap
     for row in rows:
         sim = float(row.similarity)
-        # Высокий embedding similarity (>0.95) — сразу дубль
-        if sim >= 0.95:
-            pass  # точно дубль, не нужен text check
-        elif raw_text and row.raw_text:
-            # Средний embedding (0.85-0.95) — нужен text overlap для подтверждения
-            overlap = _text_overlap(raw_text, row.raw_text)
-            if overlap < TEXT_OVERLAP_THRESHOLD:
-                continue  # не достаточно похож текстово
-
         structured = row.structured_data
         is_task_list = (
             isinstance(structured, dict)
             and structured.get("type") == "task_list"
         )
+
+        # Высокий embedding similarity (>0.95) — сразу дубль
+        if sim >= 0.95:
+            pass  # точно дубль, не нужен text check
+        elif raw_text and row.raw_text:
+            # Средний embedding (0.85-0.95) — нужно подтверждение.
+            # task_list ↔ task_list сравниваем по пунктам (bug u4z), иначе по raw_text.
+            overlap = _dup_overlap(raw_text, new_structured, row.raw_text, structured)
+            if overlap < TEXT_OVERLAP_THRESHOLD:
+                continue  # не достаточно похож
 
         return {
             "id": str(row.id),
@@ -170,7 +227,7 @@ async def find_near_duplicate(
     # (эмодзи ☐/✅/⏰ → AI выдаёт другой title/summary → другой embedding)
     if raw_text and len(raw_text) >= 20:
         match = await _find_by_text_overlap(
-            session, bookmark_id, user_id, raw_text,
+            session, bookmark_id, user_id, raw_text, new_structured,
         )
         if match:
             return match
@@ -183,6 +240,7 @@ async def _find_by_text_overlap(
     bookmark_id: UUID,
     user_id: UUID,
     raw_text: str,
+    new_structured: dict | None = None,
 ) -> dict | None:
     """Pass 2: ищем дубль чисто по текстовому пересечению.
 
@@ -223,9 +281,10 @@ async def _find_by_text_overlap(
     for row in rows:
         if not row.raw_text:
             continue
-        overlap = _text_overlap(raw_text, row.raw_text)
+        structured = row.structured_data
+        # task_list ↔ task_list — по пунктам (bug u4z), иначе по raw_text.
+        overlap = _dup_overlap(raw_text, new_structured, row.raw_text, structured)
         if overlap >= TEXT_OVERLAP_THRESHOLD:
-            structured = row.structured_data
             is_task_list = (
                 isinstance(structured, dict)
                 and structured.get("type") == "task_list"

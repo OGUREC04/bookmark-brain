@@ -154,6 +154,7 @@ async def process_bookmark_task(
                     session, bookmark.id, bookmark.user_id,
                     emb,
                     raw_text=bookmark.raw_text or "",
+                    new_structured=bookmark.structured_data,
                 )
                 if dup:
                     dup_title = dup.get("title") or "Без названия"
@@ -245,6 +246,7 @@ async def process_bookmark_task(
                         general_dup = await find_near_duplicate(
                             session, bookmark.id, bookmark.user_id,
                             _emb_list, raw_text=bookmark.raw_text or "",
+                            new_structured=bookmark.structured_data,
                         )
                     except Exception as e:
                         logger.debug(f"pre-offer general dedup failed: {e}")

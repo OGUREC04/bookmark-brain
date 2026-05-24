@@ -5,7 +5,13 @@
   (overlap считается симметрично: max от обеих сторон)
 - Служебные строки (📋, Reply:, Выполнено:, ☐) не учитываются
 """
-from app.services.dedup_checker import _meaningful_lines, _text_overlap
+from app.services.dedup_checker import (
+    _dup_overlap,
+    _meaningful_lines,
+    _task_items,
+    _task_list_overlap,
+    _text_overlap,
+)
 
 # ── Симметричный overlap ─────────────────────────────
 
@@ -88,3 +94,66 @@ def test_voice_timestamps_treated_as_noise():
     overlap = _text_overlap(transcript_a, transcript_b)
     # Только [00:00] и [00:30] совпадали бы — но они отфильтрованы → overlap=0
     assert overlap == 0.0
+
+
+# ── task_list сравнение по пунктам (bug u4z) ─────────
+
+
+def _tl(*items: str) -> dict:
+    return {"type": "task_list", "tasks": [{"text": t} for t in items]}
+
+
+def test_task_items_extracts_clean_texts():
+    """_task_items берёт только text пунктов, нормализованный."""
+    items = _task_items(_tl("Купить молоко", "Хлеб", "—"))
+    assert "купить молоко" in items
+    assert "хлеб" in items
+    # «—» нормализуется в пустое/короткое → отброшено
+    assert len(items) == 2
+
+
+def test_task_list_overlap_identical_items():
+    a = _tl("молоко", "хлеб", "яйца")
+    b = _tl("молоко", "хлеб", "яйца")
+    assert _task_list_overlap(a, b) == 1.0
+
+
+def test_task_list_overlap_none_when_not_task_list():
+    """Если хоть один не task_list — None (caller падает на raw_text overlap)."""
+    assert _task_list_overlap(_tl("молоко"), None) is None
+    assert _task_list_overlap(None, _tl("молоко")) is None
+    assert _task_list_overlap({"type": "note"}, _tl("молоко")) is None
+
+
+def test_dup_overlap_ignores_bot_chrome_for_task_lists():
+    """Главный кейс u4z: два списка с одинаковыми пунктами, но РАЗНЫМ
+    бот-заголовком/подсказками в raw_text → дубль по пунктам, не по chrome."""
+    new_raw = (
+        "📋 Покупки на неделю\n☐ молоко\n☐ хлеб\n☐ яйца\n"
+        "↩️ Reply: закрыть · добавить"
+    )
+    existing_raw = (
+        "📋 Совсем другой заголовок списка\n✅ молоко\n☐ хлеб\n☐ яйца\n"
+        "Примеры: «закрой 1»"
+    )
+    new_s = _tl("молоко", "хлеб", "яйца")
+    existing_s = _tl("молоко", "хлеб", "яйца")
+    overlap = _dup_overlap(new_raw, new_s, existing_raw, existing_s)
+    assert overlap == 1.0
+
+
+def test_dup_overlap_different_items_not_dup():
+    """Разные пункты → не дубль, даже если бот-chrome (заголовок/подсказки) общий."""
+    new_raw = "📋 Список\n☐ купить молоко\n↩️ Reply: закрыть"
+    existing_raw = "📋 Список\n☐ позвонить врачу\n↩️ Reply: закрыть"
+    new_s = _tl("купить молоко")
+    existing_s = _tl("позвонить врачу")
+    overlap = _dup_overlap(new_raw, new_s, existing_raw, existing_s)
+    assert overlap == 0.0
+
+
+def test_dup_overlap_falls_back_to_text_for_non_task_lists():
+    """Не-task_list пара → обычный текстовый overlap."""
+    a = "пункт 1\nпункт 2\nпункт 3"
+    b = "пункт 1\nпункт 2\nпункт 3"
+    assert _dup_overlap(a, None, b, None) == 1.0
