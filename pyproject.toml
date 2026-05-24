@@ -63,8 +63,8 @@ modules = [
 # transitive path tasks → start → reminders is start doing its job, not a
 # lateral feature coupling. These two edges are the only allowed bridge.
 ignore_imports = [
-    "bot.handlers.start -> bot.handlers.reminders",
-    "bot.handlers.start -> bot.handlers.tasks",
+    "bot.handlers.start.ingest -> bot.handlers.reminders",
+    "bot.handlers.start.ingest -> bot.handlers.tasks",
 ]
 
 [[tool.importlinter.contracts]]
