@@ -43,6 +43,7 @@ from .dedup import (
     _store_general_dedup,
 )
 from .processing import (
+    _PROCESS_MAX_TRIES,
     _result_buttons,
     process_bookmark_task,
     redispatch_reminder_task,
@@ -116,6 +117,9 @@ class WorkerSettings:
     ]
     redis_settings = RedisSettings.from_dsn(settings.REDIS_URL)
     max_jobs = 5
+    # Явно задаём (а не полагаемся на дефолт arq): safety-net в processing.py
+    # ставит 👎 на попытке job_try >= _PROCESS_MAX_TRIES. Единый источник правды.
+    max_tries = _PROCESS_MAX_TRIES
     job_timeout = 120
 
 

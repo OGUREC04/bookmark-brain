@@ -35,6 +35,11 @@ from .telegram import (
 logger = logging.getLogger(__name__)
 settings = get_settings()
 
+# Единый источник правды для max_tries: WorkerSettings.max_tries импортирует
+# эту константу. На последней попытке (job_try >= _PROCESS_MAX_TRIES) safety-net
+# в process_bookmark_task ставит 👎 вместо застрявшего 👀.
+_PROCESS_MAX_TRIES = 5
+
 
 # Phase 2.7: формы reminder_decision, при которых сообщение — напоминание,
 # а не закладка. Такие НЕ гоняем через general dedup: реминдер «купить хлеб
@@ -63,6 +68,24 @@ def _has_reminder_intent(structured) -> bool:
     if not isinstance(decision, dict):
         return False
     return decision.get("form") in _REMINDER_INTENT_FORMS
+
+
+def _spawn_bg(coro) -> None:
+    """Fire-and-forget таск с логированием ошибок.
+
+    Голый asyncio.create_task теряет исключение ("Task exception was never
+    retrieved" в stderr, без записи в лог). Done-callback логирует фейл.
+    """
+    task = asyncio.create_task(coro)
+
+    def _log_if_failed(t: asyncio.Task) -> None:
+        if t.cancelled():
+            return
+        exc = t.exception()
+        if exc is not None:
+            logger.warning("background task failed: %s", exc)
+
+    task.add_done_callback(_log_if_failed)
 
 
 def _result_buttons(bookmark_id: str) -> dict:
@@ -135,8 +158,42 @@ async def process_bookmark_task(
                     f"{stage}\n⏱ {elapsed:.0f} сек..."
                 )
 
-        await processor.process_bookmark(UUID(bookmark_id), progress_callback=on_progress)
-        await session.commit()
+        try:
+            await processor.process_bookmark(UUID(bookmark_id), progress_callback=on_progress)
+            await session.commit()
+        except Exception as exc:
+            # process_bookmark бросил (RetryableError перевыброшен для ретрая arq,
+            # либо непойманное исключение). Сессия откатится — финальная реакция
+            # (👍/👎) ниже не достигается → 👀 застрял бы навсегда. Safety-net:
+            # на последней попытке ставим 👎, иначе отдаём arq на ретрай (👀 ждёт).
+            job_try = ctx.get("job_try", 1)
+            is_final = job_try >= _PROCESS_MAX_TRIES
+            logger.warning(
+                f"process_bookmark raised for {bookmark_id} "
+                f"(try {job_try}/{_PROCESS_MAX_TRIES}, final={is_final}): {exc}"
+            )
+            if not is_final:
+                # Закрываем embedding_service до re-raise — иначе на каждой из
+                # промежуточных попыток создаётся новый клиент без закрытия
+                # предыдущего (утечка соединений через ретраи).
+                await embedding_service.close()
+                raise  # arq перепоставит; 👀 остаётся как «ещё обрабатываю»
+            if can_notify:
+                if silent:
+                    await _set_reaction(chat_id, message_id, "\U0001f44e")  # 👎
+                    # ai_error юзеру не показываем (может содержать фрагменты
+                    # промпта/имена моделей) — полное в server-side логах.
+                    _spawn_bg(_send_message(
+                        chat_id,
+                        "⚠️ Не удалось обработать. Попробуй ещё раз или /help",
+                    ))
+                else:
+                    await _edit_message(
+                        chat_id, message_id,
+                        "❌ Не удалось обработать. Попробуй ещё раз или /help",
+                    )
+            await embedding_service.close()
+            return
 
         duration = time.monotonic() - start_time
 

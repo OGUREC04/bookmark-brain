@@ -58,6 +58,12 @@ async def fetch_article(url: str) -> ArticleData:
     except httpx.HTTPError as e:
         logger.debug(f"fetch_article {url}: network error: {e}")
         return ArticleData(None, None, None)
+    except Exception as e:
+        # Контракт: никогда не бросаем. httpx.InvalidURL / UnsupportedProtocol
+        # и прочие не-HTTPError ошибки (кривой/перекодированный URL, SSL и т.п.)
+        # не должны ронять обработку закладки — фетч best-effort (см. БТ-01).
+        logger.warning(f"fetch_article {url}: unexpected error: {e}")
+        return ArticleData(None, None, None)
 
     # trafilatura парсит sync — гоним в thread pool чтобы не блокировать event loop
     try:
