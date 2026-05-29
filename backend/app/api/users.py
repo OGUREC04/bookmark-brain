@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -24,6 +25,34 @@ from app.schemas import (
 
 router = APIRouter(prefix="/api/v1", tags=["auth & users"])
 settings = get_settings()
+log = logging.getLogger(__name__)
+
+
+def _maybe_dev_auth(init_data: str) -> dict | None:
+    """DEV-only bypass: принимает init_data вида 'dev:<telegram_id>' если все три
+    условия выполнены — ENVIRONMENT != production, DEV_AUTH_BYPASS=true, и id
+    совпадает с DEV_AUTH_TELEGRAM_ID. Возвращает synthetic user_data или None
+    (тогда auth идёт по обычному HMAC-пути). Любой успешный bypass — WARNING в лог.
+    """
+    if not init_data.startswith("dev:"):
+        return None
+    if settings.ENVIRONMENT == "production":
+        return None
+    if not settings.DEV_AUTH_BYPASS:
+        return None
+    try:
+        tid = int(init_data.split(":", 1)[1])
+    except (ValueError, IndexError):
+        return None
+    if settings.DEV_AUTH_TELEGRAM_ID == 0 or tid != settings.DEV_AUTH_TELEGRAM_ID:
+        return None
+    log.warning(
+        "DEV auth bypass activated",
+        extra={"event": "dev_auth_bypass", "telegram_id": tid, "environment": settings.ENVIRONMENT},
+    )
+    # Username — пространство которое не существует в реальном Telegram
+    # (двойной подчерк-префикс невалиден в TG → исключает коллизию по username).
+    return {"id": tid, "username": f"__e2e_{tid}", "first_name": "DEV E2E Bot"}
 
 
 @router.post("/auth/telegram", response_model=TokenResponse)
@@ -32,7 +61,9 @@ async def auth_telegram(
     session: AsyncSession = Depends(get_session),
 ):
     """Аутентификация через Telegram Mini App initData."""
-    user_data = verify_telegram_init_data(data.init_data, settings.TELEGRAM_BOT_TOKEN)
+    user_data = _maybe_dev_auth(data.init_data)
+    if user_data is None:
+        user_data = verify_telegram_init_data(data.init_data, settings.TELEGRAM_BOT_TOKEN)
 
     telegram_id = user_data.get("id")
     if not telegram_id:

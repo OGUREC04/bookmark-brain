@@ -37,6 +37,12 @@ class Settings(BaseSettings):
     SECRET_KEY: str  # Required — no default, must be set in .env
     ENVIRONMENT: str = "development"
 
+    # DEV-only auth bypass for headless E2E (Mini App testing via browser without Telegram client).
+    # SAFETY: tripple-gated — ENVIRONMENT != "production" + DEV_AUTH_BYPASS=true + telegram_id allowlist.
+    # init_data must arrive as literal "dev:<DEV_AUTH_TELEGRAM_ID>". Never enable in prod.
+    DEV_AUTH_BYPASS: bool = False
+    DEV_AUTH_TELEGRAM_ID: int = 0
+
     # Stale list nudge — hour (UTC) when nudge cron runs
     NUDGE_HOUR_UTC: int = 6  # ~9:00 MSK
 
@@ -59,4 +65,18 @@ def get_settings() -> Settings:
         raise RuntimeError(
             "BOT_SECRET is empty. Set a shared secret between bot and backend in .env"
         )
+    # DEV bypass — must never be on in production, and the allowlisted id must
+    # be far outside Telegram's active int64 range (real ids > 7e9 as of 2025;
+    # we require > 1e12 to guarantee no collision with a real user).
+    if s.DEV_AUTH_BYPASS:
+        if s.ENVIRONMENT == "production":
+            raise RuntimeError(
+                "DEV_AUTH_BYPASS must not be enabled in production. "
+                "Refusing to start."
+            )
+        if s.DEV_AUTH_TELEGRAM_ID < 1_000_000_000_000:
+            raise RuntimeError(
+                "DEV_AUTH_TELEGRAM_ID must be > 1e12 to avoid collision with "
+                "real Telegram user ids. Refusing to start."
+            )
     return s
