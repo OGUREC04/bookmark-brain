@@ -175,6 +175,16 @@ folders         -- зарезервировано под Smart Blocks (Phase 5)
 
 JWT живёт 7 дней; бот кэширует токен в памяти `bot.common.auth` 6 дней (рефреш до истечения). `BOT_SECRET` — shared secret бота и backend, никогда не покидает сервер.
 
+### DEV-only auth bypass (headless E2E)
+
+Для прогона Mini App в обычном браузере без Telegram-клиента — `/auth/telegram` принимает `init_data="dev:<DEV_AUTH_TELEGRAM_ID>"` за **тройным** guard'ом:
+
+1. `settings.ENVIRONMENT != "production"`
+2. `settings.DEV_AUTH_BYPASS == True`
+3. `tid == settings.DEV_AUTH_TELEGRAM_ID` (id должен быть > 1e12 — startup guard в `config.py` рефьюзит запуск иначе)
+
+При успешном bypass — WARNING в лог с `event=dev_auth_bypass`. Сид тестовых данных под этот id: `backend/scripts/seed_dev_e2e.sql` (двойная защита: db-name allowlist + порог по числу юзеров — в прод не зальётся). Фронт-сторона — localStorage-fallback в `src/lib/api.ts`: `__dev_init_data` подсасывается когда нет реального Telegram. `.env` гитнорится, флаги локальные.
+
 ## Инфраструктура
 
 ### Production
