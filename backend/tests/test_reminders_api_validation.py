@@ -50,10 +50,17 @@ class TestReminderUpdateSchema:
     def test_optional_fire_at(self):
         u = ReminderUpdate()
         assert u.fire_at is None
+        assert u.text is None
 
     def test_with_fire_at(self):
         u = ReminderUpdate(fire_at=datetime(2030, 1, 1, tzinfo=timezone.utc))
         assert u.fire_at is not None
+
+    def test_with_text(self):
+        # 8uu: text — опциональное поле, можно слать без fire_at
+        u = ReminderUpdate(text="купить молоко")
+        assert u.text == "купить молоко"
+        assert u.fire_at is None
 
 
 # ──────────────────────────────────────────────────
@@ -182,6 +189,82 @@ class TestUpdateReminderValidation:
         with pytest.raises(HTTPException) as exc:
             await update_reminder(uuid4(), body, user, session)
         assert exc.value.status_code == 400
+
+
+class TestUpdateReminderText:
+    """8uu: правка текста напоминания через PATCH (text → payload['text'])."""
+
+    def _existing(self, session, *, status_val="pending", payload=None):
+        existing = MagicMock()
+        existing.id = uuid4()
+        existing.status = status_val
+        existing.payload = payload if payload is not None else {}
+        existing.fire_at = datetime(2030, 1, 1, tzinfo=timezone.utc)
+        result = MagicMock()
+        result.scalar_one_or_none = MagicMock(return_value=existing)
+        session.execute = AsyncMock(return_value=result)
+        return existing
+
+    async def test_text_only_edit_keeps_time_and_status(self, user, session):
+        existing = self._existing(
+            session, payload={"text": "старый", "snooze_count": 2}
+        )
+        out = await update_reminder(uuid4(), ReminderUpdate(text="новый текст"), user, session)
+        assert out is existing
+        assert existing.payload["text"] == "новый текст"
+        assert existing.payload["snooze_count"] == 2  # прочий payload сохранён
+        assert existing.status == "pending"
+        assert existing.fire_at == datetime(2030, 1, 1, tzinfo=timezone.utc)  # время не тронуто
+
+    async def test_text_is_trimmed(self, user, session):
+        existing = self._existing(session)
+        await update_reminder(uuid4(), ReminderUpdate(text="  с пробелами  "), user, session)
+        assert existing.payload["text"] == "с пробелами"
+
+    async def test_payload_reassigned_not_mutated_in_place(self, user, session):
+        # JSONB-grab: payload должен стать НОВЫМ объектом (иначе ORM не запишет)
+        original_payload = {"text": "старый"}
+        existing = self._existing(session, payload=original_payload)
+        await update_reminder(uuid4(), ReminderUpdate(text="новый"), user, session)
+        assert existing.payload is not original_payload
+        assert original_payload == {"text": "старый"}  # старый объект не мутирован
+
+    async def test_empty_text_rejected_422(self, user, session):
+        self._existing(session)
+        with pytest.raises(HTTPException) as exc:
+            await update_reminder(uuid4(), ReminderUpdate(text="   "), user, session)
+        assert exc.value.status_code == 422
+
+    async def test_too_long_text_rejected_422(self, user, session):
+        from app.api.reminders import MAX_REMINDER_TEXT_LEN
+
+        self._existing(session)
+        with pytest.raises(HTTPException) as exc:
+            await update_reminder(
+                uuid4(), ReminderUpdate(text="x" * (MAX_REMINDER_TEXT_LEN + 1)), user, session
+            )
+        assert exc.value.status_code == 422
+
+    async def test_text_edit_on_non_pending_rejected_409(self, user, session):
+        self._existing(session, status_val="done")
+        with pytest.raises(HTTPException) as exc:
+            await update_reminder(uuid4(), ReminderUpdate(text="новый"), user, session)
+        assert exc.value.status_code == 409
+
+    async def test_text_and_fire_at_together(self, user, session):
+        existing = self._existing(session)
+        future = datetime.now(timezone.utc) + timedelta(hours=2)
+        await update_reminder(uuid4(), ReminderUpdate(text="оба", fire_at=future), user, session)
+        assert existing.payload["text"] == "оба"
+        assert existing.fire_at == future
+        assert existing.status == "pending"
+
+    async def test_no_fields_is_noop(self, user, session):
+        existing = self._existing(session, payload={"text": "без изменений"})
+        out = await update_reminder(uuid4(), ReminderUpdate(), user, session)
+        assert out is existing
+        assert existing.payload == {"text": "без изменений"}
+        session.flush.assert_not_called()
 
 
 # ──────────────────────────────────────────────────

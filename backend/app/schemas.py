@@ -248,10 +248,13 @@ class ReminderCreate(BaseModel):
 class ReminderUpdate(BaseModel):
     """Тело PATCH /api/v1/reminders/{id}.
 
-    Используется для snooze: меняем fire_at, статус возвращается в pending.
+    Snooze: меняем `fire_at` (статус → pending). Правка текста: `text`
+    персистится в `payload["text"]`. Хотя бы одно из полей — иначе no-op.
+    Можно слать только `text`, только `fire_at`, или оба (тикет 8uu).
     """
 
     fire_at: datetime | None = None
+    text: str | None = None
 
 
 class ReminderResponse(BaseModel):

@@ -46,6 +46,10 @@ REMINDER_KIND = "reminder"
 # поджимаем к «сейчас» чтобы сработало немедленно.
 _PAST_GRACE_SECONDS = 120
 
+# Лимит длины текста напоминания при правке (тикет 8uu). Текст — короткая
+# напоминалка, не статья; защищает payload от раздувания.
+MAX_REMINDER_TEXT_LEN = 2000
+
 
 @router.post(
     "/",
@@ -128,27 +132,66 @@ async def update_reminder(
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ):
-    """Продлить напоминание (snooze): меняем fire_at, статус → pending."""
+    """Обновить напоминание: snooze (`fire_at`) и/или текст (`text`, тикет 8uu).
+
+    - Только `fire_at` → snooze (как раньше), статус → pending.
+    - Только `text` → правка текста в `payload["text"]`, время и статус не трогаем.
+    - Оба → применяются вместе.
+    - Ни одного → no-op (возврат без изменений).
+
+    Правка текста разрешена только для `status='pending'` (для уже сработавших/
+    отменённых текст не редактируется — 409). Пустой текст → 422.
+    """
     reminder = await _get_user_reminder(session, reminder_id, current_user.id)
 
-    if body.fire_at is None:
+    has_fire_at = body.fire_at is not None
+    has_text = body.text is not None
+    if not has_fire_at and not has_text:
         # Нечего обновлять
         return reminder
 
-    new_fire_at = body.fire_at
-    if new_fire_at.tzinfo is None:
-        new_fire_at = new_fire_at.replace(tzinfo=timezone.utc)
-    now = datetime.now(timezone.utc)
-    if new_fire_at <= now:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="fire_at must be in the future",
-        )
+    # ── Валидация ДО любых мутаций (чтобы не оставить частичное изменение) ──
+    new_text: str | None = None
+    if has_text:
+        if reminder.status != "pending":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Cannot edit text of a non-pending reminder",
+            )
+        new_text = body.text.strip()
+        if not new_text:
+            raise HTTPException(
+                status_code=422,
+                detail="text must not be empty",
+            )
+        if len(new_text) > MAX_REMINDER_TEXT_LEN:
+            raise HTTPException(
+                status_code=422,
+                detail=f"text too long (max {MAX_REMINDER_TEXT_LEN} chars)",
+            )
 
-    reminder.fire_at = new_fire_at
-    reminder.status = "pending"
-    reminder.sent_at = None
-    reminder.cancelled_at = None
+    new_fire_at: datetime | None = None
+    if has_fire_at:
+        new_fire_at = body.fire_at
+        if new_fire_at.tzinfo is None:
+            new_fire_at = new_fire_at.replace(tzinfo=timezone.utc)
+        if new_fire_at <= datetime.now(timezone.utc):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="fire_at must be in the future",
+            )
+
+    # ── Применяем ──
+    if new_text is not None:
+        # JSONB-safe: новый dict вместо in-place мутации, иначе SQLAlchemy не
+        # заметит изменение payload и не запишет (concepts/sqlalchemy-jsonb-mutation).
+        reminder.payload = {**(reminder.payload or {}), "text": new_text}
+    if new_fire_at is not None:
+        reminder.fire_at = new_fire_at
+        reminder.status = "pending"
+        reminder.sent_at = None
+        reminder.cancelled_at = None
+
     await session.flush()
     await session.refresh(reminder)
     return reminder
