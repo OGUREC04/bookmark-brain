@@ -29,6 +29,28 @@ from app.worker import WorkerSettings
 class NLEditRequest(BaseModel):
     text: str
 
+
+# Тикет 0rn: порог «материальной» правки текста. Если похожесть старого и
+# нового текста ниже порога — считаем, что смысл мог поменяться, и запускаем
+# полную переобработку (embedding + summary/title/теги). Выше порога (пара
+# слов) — просто сохраняем, без холостой LLM-перегенерации.
+# Похожесть difflib адаптивна к длине: в коротких заметках малая правка даёт
+# большое падение ratio (сработает), в длинных — нет.
+_REPROCESS_TEXT_SIMILARITY_THRESHOLD = 0.85
+
+
+def _text_changed_materially(old: str, new: str) -> bool:
+    """True, если правка достаточно крупная, чтобы оправдать переобработку."""
+    import difflib
+
+    if not old:
+        return True
+    return (
+        difflib.SequenceMatcher(None, old, new).ratio()
+        < _REPROCESS_TEXT_SIMILARITY_THRESHOLD
+    )
+
+
 router = APIRouter(prefix="/api/v1/bookmarks", tags=["bookmarks"])
 settings = get_settings()
 
@@ -294,6 +316,15 @@ async def update_bookmark(
 
     update_data = data.model_dump(exclude_unset=True)
 
+    # Тикет 0rn: правка тела текста. Валидируем пусто + триммим ДО присваивания.
+    old_raw_text = None
+    if "raw_text" in update_data:
+        new_raw = (update_data["raw_text"] or "").strip()
+        if not new_raw:
+            raise HTTPException(status_code=422, detail="raw_text must not be empty")
+        update_data["raw_text"] = new_raw
+        old_raw_text = bookmark.raw_text  # снимок ДО setattr для дифф-порога
+
     # Снимок structured_data ДО присваивания — нужен для cascade-диффа.
     old_structured = (
         bookmark.structured_data if "structured_data" in update_data else None
@@ -333,6 +364,20 @@ async def update_bookmark(
                 "reminder cascade failed on PATCH for bookmark %s: %s",
                 bookmark.id, e,
             )
+
+    # Тикет 0rn: правка raw_text устаревает embedding + AI-поля. При
+    # ЗНАЧИМОЙ правке (мог поменяться смысл) — полная фоновая переобработка;
+    # при мелкой (пара слов) — просто сохраняем. ai_status честно отражает
+    # процесс: pending → фронт показывает «Brain переосмысливает…».
+    if "raw_text" in update_data and _text_changed_materially(
+        old_raw_text or "", bookmark.raw_text
+    ):
+        bookmark.ai_status = "pending"
+        bookmark.ai_error = None
+        bookmark.retry_count = 0
+        await session.flush()
+        pool = await get_arq_pool()
+        await pool.enqueue_job("process_bookmark_task", str(bookmark.id))
 
     return bookmark
 

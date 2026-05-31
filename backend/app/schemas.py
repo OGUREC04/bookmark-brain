@@ -118,6 +118,10 @@ class BookmarkUpdate(BaseModel):
     # либо явный None чтобы стереть (например кнопка "не список").
     # Используем Sentinel-подход через `exclude_unset` в endpoint.
     structured_data: dict | None = None
+    # Тикет 0rn: каноничное редактируемое тело текста заметки (для любых типов;
+    # для голосовых — тоже raw_text, не transcription). При существенном
+    # изменении триггерит фоновую переобработку (embedding + AI-поля).
+    raw_text: str | None = None
 
 
 class BookmarkResponse(BaseModel):
