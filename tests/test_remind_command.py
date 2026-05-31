@@ -141,6 +141,39 @@ class TestSplitTextAndTime:
         assert text == "позвонить маме"
         assert "завтра" in time
 
+    # ── Phase 2.7 fix: ведущее время БЕЗ разделителя ──
+    # Триггер: 2026-05-31 «сегодня вечером доделать ивенторус» — бот спрашивал
+    # «когда?», т.к. ни idiom (нет границы), ни tail-search («ивенторус» — не
+    # дата) не ловили ведущее «сегодня вечером». Leading-search закрывает дыру.
+
+    def test_leading_today_evening_no_boundary(self):
+        from bot.common import split_remind_text_and_time
+        text, time = split_remind_text_and_time("сегодня вечером доделать ивенторус")
+        assert time == "сегодня вечером"
+        assert text == "доделать ивенторус"
+
+    def test_leading_relative_no_boundary(self):
+        from bot.common import split_remind_text_and_time
+        text, time = split_remind_text_and_time("через час купить хлеб")
+        assert time == "через час"
+        assert text == "купить хлеб"
+
+    def test_leading_tomorrow_with_time_greedy(self):
+        """Жадность ведущего окна: «завтра в 9 утра позвонить маме» — берём
+        всё время-выражение, а не только «завтра»."""
+        from bot.common import split_remind_text_and_time
+        text, time = split_remind_text_and_time("завтра в 9 утра позвонить маме")
+        assert "завтра" in time and "9" in time
+        assert text == "позвонить маме"
+
+    def test_leading_long_relative_window_7(self):
+        """Поднятый cap window=7: «через 2 часа и 30 минут позвонить маме»
+        (6 токенов время + 2 действие) должно сматчиться, при window=5 — нет."""
+        from bot.common import split_remind_text_and_time
+        text, time = split_remind_text_and_time("через 2 часа и 30 минут позвонить маме")
+        assert "через" in time and "30" in time
+        assert text == "позвонить маме"
+
     # ── E5: дата без текста → ("", date) ──
 
     def test_date_only_returns_empty_text(self):

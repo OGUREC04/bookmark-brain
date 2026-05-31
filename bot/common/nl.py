@@ -89,12 +89,15 @@ def split_remind_text_and_time(
 ) -> tuple[str, str | None]:
     """Split /remind args into (reminder text, time part).
 
-    Strategy:
+    Strategy (по убыванию приоритета):
     1. Front-date idiom «<дата>[,] [что|про] <текст>» — дата в НАЧАЛЕ
-       (см. ``_try_leading_date_idiom``).
-    2. Tail-search: последние 1-5 токенов как время; если OK — это время,
+       со структурной границей (см. ``_try_leading_date_idiom``).
+    2. Весь ввод — дата без текста («25 мая», «завтра») → ("", args).
+    3. Tail-search: последние 1-7 токенов как время; если OK — это время,
        остальное текст. Дата в КОНЦЕ.
-    3. Ничего не распознано → весь ввод это текст, time=None.
+    4. Leading-search: первые 7..1 токенов как время БЕЗ разделителя
+       («сегодня вечером доделать ивенторус»). Жадно к большему окну.
+    5. Ничего не распознано → весь ввод это текст, time=None.
 
     Returns ``(text, time_part_or_None)``.
     """
@@ -129,9 +132,21 @@ def split_remind_text_and_time(
     valid_statuses = (
         ParseStatus.OK, ParseStatus.IN_PAST, ParseStatus.NEEDS_HOUR,
     )
-    for window in range(min(5, n), 0, -1):
+    for window in range(min(7, n), 0, -1):
         time_part = " ".join(tokens[n - window:])
         text_part = " ".join(tokens[: n - window])
+        result = parse(time_part, user_tz=user_tz)
+        if result.status in valid_statuses and text_part:
+            return text_part.strip(), time_part.strip()
+
+    # 4. Leading-search БЕЗ структурной границы: время в НАЧАЛЕ, действие в
+    # конце («сегодня вечером доделать ивенторус», «через час купить хлеб»).
+    # Покрывает кейс, когда idiom не сработал (нет «,/что/про») и tail-search
+    # не нашёл (последние токены — слова действия). Жадно: больше окно вперёд,
+    # чтобы «завтра в 9 утра позвонить маме» взяло всё время-выражение.
+    for window in range(min(7, n), 0, -1):
+        time_part = " ".join(tokens[:window])
+        text_part = " ".join(tokens[window:])
         result = parse(time_part, user_tz=user_tz)
         if result.status in valid_statuses and text_part:
             return text_part.strip(), time_part.strip()
