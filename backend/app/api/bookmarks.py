@@ -376,6 +376,11 @@ async def update_bookmark(
         bookmark.ai_error = None
         bookmark.retry_count = 0
         await session.flush()
+        # flush ставит server-onupdate `updated_at=now()` и ЭКСПАЙРИТ атрибут;
+        # без refresh обращение к нему при сериализации BookmarkResponse уходит
+        # в ленивую IO вне greenlet → MissingGreenlet → 500. Рефрешим точечно,
+        # чтобы НЕ заэкспайрить selectinload(tags) (иначе второй MissingGreenlet).
+        await session.refresh(bookmark, attribute_names=["updated_at"])
         pool = await get_arq_pool()
         await pool.enqueue_job("process_bookmark_task", str(bookmark.id))
 
