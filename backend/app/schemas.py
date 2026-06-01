@@ -121,7 +121,8 @@ class BookmarkUpdate(BaseModel):
     # Тикет 0rn: каноничное редактируемое тело текста заметки (для любых типов;
     # для голосовых — тоже raw_text, не transcription). При существенном
     # изменении триггерит фоновую переобработку (embedding + AI-поля).
-    raw_text: str | None = None
+    # max_length — граница против DoS (огромный body → дорогой LLM-джоб + O(n²) difflib).
+    raw_text: str | None = Field(default=None, max_length=50_000)
 
 
 class BookmarkResponse(BaseModel):

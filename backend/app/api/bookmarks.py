@@ -1,3 +1,4 @@
+import difflib
 import logging
 from datetime import datetime, timezone
 from uuid import UUID
@@ -41,12 +42,18 @@ _REPROCESS_TEXT_SIMILARITY_THRESHOLD = 0.85
 
 def _text_changed_materially(old: str, new: str) -> bool:
     """True, если правка достаточно крупная, чтобы оправдать переобработку."""
-    import difflib
-
     if not old:
         return True
+    # Быстрый путь: заметная разница длины → точно материально, без difflib.
+    longer = max(len(old), len(new))
+    if longer and abs(len(old) - len(new)) / longer > 0.3:
+        return True
+    # difflib O(n*m) и СИНХРОННЫЙ — на длинных строках блокирует event loop.
+    # Ограничиваем вход (схема и так капит raw_text 50k); для эвристики
+    # «сменился ли смысл» сравнения префикса достаточно.
+    a, b = old[:4000], new[:4000]
     return (
-        difflib.SequenceMatcher(None, old, new).ratio()
+        difflib.SequenceMatcher(None, a, b).ratio()
         < _REPROCESS_TEXT_SIMILARITY_THRESHOLD
     )
 
@@ -322,8 +329,12 @@ async def update_bookmark(
         new_raw = (update_data["raw_text"] or "").strip()
         if not new_raw:
             raise HTTPException(status_code=422, detail="raw_text must not be empty")
-        update_data["raw_text"] = new_raw
-        old_raw_text = bookmark.raw_text  # снимок ДО setattr для дифф-порога
+        if new_raw == bookmark.raw_text:
+            # No-op: текст не изменился → не пишем и не дёргаем переобработку.
+            del update_data["raw_text"]
+        else:
+            update_data["raw_text"] = new_raw
+            old_raw_text = bookmark.raw_text  # снимок ДО setattr для дифф-порога
 
     # Снимок structured_data ДО присваивания — нужен для cascade-диффа.
     old_structured = (
