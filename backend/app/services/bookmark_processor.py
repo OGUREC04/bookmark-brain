@@ -96,6 +96,13 @@ class BookmarkProcessor:
                     text_for_ai = article.text
                 else:
                     text_for_ai = f"{bookmark.raw_text}\n\n---\n\n{article.text}"
+            elif article.summary and len(bookmark.raw_text) < 200:
+                # z9q: полного текста нет (auth-wall / JS-страница типа LinkedIn),
+                # но есть OG-карточка. Кормим её классификатору, чтобы голая
+                # ссылка получила человеческий заголовок + описание вместо
+                # вечного «Brain читает ссылку…».
+                card = f"{article.title or ''}. {article.summary}".strip(". ").strip()
+                text_for_ai = card or text_for_ai
             if article.title and not bookmark.title:
                 bookmark.title = article.title
             await self.session.flush()
