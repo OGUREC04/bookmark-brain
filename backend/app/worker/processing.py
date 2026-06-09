@@ -30,6 +30,7 @@ from .telegram import (
     _pin_message,
     _send_message,
     _set_reaction,
+    typing_action,
 )
 
 logger = logging.getLogger(__name__)
@@ -104,6 +105,27 @@ def _result_buttons(bookmark_id: str) -> dict:
 
 
 async def process_bookmark_task(
+    ctx: dict,
+    bookmark_id: str,
+    chat_id: int | None = None,
+    message_id: int | None = None,
+    silent: bool = False,
+) -> None:
+    """arq-entrypoint AI-обработки закладки.
+
+    Обёртка держит индикатор «печатает…» сверху чата на ВСЁ время обработки
+    (bookmark-brain-5lt продолжение: фидбэк для текста/ссылок, где AI идёт в
+    воркере после выхода из бот-хендлера — там был только 👀, без «живого»
+    статуса до 👍). Пульс гаснет на выходе, ровно когда появляется результат.
+    """
+    async with typing_action(chat_id):
+        await _process_bookmark_task_impl(
+            ctx, bookmark_id,
+            chat_id=chat_id, message_id=message_id, silent=silent,
+        )
+
+
+async def _process_bookmark_task_impl(
     ctx: dict,
     bookmark_id: str,
     chat_id: int | None = None,

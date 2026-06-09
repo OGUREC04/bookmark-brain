@@ -8,6 +8,7 @@ compatibility (tests patch ``app.worker._send_message`` etc.).
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 
 import httpx
@@ -128,6 +129,61 @@ async def _set_reaction(chat_id: int, message_id: int, emoji: str | None) -> Non
             await client.post(f"{BOT_API}/setMessageReaction", json=payload)
     except Exception as e:
         logger.debug(f"Failed to set reaction: {e}")
+
+
+async def _send_chat_action(chat_id: int, action: str = "typing") -> None:
+    """Шлёт chat action («печатает…» сверху чата). Best-effort.
+
+    Telegram гасит индикатор через ~5с — для длинной обработки нужен повтор
+    (см. typing_action). bookmark-brain-5lt продолжение: фидбэк на текст/ссылки,
+    где AI идёт в воркере после выхода из бот-хендлера.
+    """
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            await client.post(
+                f"{BOT_API}/sendChatAction",
+                json={"chat_id": chat_id, "action": action},
+            )
+    except Exception as e:
+        logger.debug(f"Failed to send chat action: {e}")
+
+
+@contextlib.asynccontextmanager
+async def typing_action(
+    chat_id: int | None, action: str = "typing", interval: float = 4.0,
+):
+    """Держит индикатор «печатает…» сверху чата на всё время блока.
+
+    Шлёт chat action сразу и затем каждые ``interval`` секунд (TG гасит его
+    через ~5с). Гасится автоматически на выходе (когда появляется результат —
+    👍/👎). Best-effort: ошибки пульса не роняют обработку. ``chat_id=None`` —
+    no-op (silent / нет чата).
+    """
+    if chat_id is None:
+        yield
+        return
+
+    async def _pulse() -> None:
+        try:
+            while True:
+                await _send_chat_action(chat_id, action)
+                await asyncio.sleep(interval)
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:  # noqa: BLE001 — пульс не должен ронять обработку
+            logger.debug(f"typing pulse failed: {e}")
+
+    task = asyncio.create_task(_pulse())
+    try:
+        yield
+    finally:
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+        except Exception as e:  # noqa: BLE001
+            logger.debug(f"typing pulse cleanup: {e}")
 
 
 async def _send_ephemeral(chat_id: int, text: str, delay: float = 10) -> None:

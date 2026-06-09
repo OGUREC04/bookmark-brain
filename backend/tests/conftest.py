@@ -19,3 +19,18 @@ os.environ.setdefault("SECRET_KEY", "x" * 32)
 os.environ.setdefault("BOT_SECRET", "test-secret")
 os.environ.setdefault("GIGACHAT_AUTH_KEY", "fake")
 os.environ.setdefault("VOYAGE_API_KEY", "fake")
+
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def _no_real_chat_action(monkeypatch):
+    """Глушим chat-action пульс (typing) в тестах — иначе process_bookmark_task
+    слал бы реальные sendChatAction в Telegram. Пульс best-effort, поведение
+    обработки от заглушки не зависит."""
+    async def _noop(*_a, **_k):
+        return None
+    try:
+        monkeypatch.setattr("app.worker.telegram._send_chat_action", _noop)
+    except Exception:
+        pass
