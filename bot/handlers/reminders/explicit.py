@@ -31,6 +31,7 @@ from bot.common import (
 
 from .shared import (
     _cap_text,
+    _purge_reminder_dialog,
     _reply_prompt,
     _send_reminder_confirmation_with_chip,
     extract_first_datetime_entity,
@@ -56,11 +57,17 @@ REMIND_HELP_TEXT = (
 
 async def process_explicit_remind_args(
     message: Message, args: str, api, store,
+    cleanup_anchor: int | None = None,
 ) -> None:
     """Общая логика explicit-remind (Phase 2.5 cmd_remind body, Phase 2.6 T8 trigger).
 
     Принимает уже извлечённые args (без префикса команды/триггера). Создаёт
     reminder если время есть, иначе просит Reply со временем.
+
+    ``cleanup_anchor`` — если вызвано из need_text-делегации reply.py: якорь
+    исходного диалога. Внутренние переспросы переносят его эфемерный хвост
+    (carry_from), финальный успех его подметает. None для прямого /remind (T8/cmd) —
+    все carry/purge становятся no-op, поведение неизменно.
     """
     from bot.common.auth import ensure_user
     from bot.services.nl_date import ParseStatus, parse
@@ -91,6 +98,7 @@ async def process_explicit_remind_args(
             try:
                 await store.store_reminder_pending_need_text(
                     message.chat.id, prompt.message_id, _cap_text(time_part),
+                    carry_from=cleanup_anchor,
                 )
             except Exception as e:
                 logger.warning(f"explicit_remind need_text save failed: {e}")
@@ -107,6 +115,7 @@ async def process_explicit_remind_args(
                 await store.store_reminder_pending_explicit(
                     message.chat.id, prompt.message_id,
                     _cap_text(text_part or args),
+                    carry_from=cleanup_anchor,
                 )
                 logger.info(
                     f"explicit_remind: pending saved chat={message.chat.id} "
@@ -137,6 +146,11 @@ async def process_explicit_remind_args(
                 parse_mode=None,
             )
             return
+        if cleanup_anchor is not None:
+            await _purge_reminder_dialog(
+                message.bot, message.chat.id, cleanup_anchor, store,
+                extra_msg_ids=[message.message_id],
+            )
         await _send_reminder_confirmation_with_chip(
             message, entity_dt, text_part, user_tz_name,
             deduplicated=bool((created or {}).get("deduplicated")),
@@ -170,6 +184,7 @@ async def process_explicit_remind_args(
                     message.chat.id, prompt.message_id,
                     _cap_text(text_part or args),
                     date_phrase=time_part,
+                    carry_from=cleanup_anchor,
                 )
             except Exception as e:
                 logger.warning(
@@ -198,6 +213,7 @@ async def process_explicit_remind_args(
                     kind="explicit_create",
                     target_id=_cap_text(text_part),
                     proposed_dt_iso=parse_result.dt.isoformat(),
+                    carry_from=cleanup_anchor,
                 )
             except Exception as e:
                 logger.warning(f"store_reminder_fallback failed: {e}")
@@ -218,6 +234,11 @@ async def process_explicit_remind_args(
         )
         return
 
+    if cleanup_anchor is not None:
+        await _purge_reminder_dialog(
+            message.bot, message.chat.id, cleanup_anchor, store,
+            extra_msg_ids=[message.message_id],
+        )
     await _send_reminder_confirmation_with_chip(
         message, parse_result.dt, text_part, user_tz_name,
         deduplicated=bool((created or {}).get("deduplicated")),

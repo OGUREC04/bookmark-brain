@@ -11,6 +11,7 @@ this flow target ``app.worker.reminder_decision.*``.
 from __future__ import annotations
 
 import asyncio
+import html
 import logging
 from datetime import datetime
 
@@ -69,18 +70,25 @@ def _choice_buttons(bookmark_id: str) -> dict:
     }
 
 
-def _choice_text() -> str:
+def _label_prefix(label: str) -> str:
+    """`Про «<b>текст</b>»:\\n` если label задан (УЖЕ html-экранирован). Иначе ''."""
+    return f"Про «<b>{label}</b>»:\n" if label else ""
+
+
+def _choice_text(label: str = "") -> str:
     return (
-        "🤔 В сообщении одна дата, но несколько пунктов. Как лучше?\n\n"
+        _label_prefix(label)
+        + "🤔 В сообщении одна дата, но несколько пунктов. Как лучше?\n\n"
         "• <b>📋 Список</b> — оставлю чекбоксы, напомню только по пункту с датой\n"
         "• <b>🔔 Напоминание</b> — одно напоминание про весь текст\n"
         "• <b>✕</b> — ничего, просто закладка"
     )
 
 
-def _ask_hour_text() -> str:
+def _ask_hour_text(label: str = "") -> str:
     return (
-        "🕘 Дата есть, но не указано время. Во сколько напомнить?\n\n"
+        _label_prefix(label)
+        + "🕘 Дата есть, но не указано время. Во сколько напомнить?\n\n"
         "↩️ <b>Сделай Reply</b> на это сообщение со временем "
         "(зажми/свайпни сообщение → «Ответить»).\n\n"
         "Примеры: <code>в 9</code>, <code>в 18:30</code>, <code>утром</code>, <code>вечером</code>"
@@ -150,6 +158,14 @@ async def _dispatch_reminder_decision(
     dated = [i for i in items if i.get("fire_at_utc")]
     bookmark_id = str(bookmark.id)
 
+    # bug 2026-06-09: текст «про что напоминание» в UI-предложениях. SLICE→escape
+    # (slice до 60, потом html.escape — иначе можно разрезать &amp;). _send_message
+    # всегда HTML → экранирование обязательно (title с <>& уронил бы всё сообщение).
+    raw_label = (
+        getattr(bookmark, "title", None) or getattr(bookmark, "raw_text", None) or ""
+    ).strip()[:60]
+    bm_label = html.escape(raw_label) if raw_label else ""
+
     # ── AUTO-CREATE: TASK_LIST_WITH_REMINDERS ─────────────────────
     if form == "task_list_with_reminders":
         return await _auto_create_per_item(bookmark, chat_id, dated)
@@ -160,11 +176,11 @@ async def _dispatch_reminder_decision(
 
     # ── UI: NEEDS_BUTTON_CHOICE (3-button 📋/🔔/✕) ────────────────
     if form == "needs_button_choice":
-        return await _send_choice_ui(bookmark_id, chat_id, raw_decision)
+        return await _send_choice_ui(bookmark_id, chat_id, raw_decision, bm_label)
 
     # ── ASK: NEEDS_HOUR (Reply со временем) ───────────────────────
     if form == "needs_hour":
-        return await _send_hour_ask(bookmark_id, chat_id)
+        return await _send_hour_ask(bookmark_id, chat_id, bm_label)
 
     # STRONG_INTENT_3BUTTON / TASK_LIST_NO_REMINDERS / NONE — не наш кейс
     return False
@@ -320,13 +336,15 @@ async def _auto_create_single(bookmark, chat_id: int, dated: dict) -> bool:
         return False
 
 
-async def _send_choice_ui(bookmark_id: str, chat_id: int, raw_decision: dict) -> bool:
+async def _send_choice_ui(
+    bookmark_id: str, chat_id: int, raw_decision: dict, label: str = "",
+) -> bool:
     """T4: шлём 3-button «📋/🔔/✕» и сохраняем state в Redis для click handler'а.
 
     Bot reads `reminder_choice:{chat_id}:{msg_id}` → bookmark_id и POSTит
     apply-decision endpoint.
     """
-    text = _choice_text()
+    text = _choice_text(label)
     buttons = _choice_buttons(bookmark_id)
     sent = await _send_message(chat_id, text, buttons)
     if not sent or not sent.get("message_id"):
@@ -365,13 +383,13 @@ async def _send_choice_ui(bookmark_id: str, chat_id: int, raw_decision: dict) ->
     return True
 
 
-async def _send_hour_ask(bookmark_id: str, chat_id: int) -> bool:
+async def _send_hour_ask(bookmark_id: str, chat_id: int, label: str = "") -> bool:
     """NEEDS_HOUR: шлём ask-message + сохраняем reminder_pending для reply-handler.
 
     Bot's `handle_reminder_reply` уже умеет читать reminder_pending state
     (Phase 2.5), мы переиспользуем тот же ключ.
     """
-    text = _ask_hour_text()
+    text = _ask_hour_text(label)
     sent = await _send_message(chat_id, text)
     if not sent or not sent.get("message_id"):
         return False  # fallback в legacy offer (см. _send_choice_ui)

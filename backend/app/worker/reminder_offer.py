@@ -9,6 +9,7 @@ patches target ``app.worker.reminder_offer.*``.
 
 from __future__ import annotations
 
+import html
 import logging
 
 from app.config import get_settings
@@ -41,10 +42,19 @@ def _reminder_offer_buttons(bookmark_id: str) -> dict:
     }
 
 
-def _reminder_offer_text() -> str:
-    """Тело сообщения: подсказка про reply с примерами времени."""
+def _reminder_offer_text(label: str = "") -> str:
+    """Тело сообщения: подсказка про reply с примерами времени.
+
+    ``label`` — текст закладки (про что напоминание), УЖЕ html-экранированный
+    вызывающим (slice→escape). Пустой → общий текст.
+    """
+    head = (
+        f"Похоже, про «<b>{label}</b>» что-то напомнить. "
+        if label else
+        "Похоже, тут что-то напомнить. "
+    )
     return (
-        "Похоже, тут что-то напомнить. Если да — нажми кнопку, "
+        head + "Если да — нажми кнопку, "
         "потом ответь <i>reply'ем</i> на это сообщение, когда напомнить.\n\n"
         "Примеры:\n"
         "• <code>завтра в 9</code>\n"
@@ -101,7 +111,16 @@ async def _maybe_offer_reminder(
             logger.debug(f"_maybe_offer_reminder: anti-double check failed: {e}")
 
     bookmark_id = str(bookmark.id)
-    text = _reminder_offer_text()
+    # bug 2026-06-09: показываем, ПРО ЧТО напоминание. SLICE до 60, ПОТОМ escape
+    # (иначе можно разрезать &amp; → Telegram 400). _send_message всегда HTML,
+    # поэтому экранирование обязательно — иначе title с <>& уронит весь offer.
+    raw_label = (
+        getattr(bookmark, "title", None)
+        or getattr(bookmark, "raw_text", None)
+        or ""
+    ).strip()[:60]
+    label = html.escape(raw_label) if raw_label else ""
+    text = _reminder_offer_text(label)
     buttons = _reminder_offer_buttons(bookmark_id)
 
     # F3: probe Redis ДО отправки сообщения. Иначе если Redis упал между

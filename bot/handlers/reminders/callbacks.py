@@ -16,7 +16,7 @@ import httpx
 from aiogram import F, Router
 from aiogram.types import CallbackQuery
 
-from .shared import _is_valid_uuid, _reply_prompt
+from .shared import _is_valid_uuid, _purge_reminder_dialog, _reply_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -63,6 +63,10 @@ async def cb_dismiss_reminder(callback: CallbackQuery, api, store):
         await store.delete_reminder_pending(chat_id, msg_id)
     except Exception as e:
         logger.debug(f"cb_dismiss_reminder: delete state failed: {e}")
+    # Подметаем хвост диалога (обычно пуст), сохраняя edit-in-place «Окей…».
+    await _purge_reminder_dialog(
+        callback.message.bot, chat_id, msg_id, store, keep_msg_id=msg_id,
+    )
     try:
         await callback.answer()
     except Exception:
@@ -124,6 +128,9 @@ async def cb_done_reminder(callback: CallbackQuery, api, store):
         await store.delete_reminder_id(chat_id, msg_id)
     except Exception as e:
         logger.debug(f"cb_done_reminder: delete state failed: {e}")
+    await _purge_reminder_dialog(
+        callback.message.bot, chat_id, msg_id, store, keep_msg_id=msg_id,
+    )
     try:
         await callback.answer("Готово")
     except Exception:

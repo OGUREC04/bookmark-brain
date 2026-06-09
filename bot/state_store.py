@@ -395,6 +395,7 @@ class StateStore:
     # |                                           |      | bot cmd_remind (fallback)         |                                 |
     # | reminder:{chat}:{msg}                     | 25ч  | worker._save_reminder_redis_state | bot cb_done/cb_snooze           |
     # | reminders_list:{chat}:{msg}               | 1ч   | bot cmd_reminders                 | bot handle_reminders_list_reply |
+    # | reminder_ephemeral:{chat}:{anchor}        | 1ч   | bot track/carry (reply+prompt)    | bot _purge_reminder_dialog (pop)|
     #
     # См. docs/decisions/0008-reminders-three-flow.md и
     # bookmark-brain-d71 (централизация reminder_strong ключа).
@@ -402,6 +403,54 @@ class StateStore:
     _REMINDER_PENDING_TTL = 3600
     _REMINDER_SNOOZE_TTL = 3600
     _REMINDER_STRONG_TTL = 3600
+
+    # ── эфемерные сообщения reminder-диалога (единая очистка) ──────
+    # Якорь = msg_id prompt-а бота. Один список на якорь. На терминале
+    # (создано/продлено/отменено/устарело) единый _purge_reminder_dialog удаляет
+    # весь хвост, оставляя только подтверждение. TTL = pending (3600), НЕ
+    # _CLEANUP_TTL (5мин) — диалог может длиться дольше. Чертёж:
+    # docs/research/_reminder-cleanup-blueprint.md.
+
+    async def track_reminder_ephemeral(
+        self, chat_id: int, anchor: int, msg_id: int,
+    ) -> None:
+        """Зарегистрировать эфемерное сообщение (prompt бота / reply юзера)."""
+        r = await self._get()
+        key = f"reminder_ephemeral:{chat_id}:{anchor}"
+        await r.rpush(key, str(msg_id))
+        await r.expire(key, self._REMINDER_PENDING_TTL)  # refresh TTL на каждый push
+
+    async def carry_reminder_ephemeral(
+        self, chat_id: int, old_anchor: int, new_anchor: int,
+    ) -> None:
+        """Перенести хвост со старого якоря на новый (бот переспросил).
+
+        Старый prompt сам становится эфемерным (добавляем old_anchor в список).
+        Best-effort: при гонке теряется максимум один msg_id, не падаем/не виснем.
+        """
+        if old_anchor == new_anchor:
+            # edit_text морфит prompt in-place (id не меняется) — переносить
+            # некуда, только пометить сам prompt эфемерным.
+            await self.track_reminder_ephemeral(chat_id, new_anchor, old_anchor)
+            return
+        r = await self._get()
+        old_key = f"reminder_ephemeral:{chat_id}:{old_anchor}"
+        new_key = f"reminder_ephemeral:{chat_id}:{new_anchor}"
+        raw = await r.lrange(old_key, 0, -1)
+        carried = [str(x) for x in raw] + [str(old_anchor)]
+        await r.rpush(new_key, *carried)
+        await r.expire(new_key, self._REMINDER_PENDING_TTL)
+        await r.delete(old_key)
+
+    async def pop_reminder_ephemeral(
+        self, chat_id: int, anchor: int,
+    ) -> list[int]:
+        """Забрать+удалить все эфемерные сообщения якоря. Идемпотентно ([] на 2й)."""
+        r = await self._get()
+        key = f"reminder_ephemeral:{chat_id}:{anchor}"
+        raw = await r.lrange(key, 0, -1)
+        await r.delete(key)
+        return [int(x) for x in raw if str(x).isdigit()]
 
     # 12y: формат значения reminder_pending — JSON envelope.
     #   {"kind": "bookmark", "bookmark_id": "<uuid>"}  ← weak offer (writer: worker)
@@ -451,14 +500,20 @@ class StateStore:
     async def store_reminder_pending_explicit(
         self, chat_id: int, msg_id: int, text: str,
         date_phrase: str | None = None,
+        carry_from: int | None = None,
     ) -> None:
         """Explicit /remind без времени — ждём reply со временем.
 
         ``date_phrase`` — если дата уже известна («25 мая»), но без часа
         (NEEDS_HOUR): reply со временем («в 9») скомбинируется в полный
         момент «<date_phrase> <reply>». None — ждём время целиком.
+        ``carry_from`` — старый якорь: перенести его эфемерный хвост под новый
+        prompt (см. carry_reminder_ephemeral). Побочный эффект записи — чтобы
+        ни одна ветка переспроса не забыла перенести хвост.
         """
         import json
+        if carry_from is not None:
+            await self.carry_reminder_ephemeral(chat_id, carry_from, msg_id)
         r = await self._get()
         envelope: dict = {"kind": "explicit", "text": text}
         if date_phrase:
@@ -471,11 +526,14 @@ class StateStore:
 
     async def store_reminder_pending_need_text(
         self, chat_id: int, msg_id: int, date_phrase: str,
+        carry_from: int | None = None,
     ) -> None:
         """E5: «Напомни 25 мая» — дата есть, текста нет. Ждём reply с
         ТЕКСТОМ; он реконструирует «<текст> <date_phrase>» и пройдёт через
         обычный explicit-pipeline."""
         import json
+        if carry_from is not None:
+            await self.carry_reminder_ephemeral(chat_id, carry_from, msg_id)
         r = await self._get()
         await r.set(
             f"reminder_pending:{chat_id}:{msg_id}",
@@ -491,12 +549,15 @@ class StateStore:
 
     async def restore_reminder_pending(
         self, chat_id: int, msg_id: int, pending: dict,
+        carry_from: int | None = None,
     ) -> None:
         """#7a: переложить уже снятый (GETDEL) pending под новое
         сообщение-ошибку, чтобы reply со скорректированным временем
         снова сработал. Пишем тот же envelope, что читает _decode_pending.
         """
         import json
+        if carry_from is not None:
+            await self.carry_reminder_ephemeral(chat_id, carry_from, msg_id)
         r = await self._get()
         await r.set(
             f"reminder_pending:{chat_id}:{msg_id}",
@@ -585,8 +646,11 @@ class StateStore:
 
     async def store_reminder_snooze(
         self, chat_id: int, msg_id: int, reminder_id: str,
+        carry_from: int | None = None,
     ) -> None:
         """Юзер нажал «Продлить» — ждём новое время через reply."""
+        if carry_from is not None:
+            await self.carry_reminder_ephemeral(chat_id, carry_from, msg_id)
         r = await self._get()
         await r.set(
             f"reminder_snooze:{chat_id}:{msg_id}",
@@ -611,8 +675,11 @@ class StateStore:
         kind: str,                        # "create" | "snooze"
         target_id: str,                   # bookmark_id или reminder_id
         proposed_dt_iso: str,             # ISO-строка предложенного времени
+        carry_from: int | None = None,
     ) -> None:
         import json
+        if carry_from is not None:
+            await self.carry_reminder_ephemeral(chat_id, carry_from, msg_id)
         r = await self._get()
         await r.set(
             f"reminder_fallback:{chat_id}:{msg_id}",

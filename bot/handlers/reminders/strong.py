@@ -23,6 +23,7 @@ from bot.common import format_fire_at, get_user_tz_name, safe, split_remind_text
 
 from .shared import (
     _cap_text,
+    _purge_reminder_dialog,
     _reply_prompt,
     extract_first_datetime_entity,
 )
@@ -300,6 +301,11 @@ async def cb_strong_choice(callback: CallbackQuery, api, store):
             )
         except Exception:
             pass
+        # Морф edit_text САМ стал подтверждением (тот же msg_id) → keep_msg_id,
+        # чтобы не удалить его. Список обычно пуст; вызов — безопасный no-op.
+        await _purge_reminder_dialog(
+            callback.message.bot, chat_id, msg_id, store, keep_msg_id=msg_id,
+        )
         try:
             await callback.answer("Готово")
         except Exception:
@@ -323,6 +329,7 @@ async def cb_strong_choice(callback: CallbackQuery, api, store):
     try:
         await store.store_reminder_pending_explicit(
             chat_id, target_msg_id, _cap_text(text),
+            carry_from=msg_id,
         )
         state_saved = True
         logger.info(

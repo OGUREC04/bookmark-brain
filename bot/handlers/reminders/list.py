@@ -26,7 +26,7 @@ from bot.common import (
     safe,
 )
 
-from .shared import MAX_PARSE_INPUT_LEN
+from .shared import MAX_PARSE_INPUT_LEN, _purge_reminder_dialog
 
 logger = logging.getLogger(__name__)
 
@@ -164,6 +164,13 @@ async def handle_reminders_list_reply(
     if not snapshot:
         return False  # не наш reply
 
+    # Reply юзера («отмени 1») эфемерный. Snapshot (anchor) НЕ трекаем —
+    # он должен пережить серию управляющих команд.
+    try:
+        await store.track_reminder_ephemeral(chat_id, reply_to_id, message.message_id)
+    except Exception as e:
+        logger.debug(f"track list reply failed: {e}")
+
     text = (message.text or "").strip()
     if len(text) > MAX_PARSE_INPUT_LEN:
         # Слишком длинный reply — точно не «отмени 1» / «перенеси 2 на ...».
@@ -206,6 +213,10 @@ async def handle_reminders_list_reply(
         except Exception:
             await message.answer("Не получилось отменить.", parse_mode=None)
             return True
+        await _purge_reminder_dialog(
+            message.bot, chat_id, reply_to_id, store,
+            extra_msg_ids=[message.message_id], keep_msg_id=reply_to_id,
+        )
         await message.answer(f"✕ Отменено: пункт {idx + 1}", parse_mode=None)
         return True
 
@@ -242,6 +253,10 @@ async def handle_reminders_list_reply(
             await message.answer("Не получилось перенести.", parse_mode=None)
             return True
         when = format_fire_at(result.dt, user_tz_name)
+        await _purge_reminder_dialog(
+            message.bot, chat_id, reply_to_id, store,
+            extra_msg_ids=[message.message_id], keep_msg_id=reply_to_id,
+        )
         await message.answer(
             f"💤 Перенесено на <b>{safe(when)}</b>",
             parse_mode="HTML",

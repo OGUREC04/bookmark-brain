@@ -15,6 +15,7 @@ from datetime import datetime, timezone
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import Message
 
 # Cross-package shared infra lives in bot.common (single source of truth).
@@ -113,6 +114,46 @@ def extract_first_datetime_entity(message: Message) -> datetime | None:
                 except (TypeError, ValueError, OSError):
                     continue
     return None
+
+async def _purge_reminder_dialog(
+    bot, chat_id: int, anchor: int, store,
+    *, extra_msg_ids=None, keep_msg_id: int | None = None,
+) -> None:
+    """Единая очистка reminder-диалога на терминале (создано/продлено/устарело).
+
+    Удаляет ВСЕ эфемерные сообщения якоря (prompt'ы бота + reply'и юзера) +
+    ``extra_msg_ids`` (обычно последний reply юзера), кроме ``keep_msg_id``
+    (сообщение, которое через edit_text САМО стало подтверждением — strong-flow).
+
+    Best-effort: ошибки удаления (сообщение уже удалено / старше 48ч / нет прав)
+    проглатываются — очистка не должна ронять подтверждение. Точное зеркало
+    `_cleanup_failed_attempts` (tasks/nl_edit.py). Боты могут удалять и свои, и
+    входящие сообщения в private chat (<48ч) — паттерн уже в проде.
+
+    ``bot`` (а не message) — чтобы вызывать из callback'ов (callback.message.bot).
+    """
+    try:
+        ids = await store.pop_reminder_ephemeral(chat_id, anchor)
+    except Exception as e:
+        logger.debug(f"_purge_reminder_dialog pop failed: {e}")
+        ids = []
+    # Сам anchor (prompt бота «Когда напомнить?») тоже удаляем — это половина
+    # того, что юзер хочет убрать. keep_msg_id защищает кейсы, где anchor обязан
+    # выжить: snapshot /reminders (для следующей команды) и strong-морф,
+    # ставший подтверждением (edit_text сохранил тот же id).
+    ids = [anchor] + list(ids)
+    if extra_msg_ids:
+        ids = ids + list(extra_msg_ids)
+    if keep_msg_id is not None:
+        ids = [i for i in ids if i != keep_msg_id]
+    for mid in dict.fromkeys(ids):  # dedupe, сохраняя порядок
+        try:
+            await bot.delete_message(chat_id, mid)
+        except TelegramBadRequest:
+            pass  # уже удалено / старше 48ч / нельзя удалить
+        except Exception as e:
+            logger.debug(f"_purge_reminder_dialog delete {mid} failed: {e}")
+
 
 def _reply_prompt(question: str, examples: str = TIME_EXAMPLES) -> str:
     """Унифицированный текст prompt'а для ввода времени через reply.

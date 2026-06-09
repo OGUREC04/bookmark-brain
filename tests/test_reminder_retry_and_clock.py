@@ -98,7 +98,7 @@ class TestPendingRetry:
 
         assert ok is True
         store.store_reminder_pending_explicit.assert_awaited_once_with(
-            100, 888, "купить",
+            100, 888, "купить", carry_from=555,
         )
 
     async def test_resave_pending_bookmark_kind(self):
@@ -109,7 +109,7 @@ class TestPendingRetry:
             store, 100, 888, None, {"kind": "bookmark", "bookmark_id": "b1"},
         )
         store.restore_reminder_pending.assert_awaited_once_with(
-            100, 888, {"kind": "bookmark", "bookmark_id": "b1"},
+            100, 888, {"kind": "bookmark", "bookmark_id": "b1"}, carry_from=None,
         )
 
     async def test_resave_noop_without_msg(self):
@@ -229,8 +229,9 @@ class TestNeedTextReply:
         })
 
         called = {}
-        async def _fake_process(message, args, api, store):
+        async def _fake_process(message, args, api, store, cleanup_anchor=None):
             called["args"] = args
+            called["cleanup_anchor"] = cleanup_anchor
         monkeypatch.setattr(
             "bot.handlers.reminders.explicit.process_explicit_remind_args",
             _fake_process,

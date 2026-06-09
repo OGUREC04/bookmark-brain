@@ -24,6 +24,7 @@ from bot.common import (
 from .list import handle_reminders_list_reply
 from .shared import (
     _cap_text,
+    _purge_reminder_dialog,
     extract_first_datetime_entity,
 )
 
@@ -58,25 +59,33 @@ async def _bookmark_reminder_text(api, token: str, bookmark_id) -> str:
 
 async def _resave_pending(
     store, chat_id: int, new_msg_id, snooze_rid, pending_bid,
+    carry_from=None,
 ) -> None:
     """#7a: pending снимается GETDEL'ом ДО парсинга. Если время не
     распозналось — перекладываем тот же pending под сообщение-ошибку,
     чтобы reply со скорректированным временем на него снова сработал
     (раньше юзер застревал: «Не нашёл этот список»).
+
+    ``carry_from`` — старый якорь: переносим его эфемерный хвост (прошлый
+    prompt + failed reply) под новый prompt, чтобы он удалился на финальном
+    успехе. Перенос — побочный эффект store-записи (см. carry_from в store).
     """
     if not new_msg_id:
         return
     try:
         if snooze_rid:
-            await store.store_reminder_snooze(chat_id, new_msg_id, snooze_rid)
+            await store.store_reminder_snooze(
+                chat_id, new_msg_id, snooze_rid, carry_from=carry_from,
+            )
         elif isinstance(pending_bid, dict):
             if pending_bid.get("kind") == "explicit":
                 await store.store_reminder_pending_explicit(
                     chat_id, new_msg_id, pending_bid.get("text", ""),
+                    carry_from=carry_from,
                 )
             else:
                 await store.restore_reminder_pending(
-                    chat_id, new_msg_id, pending_bid,
+                    chat_id, new_msg_id, pending_bid, carry_from=carry_from,
                 )
     except Exception as e:
         logger.warning(f"_resave_pending failed: {e}")
@@ -126,6 +135,12 @@ async def handle_reminder_reply(message: Message, api, store) -> bool:
             f"handle_reminder_reply: matched chat={chat_id} reply_to={reply_to_id} "
             f"snooze={bool(snooze_rid)} pending_kind={pending_bid.get('kind') if isinstance(pending_bid, dict) else None}"
         )
+        # Регистрируем reply юзера как эфемерный — СТРОГО после успешного GETDEL
+        # состояния (иначе конкурентный reply#2 с None-state ложно пометился бы).
+        try:
+            await store.track_reminder_ephemeral(chat_id, reply_to_id, message.message_id)
+        except Exception as e:
+            logger.debug(f"track ephemeral reply failed: {e}")
 
     if not snooze_rid and not pending_bid:
         rt_text = (rt.text or rt.caption or "") if rt else ""
@@ -149,6 +164,9 @@ async def handle_reminder_reply(message: Message, api, store) -> bool:
                 "&lt;когда&gt;</code> или /reminders.",
                 parse_mode="HTML",
             )
+            # Dead-end sweep: диалог мёртв (state протух) — подметаем хвост,
+            # накопленный в прошлых шагах, чтобы сообщения не висели вечно.
+            await _purge_reminder_dialog(message.bot, chat_id, reply_to_id, store)
             return True
         return False
 
@@ -176,13 +194,14 @@ async def handle_reminder_reply(message: Message, api, store) -> bool:
             m = await message.answer("Напиши про что напомнить.", parse_mode=None)
             await _resave_pending(
                 store, chat_id, getattr(m, "message_id", None),
-                snooze_rid, pending_bid,
+                snooze_rid, pending_bid, carry_from=reply_to_id,
             )
             return True
         date_phrase = pending_bid.get("date_phrase", "")
         from .explicit import process_explicit_remind_args
         await process_explicit_remind_args(
             message, f"{reply_text} {date_phrase}".strip(), api, store,
+            cleanup_anchor=reply_to_id,
         )
         return True
 
@@ -193,7 +212,7 @@ async def handle_reminder_reply(message: Message, api, store) -> bool:
         )
         await _resave_pending(
             store, chat_id, getattr(m, "message_id", None),
-            snooze_rid, pending_bid,
+            snooze_rid, pending_bid, carry_from=reply_to_id,
         )
         return True
 
@@ -207,7 +226,7 @@ async def handle_reminder_reply(message: Message, api, store) -> bool:
             )
             await _resave_pending(
                 store, chat_id, getattr(m, "message_id", None),
-                snooze_rid, pending_bid,
+                snooze_rid, pending_bid, carry_from=reply_to_id,
             )
             return True
         if snooze_rid:
@@ -261,7 +280,7 @@ async def handle_reminder_reply(message: Message, api, store) -> bool:
         )
         await _resave_pending(
             store, chat_id, getattr(m, "message_id", None),
-            snooze_rid, pending_bid,
+            snooze_rid, pending_bid, carry_from=reply_to_id,
         )
         return True
     if result.status == ParseStatus.IN_PAST:
@@ -271,7 +290,7 @@ async def handle_reminder_reply(message: Message, api, store) -> bool:
         )
         await _resave_pending(
             store, chat_id, getattr(m, "message_id", None),
-            snooze_rid, pending_bid,
+            snooze_rid, pending_bid, carry_from=reply_to_id,
         )
         return True
     if result.status == ParseStatus.NEEDS_TIME:
@@ -284,7 +303,7 @@ async def handle_reminder_reply(message: Message, api, store) -> bool:
         )
         await _resave_pending(
             store, chat_id, getattr(m, "message_id", None),
-            snooze_rid, pending_bid,
+            snooze_rid, pending_bid, carry_from=reply_to_id,
         )
         return True
 
@@ -312,6 +331,7 @@ async def handle_reminder_reply(message: Message, api, store) -> bool:
                     chat_id, prompt.message_id,
                     kind=kind, target_id=target_id,
                     proposed_dt_iso=result.dt.isoformat(),
+                    carry_from=reply_to_id,
                 )
             except Exception as e:
                 logger.warning(f"store_reminder_fallback failed: {e}")
@@ -323,7 +343,7 @@ async def handle_reminder_reply(message: Message, api, store) -> bool:
         )
         await _resave_pending(
             store, chat_id, getattr(m, "message_id", None),
-            snooze_rid, pending_bid,
+            snooze_rid, pending_bid, carry_from=reply_to_id,
         )
         return True
 
@@ -340,6 +360,10 @@ async def handle_reminder_reply(message: Message, api, store) -> bool:
             )
             return True
 
+        await _purge_reminder_dialog(
+            message.bot, chat_id, reply_to_id, store,
+            extra_msg_ids=[message.message_id],
+        )
         await message.answer(
             f"💤 Продлено до <b>{safe(format_fire_at(result.dt, user_tz_name))}</b>",
             parse_mode="HTML",
@@ -384,8 +408,15 @@ async def handle_reminder_reply(message: Message, api, store) -> bool:
         )
         return True
 
+    await _purge_reminder_dialog(
+        message.bot, chat_id, reply_to_id, store,
+        extra_msg_ids=[message.message_id],
+    )
+    # Обогащаем подтверждение текстом — prompt с контекстом удалён, иначе юзер
+    # потеряет «про что напоминание».
+    suffix = f" — «{safe(_cap_text(reminder_text, 60))}»" if reminder_text else ""
     await message.answer(
-        f"🔔 Напомню <b>{safe(format_fire_at(result.dt, user_tz_name))}</b>",
+        f"🔔 Напомню <b>{safe(format_fire_at(result.dt, user_tz_name))}</b>{suffix}",
         parse_mode="HTML",
     )
     return True
@@ -420,6 +451,13 @@ async def _handle_fallback_confirm_reply(
         return True
 
     user_tz_name = await get_user_tz_name(api, token)
+
+    # Reply юзера эфемерный — СТРОГО после валид-гарда (на invalid-return выше
+    # не трекаем, чтобы не оставить осиротевший id).
+    try:
+        await store.track_reminder_ephemeral(chat_id, reply_to_id, message.message_id)
+    except Exception as e:
+        logger.debug(f"track fallback reply failed: {e}")
 
     is_confirm = any(text_lower == w or text_lower.startswith(w + " ") for w in _FALLBACK_CONFIRM_YES)
 
@@ -460,6 +498,7 @@ async def _handle_fallback_confirm_reply(
                     chat_id, prompt.message_id,
                     kind=kind, target_id=target_id,
                     proposed_dt_iso=result.dt.isoformat(),
+                    carry_from=reply_to_id,
                 )
                 await store.pop_reminder_fallback(chat_id, reply_to_id)
             except Exception as e:
@@ -486,10 +525,12 @@ async def _apply_reminder_action(
     if not token:
         return True
 
+    reminder_label = ""  # для обогащения подтверждения (prompt будет удалён)
     try:
         if kind == "snooze":
             await api.update_reminder(token, target_id, fire_at_iso)
         elif kind == "explicit_create":
+            reminder_label = target_id or ""
             await api.create_reminder(
                 token, fire_at_iso,
                 bookmark_id=None,
@@ -497,6 +538,7 @@ async def _apply_reminder_action(
             )
         else:  # create (implicit_weak) — текст из ЗАКЛАДКИ, не из reply (время)
             bm_text = await _bookmark_reminder_text(api, token, target_id)
+            reminder_label = bm_text
             await api.create_reminder(
                 token, fire_at_iso,
                 bookmark_id=target_id,
@@ -515,6 +557,13 @@ async def _apply_reminder_action(
     except Exception as e:
         logger.debug(f"pop_reminder_fallback failed: {e}")
 
+    # Единая очистка диалога (anchor=confirm_msg_id) ПОСЛЕ pop fallback и api —
+    # никогда в error-ветке. Покрывает entity-path и fallback-confirm «да».
+    await _purge_reminder_dialog(
+        message.bot, chat_id, confirm_msg_id, store,
+        extra_msg_ids=[message.message_id],
+    )
+
     try:
         dt = datetime.fromisoformat(fire_at_iso)
     except Exception:
@@ -522,7 +571,11 @@ async def _apply_reminder_action(
 
     when = format_fire_at(dt, user_tz_name) if dt else fire_at_iso
     label = "💤 Продлено до" if kind == "snooze" else "🔔 Напомню"
-    await message.answer(f"{label} <b>{safe(when)}</b>", parse_mode="HTML")
+    suffix = (
+        f" — «{safe(_cap_text(reminder_label, 60))}»"
+        if reminder_label and kind != "snooze" else ""
+    )
+    await message.answer(f"{label} <b>{safe(when)}</b>{suffix}", parse_mode="HTML")
     return True
 
 
