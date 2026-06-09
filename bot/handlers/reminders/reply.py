@@ -35,6 +35,27 @@ router = Router()
 _FALLBACK_CONFIRM_YES = ("да", "ага", "ок", "окей", "yes", "y", "+", "подтверждаю")
 
 
+async def _bookmark_reminder_text(api, token: str, bookmark_id) -> str:
+    """Текст напоминания из ЗАКЛАДКИ (title → raw_text), не из reply.
+
+    Баг 2026-06-09: при weak-offer reply несёт ВРЕМЯ («через час»), и оно же
+    улетало в payload['text'] → напоминание показывало время как содержание.
+    Для bookmark-напоминания содержание берём из закладки. '' если не достать
+    (тогда дисплей покажет общий «🔔 Напоминание» — лучше, чем время).
+    """
+    if not bookmark_id:
+        return ""
+    try:
+        bm = await api.get_bookmark(token, str(bookmark_id))
+    except Exception as e:
+        logger.warning(f"_bookmark_reminder_text: get_bookmark failed: {e}")
+        return ""
+    if not isinstance(bm, dict):
+        return ""
+    txt = (bm.get("title") or bm.get("raw_text") or "").strip()
+    return _cap_text(txt)
+
+
 async def _resave_pending(
     store, chat_id: int, new_msg_id, snooze_rid, pending_bid,
 ) -> None:
@@ -333,8 +354,18 @@ async def handle_reminder_reply(message: Message, api, store) -> bool:
         else:
             actual_bid = pending_bid.get("bookmark_id")
 
+    # Текст напоминания: explicit → заданный текст; bookmark → из ЗАКЛАДКИ
+    # (reply здесь — ВРЕМЯ, не текст). Fallback на reply только если нет ни
+    # explicit, ни bookmark.
+    if explicit_text:
+        reminder_text = explicit_text
+    elif actual_bid:
+        reminder_text = await _bookmark_reminder_text(api, token, actual_bid)
+    else:
+        reminder_text = text
+
     payload = {
-        "text": explicit_text if explicit_text else text,
+        "text": reminder_text,
         "source": "explicit_remind" if explicit_text else "implicit_weak",
     }
 
@@ -455,8 +486,6 @@ async def _apply_reminder_action(
     if not token:
         return True
 
-    text_payload = _cap_text((message.text or "").strip())
-
     try:
         if kind == "snooze":
             await api.update_reminder(token, target_id, fire_at_iso)
@@ -466,11 +495,12 @@ async def _apply_reminder_action(
                 bookmark_id=None,
                 payload={"text": target_id, "source": "explicit_remind"},
             )
-        else:  # create (implicit_weak fallback confirm)
+        else:  # create (implicit_weak) — текст из ЗАКЛАДКИ, не из reply (время)
+            bm_text = await _bookmark_reminder_text(api, token, target_id)
             await api.create_reminder(
                 token, fire_at_iso,
                 bookmark_id=target_id,
-                payload={"text": text_payload, "source": "implicit_weak"},
+                payload={"text": bm_text, "source": "implicit_weak"},
             )
     except Exception as e:
         logger.warning(f"_apply_reminder_action {kind} failed: {e}")

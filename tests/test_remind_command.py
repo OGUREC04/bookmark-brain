@@ -203,6 +203,38 @@ class TestSplitTextAndTime:
         assert text == ""
         assert time is None
 
+    # ── Bug 2026-06-09: время в СЕРЕДИНЕ фразы ──
+    # Триггер: «Нужно завтра в 9 пойти на футбол» — бот спрашивал «когда?»,
+    # т.к. время не в начале (leading) и не в конце (tail), а в середине.
+    # Прошлые фиксы добавляли частные случаи; middle-search закрывает класс.
+
+    def test_middle_time_between_text(self):
+        from bot.common import split_remind_text_and_time
+        text, time = split_remind_text_and_time("Нужно завтра в 9 пойти на футбол")
+        assert time is not None and "завтра" in time and "9" in time
+        assert text == "Нужно пойти на футбол"
+
+    def test_middle_date_needs_hour(self):
+        """Дата без часа в середине: «надо в субботу позвонить врачу»."""
+        from bot.common import split_remind_text_and_time
+        text, time = split_remind_text_and_time("надо в субботу позвонить врачу")
+        assert time is not None and "субботу" in time
+        assert text == "надо позвонить врачу"
+
+    def test_middle_does_not_override_tail(self):
+        """Время в конце — tail-search раньше middle, dangling-токенов нет."""
+        from bot.common import split_remind_text_and_time
+        text, time = split_remind_text_and_time("позвонить врачу в субботу")
+        assert time is not None and "субботу" in time
+        assert text == "позвонить врачу"
+
+    def test_middle_no_false_positive_on_plain_text(self):
+        """Без времени — middle не выдумывает (весь ввод = текст)."""
+        from bot.common import split_remind_text_and_time
+        text, time = split_remind_text_and_time("обсудить новый проект с командой")
+        assert time is None
+        assert text == "обсудить новый проект с командой"
+
 
 # ──────────────────────────────────────────────────
 # /remind команда

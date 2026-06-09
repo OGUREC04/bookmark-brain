@@ -151,5 +151,31 @@ def split_remind_text_and_time(
         if result.status in valid_statuses and text_part:
             return text_part.strip(), time_part.strip()
 
+    # 5. Middle-search: время в СЕРЕДИНЕ фразы («Нужно завтра в 9 пойти на
+    #    футбол» — по краям текст, время посередине). Срабатывает ТОЛЬКО когда
+    #    idiom/whole/tail/leading не нашли: время не в начале (i>0) и не в
+    #    конце (j<n). Это ОБЩЕЕ решение вместо череды частных случаев: берём
+    #    самый длинный contiguous-спан, парсящийся как время; текст = всё до и
+    #    после спана. O(n·7) parse-вызовов — окно времени ограничено 7 токенами.
+    best: tuple[int, int, int] | None = None  # (window, i, j)
+    max_win = min(7, n)
+    for i in range(1, n):  # i==0 — это leading (уже пробовали)
+        for window in range(min(max_win, n - i), 0, -1):
+            j = i + window
+            if j >= n:
+                continue  # j==n — это tail (уже пробовали)
+            result = parse(" ".join(tokens[i:j]), user_tz=user_tz)
+            if result.status in valid_statuses:
+                text_part = " ".join(tokens[:i] + tokens[j:]).strip()
+                if text_part and (best is None or window > best[0]):
+                    best = (window, i, j)
+                break  # для данного i нашли самое длинное валидное окно
+    if best is not None:
+        _, bi, bj = best
+        return (
+            " ".join(tokens[:bi] + tokens[bj:]).strip(),
+            " ".join(tokens[bi:bj]).strip(),
+        )
+
     # No time found — whole input is text.
     return args, None
