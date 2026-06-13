@@ -14,17 +14,17 @@ from aiogram.utils.chat_action import ChatActionSender
 
 from bot import onboarding
 from bot.config import get_settings
-from bot.services.stt import (
+from bot.services.timestamps import add_timestamps, strip_timestamps
+from bot.services.voice_intent import VoiceIntent, detect_intent
+from bot.services.voice_list import preprocess_voice_list
+from bot.utils import ephemeral_error, safe_react
+from shared.media.stt import (
     STTError,
     WhisperSTTService,
     YandexHybridSTTService,
     YandexSTTService,
     create_stt_service,
 )
-from bot.services.timestamps import add_timestamps, strip_timestamps
-from bot.services.voice_intent import VoiceIntent, detect_intent
-from bot.services.voice_list import preprocess_voice_list
-from bot.utils import ephemeral_error, safe_react
 
 logger = logging.getLogger(__name__)
 

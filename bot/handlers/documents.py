@@ -12,14 +12,14 @@ from pathlib import Path
 from aiogram import F, Router, types
 from aiogram.utils.chat_action import ChatActionSender
 
-from bot.services.extractor import (
+from bot.utils import ephemeral_error, safe_react
+from shared.media.extractor import (
     EmptyDocumentError,
     EncryptedPDFError,
     ExtractError,
     detect_format,
     extract_text,
 )
-from bot.utils import ephemeral_error, safe_react
 
 logger = logging.getLogger(__name__)
 

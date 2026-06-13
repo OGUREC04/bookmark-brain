@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import httpx
 import pytest
 
-from bot.services.stt import (
+from shared.media.stt import (
     _MAX_FILE_SIZE_YANDEX,
     STTError,
     WhisperSTTService,
@@ -32,7 +32,7 @@ class TestCreateSTTService:
     def test_creates_yandex(self):
         # Factory всегда возвращает Hybrid для yandex provider (sync + опциональный async).
         # Без S3 envs внутри только sync — длинные голосовые рестрикшен в media handler.
-        from bot.services.stt import YandexHybridSTTService
+        from shared.media.stt import YandexHybridSTTService
         svc = create_stt_service(
             "yandex",
             yandex_api_key="AQVN-test",
@@ -75,7 +75,7 @@ class TestYandexSTTService:
             request=httpx.Request("POST", "https://stt.api.cloud.yandex.net"),
         )
 
-        with patch("bot.services.stt.httpx.AsyncClient") as mock_client_cls:
+        with patch("shared.media.stt.httpx.AsyncClient") as mock_client_cls:
             mock_client = AsyncMock()
             mock_client.post.return_value = mock_response
             mock_client.__aenter__ = AsyncMock(return_value=mock_client)
@@ -99,7 +99,7 @@ class TestYandexSTTService:
             request=httpx.Request("POST", "https://stt.api.cloud.yandex.net"),
         )
 
-        with patch("bot.services.stt.httpx.AsyncClient") as mock_client_cls:
+        with patch("shared.media.stt.httpx.AsyncClient") as mock_client_cls:
             mock_client = AsyncMock()
             mock_client.post.return_value = mock_response
             mock_client.__aenter__ = AsyncMock(return_value=mock_client)
@@ -117,7 +117,7 @@ class TestYandexSTTService:
             request=httpx.Request("POST", "https://stt.api.cloud.yandex.net"),
         )
 
-        with patch("bot.services.stt.httpx.AsyncClient") as mock_client_cls:
+        with patch("shared.media.stt.httpx.AsyncClient") as mock_client_cls:
             mock_client = AsyncMock()
             mock_client.post.return_value = mock_response
             mock_client.__aenter__ = AsyncMock(return_value=mock_client)
@@ -129,7 +129,7 @@ class TestYandexSTTService:
 
     @pytest.mark.asyncio
     async def test_transcribe_timeout(self, svc, audio_file):
-        with patch("bot.services.stt.httpx.AsyncClient") as mock_client_cls:
+        with patch("shared.media.stt.httpx.AsyncClient") as mock_client_cls:
             mock_client = AsyncMock()
             mock_client.post.side_effect = httpx.TimeoutException("timeout")
             mock_client.__aenter__ = AsyncMock(return_value=mock_client)
@@ -162,7 +162,7 @@ class TestYandexSTTService:
             request=httpx.Request("POST", "https://stt.api.cloud.yandex.net"),
         )
 
-        with patch("bot.services.stt.httpx.AsyncClient") as mock_client_cls:
+        with patch("shared.media.stt.httpx.AsyncClient") as mock_client_cls:
             mock_client = AsyncMock()
             mock_client.post.return_value = mock_response
             mock_client.__aenter__ = AsyncMock(return_value=mock_client)
