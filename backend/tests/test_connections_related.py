@@ -11,10 +11,9 @@ from unittest.mock import AsyncMock, MagicMock
 from uuid import UUID
 
 import pytest
-from fastapi import HTTPException
-
 from app.api import connections as capi
 from app.services import connections
+from fastapi import HTTPException
 
 A = UUID("00000000-0000-0000-0000-000000000005")
 B = UUID("00000000-0000-0000-0000-000000000001")

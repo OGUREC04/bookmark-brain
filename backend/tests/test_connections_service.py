@@ -12,7 +12,6 @@ from unittest.mock import AsyncMock, MagicMock
 from uuid import UUID
 
 import pytest
-
 from app.services import connections
 
 A = UUID("00000000-0000-0000-0000-000000000005")
