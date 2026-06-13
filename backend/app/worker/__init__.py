@@ -81,6 +81,7 @@ from .scheduled import (
     analytics_partition_maintenance,
     auto_done_reminders,
     backfill_bookmark_links,
+    reembed_all_bookmarks,
     retry_failed_task,
     retry_partial_embeddings,
     scheduled_dispatcher,
@@ -106,6 +107,7 @@ class WorkerSettings:
         process_bookmark_task,
         redispatch_reminder_task,
         backfill_bookmark_links,  # Phase 5A one-shot (enqueue вручную)
+        reembed_all_bookmarks,    # Phase 5A one-shot: пере-эмбеддинг под новый рецепт
     ]
     cron_jobs = [
         cron(retry_failed_task, hour=3, minute=0),
@@ -174,6 +176,7 @@ __all__ = [
     "backfill_bookmark_links",
     "process_bookmark_task",
     "redispatch_reminder_task",
+    "reembed_all_bookmarks",
     "retry_failed_task",
     "retry_partial_embeddings",
     "scheduled_dispatcher",

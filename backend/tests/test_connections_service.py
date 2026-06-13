@@ -68,7 +68,7 @@ async def test_find_similar_defaults():
     session.execute = AsyncMock(return_value=_Result(rows=[]))
     await connections.find_similar_bookmarks(session, A, USER, [0.1])
     params = session.execute.call_args.args[1]
-    assert params["threshold"] == connections.SIMILAR_THRESHOLD  # 0.75
+    assert params["threshold"] == connections.SIMILAR_THRESHOLD  # 0.73 (откалибровано)
     assert params["k"] == connections.DEFAULT_K_STORE  # 30
 
 

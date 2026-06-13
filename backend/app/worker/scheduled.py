@@ -357,6 +357,81 @@ async def backfill_bookmark_links(ctx: dict | None = None, *, batch_size: int = 
     return processed
 
 
+async def reembed_all_bookmarks(ctx: dict | None = None, *, batch_size: int = 100) -> int:
+    """One-shot джоба: пере-эмбеддит ВСЕ заметки новым рецептом (AD-7).
+
+    Нужна после смены рецепта эмбеддинга (реальный текст + ИИ-поля). Старые
+    заметки эмбеддились по старому рецепту (только ИИ-выжимка) — связи/дедуп для
+    них считались бы в СТАРОМ пространстве, ровно от которого мы уходили. Прогон
+    делает пространство единым. 0 вызовов LLM (только Voyage-эмбеддинги).
+
+    Запуск вручную на деплое: enqueue_job("reembed_all_bookmarks"), ПЕРЕД
+    backfill_bookmark_links (сначала единый рецепт, потом по нему строим связи).
+
+    Идёт батчами (keyset по id), best-effort на элемент. Возвращает число
+    успешно переэмбедженных заметок.
+    """
+    from types import SimpleNamespace
+
+    from app.database import async_session
+    from app.models import Bookmark
+    from app.services.bookmark_processor import _build_embedding_text
+    from app.services.embeddings import (
+        EmbeddingError,
+        RetryableEmbeddingError,
+        create_embedding_service,
+    )
+
+    embedding_service = create_embedding_service(
+        provider=settings.EMBEDDING_PROVIDER,
+        auth_key=settings.GIGACHAT_AUTH_KEY,
+        api_key=settings.VOYAGE_API_KEY,
+        ca_bundle=settings.GIGACHAT_CA_BUNDLE,
+    )
+    processed = 0
+    last_id = None
+    try:
+        while True:
+            async with async_session() as session:
+                stmt = (
+                    select(Bookmark)
+                    .where(Bookmark.ai_status.in_(("completed", "partial")))
+                    .order_by(Bookmark.id)
+                    .limit(batch_size)
+                )
+                if last_id is not None:
+                    stmt = stmt.where(Bookmark.id > last_id)
+
+                bookmarks = (await session.execute(stmt)).scalars().all()
+                if not bookmarks:
+                    break
+
+                for bm in bookmarks:
+                    last_id = bm.id
+                    # Теги lazy-не-загружены → None; основной сигнал в реальном тексте.
+                    clf = SimpleNamespace(
+                        takeaway=bm.takeaway,
+                        summary=bm.summary,
+                        key_ideas=bm.key_ideas,
+                        tags=None,
+                    )
+                    try:
+                        emb = await embedding_service.get_embedding(
+                            _build_embedding_text(bm, clf)
+                        )
+                        bm.embedding = emb
+                        processed += 1
+                    except (EmbeddingError, RetryableEmbeddingError) as e:
+                        logger.warning(f"reembed: failed for {bm.id}: {e}")
+
+                await session.commit()
+    finally:
+        await embedding_service.close()
+
+    logger.info(f"reembed_all_bookmarks: re-embedded {processed} bookmark(s)")
+    return processed
+
+
 async def retry_partial_embeddings(ctx: dict) -> None:
     """Cron: retry embedding for partial bookmarks (classification OK, embedding failed).
 
