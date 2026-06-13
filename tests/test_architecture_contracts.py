@@ -10,6 +10,11 @@ the load-bearing structural rules:
      internals becomes impossible to reintroduce.
   2. Layered architecture — bot.common is the lowest shared layer and must
      never import a feature handler or the composition root.
+  3. Shared leaf — the `shared` package (media: STT / extraction / storage,
+     extracted from the bot for backend reuse, 3sr) must not import `bot`.
+     Keeps it a dependency leaf so the backend can ship it without pulling in
+     bot code. The shared->app direction is mirrored in
+     tests/test_shared_is_leaf.py.
 
 CI runs `lint-imports` as a hard-fail step too; this test makes the same
 check part of the local `pytest` run so a violation is caught before push,
@@ -64,6 +69,6 @@ def test_import_linter_contracts_hold():
         "Run `lint-imports` locally to see which contract broke.\n\n"
         + output
     )
-    assert "Contracts: 2 kept, 0 broken." in output, (
-        "Expected exactly 2 architecture contracts kept; output was:\n" + output
+    assert "Contracts: 3 kept, 0 broken." in output, (
+        "Expected exactly 3 architecture contracts kept; output was:\n" + output
     )
