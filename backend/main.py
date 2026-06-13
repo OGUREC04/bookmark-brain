@@ -1,6 +1,7 @@
 from contextlib import asynccontextmanager
 
 from app.api.bookmarks import router as bookmarks_router
+from app.api.connections import router as connections_router
 from app.api.folders import router as folders_router
 from app.api.reminders import router as reminders_router
 from app.api.search import router as search_router
@@ -50,6 +51,7 @@ app.include_router(bookmarks_router)
 app.include_router(folders_router)
 app.include_router(reminders_router)
 app.include_router(search_router)
+app.include_router(connections_router)
 
 
 @app.get("/health")

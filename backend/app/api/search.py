@@ -59,6 +59,7 @@ async def search_bookmarks(
             offset=data.offset,
             category=data.category,
             tags=data.tags,
+            mode=data.mode,
         )
     finally:
         await embedding_service.close()
