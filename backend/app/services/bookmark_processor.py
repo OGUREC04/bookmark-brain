@@ -19,16 +19,40 @@ logger = logging.getLogger(__name__)
 
 MAX_RETRIES = 3
 
+# Обрезка текста эмбеддинга. Совпадает с лимитом в embeddings.py (8000 симв/айтем).
+MAX_EMBEDDING_TEXT_CHARS = 8000
+
 
 def _build_embedding_text(bookmark: Bookmark, classification) -> str:
-    """Собирает текст для embedding из самых ёмких полей.
+    """Текст для embedding: РЕАЛЬНЫЙ текст заметки — основа, ИИ-поля — добавка.
 
-    Это важно для семантического поиска: title+takeaway+key_ideas дают
-    гораздо более чистый эмбеддинг, чем сырой текст статьи.
+    Ревизия 2026-06-13 (AD-7, см. docs/epics/connections-mvp.md): раньше
+    эмбеддился только ИИ-вывод (title+takeaway+summary+key_ideas), и связи/
+    поиск становились заложником качества классификатора — слабый GigaChat
+    искажал выжимку → искажались связи. Теперь основа эмбеддинга — реальный
+    контент (тело статьи / транскрипт / сырой ввод), а ИИ-поля идут добавкой
+    сверху, чтобы реальный текст держал смысл даже при плохой выжимке.
+
+    Обрезаем до 8000 символов (как embeddings.py). Чанкинг с усреднением —
+    вне MVP: на очень длинной статье ИИ-добавка может обрезаться, и это ок —
+    у длинной статьи реального текста и так с избытком.
+
+    Эмбеддинг общий с поиском и дедупом — пороги перепроверяются на калибровке.
     """
     parts: list[str] = []
+    # Заголовок — часто реальный (например OG-title добытой статьи).
     if bookmark.title:
         parts.append(bookmark.title)
+    # ОСНОВА: реальный текст заметки. Берём самые содержательные источники без
+    # дублей (для voice raw_text часто совпадает с transcription).
+    real_sources: list[str] = []
+    for real in (bookmark.full_text, bookmark.transcription, bookmark.raw_text):
+        if real:
+            stripped = real.strip()
+            if stripped and stripped not in real_sources:
+                real_sources.append(stripped)
+    parts.extend(real_sources)
+    # ИИ-поля — добавка сверху (ключевые мысли, выжимка, теги).
     if classification.takeaway:
         parts.append(classification.takeaway)
     if classification.summary:
@@ -37,10 +61,10 @@ def _build_embedding_text(bookmark: Bookmark, classification) -> str:
         parts.extend(classification.key_ideas)
     if classification.tags:
         parts.append(" ".join(classification.tags))
-    # Fallback если AI почему-то ничего не дал
+    # Fallback — практически недостижим (raw_text NOT NULL), но на всякий случай.
     if not parts:
-        parts.append(bookmark.raw_text[:2000])
-    return "\n".join(parts)
+        parts.append((bookmark.raw_text or "")[:2000])
+    return "\n".join(p for p in parts if p)[:MAX_EMBEDDING_TEXT_CHARS]
 
 
 class BookmarkProcessor:

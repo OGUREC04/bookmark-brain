@@ -125,6 +125,42 @@ async def process_bookmark_task(
         )
 
 
+async def _maybe_build_connections(session, bookmark) -> int:
+    """Phase 5A: строит смысловые связи для заметки на сохранении (best-effort).
+
+    0 вызовов LLM — чистый pgvector kNN (NFR-1). Эмбеддинг уже персистнут
+    выше. Ошибка связывания НЕ должна влиять на обработку закладки. Возвращает
+    число созданных рёбер (для логов/тестов).
+    """
+    if (
+        bookmark is None
+        or bookmark.embedding is None
+        or bookmark.ai_status not in ("completed", "partial")
+    ):
+        return 0
+    try:
+        from app.services.connections import build_links_for_bookmark
+        emb = (
+            bookmark.embedding.tolist()
+            if hasattr(bookmark.embedding, "tolist")
+            else list(bookmark.embedding)
+        )
+        n = await build_links_for_bookmark(
+            session, bookmark.id, bookmark.user_id, emb,
+        )
+        if n:
+            await session.commit()
+            logger.info(f"Connections: built {n} link(s) for {bookmark.id}")
+        return n
+    except Exception as e:  # noqa: BLE001 — best-effort, не валим обработку
+        logger.debug(f"Connections link build failed: {e}")
+        try:
+            await session.rollback()
+        except Exception:
+            pass
+        return 0
+
+
 async def _process_bookmark_task_impl(
     ctx: dict,
     bookmark_id: str,
@@ -225,6 +261,9 @@ async def _process_bookmark_task_impl(
             select(Bookmark).where(Bookmark.id == UUID(bookmark_id))
         )
         bookmark = result.scalar_one_or_none()
+
+        # Phase 5A (Connections): смысловые связи на сохранении (best-effort, 0 LLM).
+        await _maybe_build_connections(session, bookmark)
 
         # Phase 5D-lite: general dedup detection (cosine > 0.95)
         # Если юзер прислал почти то же самое — спрашиваем через reply.

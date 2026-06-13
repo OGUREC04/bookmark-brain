@@ -285,6 +285,16 @@ class BackendClient:
         response.raise_for_status()
         return response.json()
 
+    async def get_related(self, token: str, bookmark_id: str, limit: int = 5) -> dict:
+        """Связанные по смыслу заметки (Phase 5A). Возвращает {items, total}."""
+        response = await self.client.get(
+            f"/api/v1/bookmarks/{bookmark_id}/related",
+            params={"limit": limit},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        response.raise_for_status()
+        return response.json()
+
     async def update_bookmark(
         self, token: str, bookmark_id: str, patch: dict
     ) -> dict:

@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -179,6 +180,9 @@ class SearchRequest(BaseModel):
     # Phase 1: попросить LLM сгенерировать саммари по топу результатов.
     # Default True — UI показывает "AI-ответ" над списком, как Google one-box.
     with_summary: bool = True
+    # FR-7 (Connections): 'hybrid' (semantic+full-text) | 'semantic' (по смыслу).
+    # Literal — невалидный mode отсекается на границе (422), не молча → hybrid.
+    mode: Literal["hybrid", "semantic"] = "hybrid"
 
 
 class SearchResult(BaseModel):

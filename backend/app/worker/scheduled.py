@@ -300,6 +300,63 @@ async def retry_failed_task(ctx: dict) -> None:
         await ctx["redis"].enqueue_job("process_bookmark_task", bid)
 
 
+async def backfill_bookmark_links(ctx: dict | None = None, *, batch_size: int = 200) -> int:
+    """One-shot джоба: строит смысловые связи для всех заметок с эмбеддингом (Phase 5A).
+
+    Идёт по СУЩЕСТВУЮЩИМ эмбеддингам — 0 вызовов LLM и 0 запросов к Voyage,
+    батчами (keyset по id), идемпотентно (ON CONFLICT DO NOTHING в
+    build_links_for_bookmark). Возвращает число обработанных заметок.
+
+    Запуск (один раз, пользователем): enqueue_job("backfill_bookmark_links").
+
+    ВАЖНО (консистентность пространства): если существующие заметки
+    пересчитывались под новый рецепт эмбеддинга (AD-7 — реальный текст + ИИ),
+    запускать ПОСЛЕ пересчёта, иначе связи строятся в смешанном пространстве
+    (старый рецепт ↔ новый). Пересчёт существующих — отдельный шаг (E1,
+    требует бюджета Voyage); новые/переобработанные заметки уже на новом рецепте.
+    """
+    from app.database import async_session
+    from app.models import Bookmark
+    from app.services.connections import build_links_for_bookmark
+
+    processed = 0
+    last_id = None
+    async with async_session() as session:
+        while True:
+            stmt = (
+                select(Bookmark.id, Bookmark.user_id, Bookmark.embedding)
+                .where(
+                    Bookmark.ai_status.in_(("completed", "partial")),
+                    Bookmark.embedding.isnot(None),
+                )
+                .order_by(Bookmark.id)
+                .limit(batch_size)
+            )
+            if last_id is not None:
+                stmt = stmt.where(Bookmark.id > last_id)
+
+            rows = (await session.execute(stmt)).fetchall()
+            if not rows:
+                break
+
+            for row in rows:
+                emb = row.embedding
+                emb_list = emb.tolist() if hasattr(emb, "tolist") else list(emb)
+                try:
+                    await build_links_for_bookmark(
+                        session, row.id, row.user_id, emb_list,
+                    )
+                except Exception as e:  # noqa: BLE001 — не валим весь бэкфилл
+                    logger.debug(f"backfill: link build failed for {row.id}: {e}")
+                processed += 1
+                last_id = row.id
+
+            await session.commit()
+
+    logger.info(f"backfill_bookmark_links: processed {processed} bookmark(s)")
+    return processed
+
+
 async def retry_partial_embeddings(ctx: dict) -> None:
     """Cron: retry embedding for partial bookmarks (classification OK, embedding failed).
 
@@ -350,20 +407,21 @@ async def retry_partial_embeddings(ctx: dict) -> None:
 
         try:
 
-            # Rebuild embedding text from existing classification data
-            text_parts = []
-            if bookmark.title:
-                text_parts.append(bookmark.title)
-            if bookmark.takeaway:
-                text_parts.append(bookmark.takeaway)
-            if bookmark.summary:
-                text_parts.append(bookmark.summary)
-            if bookmark.key_ideas:
-                text_parts.extend(bookmark.key_ideas)
-            if not text_parts:
-                text_parts.append(bookmark.raw_text[:2000])
+            # Единый рецепт эмбеддинга (AD-7): реальный текст заметки + ИИ-поля.
+            # Иначе ретрай создавал бы эмбеддинги в СТАРОМ пространстве (только
+            # ИИ-поля), несовместимом с новыми/переобработанными заметками →
+            # смешанное пространство и кривые связи/дедуп. Теги lazy-не-загружены.
+            from types import SimpleNamespace
 
-            embedding_text = "\n".join(text_parts)
+            from app.services.bookmark_processor import _build_embedding_text
+
+            _clf = SimpleNamespace(
+                takeaway=bookmark.takeaway,
+                summary=bookmark.summary,
+                key_ideas=bookmark.key_ideas,
+                tags=None,
+            )
+            embedding_text = _build_embedding_text(bookmark, _clf)
             embedding = await embedding_service.get_embedding(embedding_text)
 
             async with async_session() as session:

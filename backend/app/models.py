@@ -5,6 +5,7 @@ from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
     BigInteger,
     Boolean,
+    CheckConstraint,
     DateTime,
     Float,
     ForeignKey,
@@ -358,4 +359,85 @@ class AnalyticsEvent(Base):
     source: Mapped[str] = mapped_column(String(16), nullable=False)
     dimensions: Mapped[dict] = mapped_column(
         JSONB, server_default="{}", default=dict, nullable=False,
+    )
+
+
+class BookmarkLink(Base):
+    """Смысловая связь между двумя заметками одного пользователя (Connections MVP).
+
+    Ребро пишется ОДИН раз (from=новая заметка, to=похожая); на чтении
+    запрашиваем обе стороны (from_id=X OR to_id=X) — отсюда два индекса по
+    weight DESC. kind ENUM: в MVP только 'similar' (cosine в weight),
+    'manual'/'derived_from_space' зарезервированы под Phase 6.
+    user_id денормализован (AD-1) — связи всегда внутри одного юзера.
+    """
+
+    __tablename__ = "bookmark_links"
+    __table_args__ = (
+        UniqueConstraint(
+            "from_id", "to_id", "kind", name="uq_bookmark_links_pair_kind"
+        ),
+        CheckConstraint("from_id <> to_id", name="ck_bookmark_links_no_self"),
+        Index("idx_bookmark_links_user", "user_id"),
+        # Индексы (from_id, weight DESC) / (to_id, weight DESC) создаёт миграция
+        # a9b0c1d2e3f4 через DDL — в ORM-метаданных выражение-индекс не держим
+        # (sa.text в Index ломает create_all).
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid()
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    from_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("bookmarks.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    to_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("bookmarks.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    # ENUM в БД (тип создан миграцией a9b0c1d2e3f4) — create_type=False, чтобы
+    # asyncpg слал корректный тип, а Phase 6 добавлял kinds через ALTER TYPE.
+    kind: Mapped[str] = mapped_column(
+        PG_ENUM(
+            "similar", "manual", "derived_from_space",
+            name="link_kind", create_type=False,
+        ),
+        nullable=False,
+    )
+    weight: Mapped[float] = mapped_column(Float, nullable=False)  # cosine для similar
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
+class GraphLayout(Base):
+    """Кэш раскладки полного графа пользователя (on-demand, AD-8).
+
+    Полный граф строится по явному действию: координаты узлов считаются один
+    раз (ForceAtlas2) и кэшируются здесь. `stale` определяется сравнением
+    node_count с текущим числом заметок пользователя.
+    """
+
+    __tablename__ = "graph_layouts"
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    nodes: Mapped[list] = mapped_column(
+        JSONB, server_default="[]", default=list, nullable=False
+    )
+    node_count: Mapped[int] = mapped_column(
+        Integer, server_default="0", default=0, nullable=False
+    )
+    built_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
     )

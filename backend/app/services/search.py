@@ -23,8 +23,12 @@ class SearchService:
         offset: int = 0,
         category: str | None = None,
         tags: list[str] | None = None,
+        mode: str = "hybrid",
     ) -> tuple[list[tuple[Bookmark, float]], int]:
-        """Гибридный поиск: semantic (pgvector) + full-text (tsvector).
+        """Поиск: 'hybrid' (semantic+full-text) или 'semantic' (только косинус).
+
+        mode='semantic' (FR-7): semantic_weight=1.0 — ищем строго по смыслу.
+        Если эмбеддинг запроса не получился — деградируем в full-text (как hybrid).
 
         Возвращает (список (bookmark, score), total_count).
         """
@@ -50,6 +54,11 @@ class SearchService:
         else:
             # Только full-text
             semantic_weight, text_weight = 0.0, 1.0
+
+        # Семантический режим: строго по смыслу (full-text не подмешиваем).
+        # Если эмбеддинга нет — остаёмся на full-text fallback выше.
+        if mode == "semantic" and use_semantic:
+            semantic_weight, text_weight = 1.0, 0.0
 
         # Строим WHERE условия
         where_clauses = ["b.user_id = :user_id"]

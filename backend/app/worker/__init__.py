@@ -80,6 +80,7 @@ from .scheduled import (
     _save_reminder_redis_state,
     analytics_partition_maintenance,
     auto_done_reminders,
+    backfill_bookmark_links,
     retry_failed_task,
     retry_partial_embeddings,
     scheduled_dispatcher,
@@ -101,7 +102,11 @@ settings = get_settings()
 
 
 class WorkerSettings:
-    functions = [process_bookmark_task, redispatch_reminder_task]
+    functions = [
+        process_bookmark_task,
+        redispatch_reminder_task,
+        backfill_bookmark_links,  # Phase 5A one-shot (enqueue вручную)
+    ]
     cron_jobs = [
         cron(retry_failed_task, hour=3, minute=0),
         cron(retry_partial_embeddings, hour=5, minute=0),
@@ -166,6 +171,7 @@ __all__ = [
     "aioredis_from_url",
     "analytics_partition_maintenance",
     "auto_done_reminders",
+    "backfill_bookmark_links",
     "process_bookmark_task",
     "redispatch_reminder_task",
     "retry_failed_task",
