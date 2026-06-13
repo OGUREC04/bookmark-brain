@@ -9,6 +9,7 @@ Owns its own Router; подключается в `bot/main.py`.
 from __future__ import annotations
 
 import logging
+import uuid
 
 from aiogram import F, Router
 from aiogram.types import (
@@ -101,6 +102,20 @@ async def cb_view(callback: CallbackQuery, api):
     if url:
         buttons.insert(0, [InlineKeyboardButton(text="🔗 Открыть ссылку", url=url)])
 
+    # Phase 5A: кнопка «🔗 Похожие (N)» — только если есть связи (best-effort,
+    # ошибка не должна ломать просмотр заметки).
+    try:
+        related = await api.get_related(token, bid, limit=5)
+        n_related = related.get("total", 0)
+        if n_related:
+            buttons.append([
+                InlineKeyboardButton(
+                    text=f"🔗 Похожие ({n_related})", callback_data=f"rel:{bid}"
+                )
+            ])
+    except Exception as e:
+        logger.debug(f"related count failed: {e}")
+
     kb = InlineKeyboardMarkup(inline_keyboard=buttons)
 
     # Telegram ограничивает edit_text до 4096 символов
@@ -110,5 +125,58 @@ async def cb_view(callback: CallbackQuery, api):
     await callback.message.edit_text(
         text, reply_markup=kb, parse_mode="HTML",
         disable_web_page_preview=True,
+    )
+    await callback.answer()
+
+
+def _related_view(items: list[dict], bid: str) -> tuple[str, InlineKeyboardMarkup]:
+    """Текст + клавиатура списка связанных заметок (tap-to-open). items непуст."""
+    lines = ["<b>🔗 Похожие заметки:</b>", ""]
+    buttons: list[list[InlineKeyboardButton]] = []
+    for it in items:
+        title = it.get("title") or "Без названия"
+        lines.append(f"• {title}")
+        buttons.append([
+            InlineKeyboardButton(
+                text=f"📄 {title[:40]}", callback_data=f"view:{it['id']}"
+            )
+        ])
+    buttons.append([InlineKeyboardButton(text="◀️ Назад", callback_data=f"view:{bid}")])
+    return "\n".join(lines), InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+@router.callback_query(F.data.startswith("rel:"))
+async def cb_related(callback: CallbackQuery, api):
+    """Список заметок, связанных по смыслу с текущей (Phase 5A)."""
+    if not isinstance(callback.message, Message):
+        await callback.answer("Сообщение устарело.", show_alert=True)
+        return
+
+    token = await ensure_user(callback, api)
+    if not token:
+        return
+
+    try:
+        bid = (callback.data or "").split(":")[1]
+        uuid.UUID(bid)  # отсекаем кривой callback_data до похода в API
+    except (IndexError, ValueError):
+        await callback.answer("Неверная кнопка.", show_alert=True)
+        return
+
+    try:
+        related = await api.get_related(token, bid, limit=5)
+    except Exception as e:
+        logger.error(f"Related failed: {e}")
+        await callback.answer("Ошибка загрузки", show_alert=True)
+        return
+
+    items = related.get("items", [])
+    if not items:
+        await callback.answer("Похожих заметок пока нет.", show_alert=True)
+        return
+
+    text, kb = _related_view(items, bid)
+    await callback.message.edit_text(
+        text, reply_markup=kb, parse_mode="HTML", disable_web_page_preview=True,
     )
     await callback.answer()
