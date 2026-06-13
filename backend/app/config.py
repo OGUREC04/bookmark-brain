@@ -32,6 +32,18 @@ class Settings(BaseSettings):
     STT_PROVIDER: str = "openai"  # "openai" | "groq" | "yandex"
     YANDEX_CLOUD_API_KEY: str = ""
     YANDEX_CLOUD_FOLDER_ID: str = ""
+    # Object Storage (S3-compatible) — used by async STT (>30s voice) AND to
+    # hand Mini App media uploads from the API container to the worker (3sr).
+    # Same keys as the bot's .env (shared bucket); uploads live under uploads/.
+    YANDEX_S3_ENDPOINT: str = "https://storage.yandexcloud.net"
+    YANDEX_S3_BUCKET: str = ""
+    YANDEX_S3_ACCESS_KEY: str = ""
+    YANDEX_S3_SECRET_KEY: str = ""
+
+    # Mini App media upload limits (3sr). Audio cap follows Whisper's 25 MB;
+    # documents follow the bot's 20 MB Telegram-download parity.
+    UPLOAD_MAX_AUDIO_MB: int = 25
+    UPLOAD_MAX_DOC_MB: int = 20
 
     # App
     SECRET_KEY: str  # Required — no default, must be set in .env
