@@ -209,6 +209,11 @@ async def count_related(
 # присылает на сохранение — сервер остаётся лёгким, что важно на многих юзерах.
 
 GRAPH_NODE_CAP = 300  # NFR-3: лимит узлов полного графа (выше — кластеризация/позже)
+# Порог «устарел»: баннер загорается, когда число связей ИЗМЕНИЛОСЬ (рост или
+# убыль) на столько с момента сборки. Раньше stale загорался при ЛЮБОЙ новой
+# заметке (node_count != cached) — нервировал на +1. 8 ≈ «заметное» изменение
+# структуры небольшого графа; ниже — шум (одна-две заметки). Легко подкрутить.
+GRAPH_STALE_EDGE_DELTA = 8
 
 
 async def _neighbor_edges(session: AsyncSession, user_id: UUID, ids: list[str]) -> list:
@@ -351,11 +356,39 @@ async def current_graph_node_count(session: AsyncSession, user_id: UUID) -> int:
     return int(row.n) if row else 0
 
 
+async def current_graph_edge_count(session: AsyncSession, user_id: UUID) -> int:
+    """Текущее число связей графа (similar-рёбра между узлами с эмбеддингом) —
+    для порога «устарел». Фильтр как у get_full_graph: оба конца — заметки с
+    эмбеддингом и не в архиве. УПРОЩЕНИЕ: без node_cap (GRAPH_NODE_CAP=300),
+    т.е. при >300 узлов счёт может расходиться с рендером. Для типичных графов
+    (<300 заметок) совпадает; cap-aware подсчёт добавим, если упрёмся в лимит."""
+    result = await session.execute(
+        text("""
+            SELECT COUNT(*) AS n
+            FROM bookmark_links bl
+            WHERE bl.user_id = :user_id AND bl.kind = 'similar'
+              AND EXISTS (
+                SELECT 1 FROM bookmarks b
+                WHERE b.id = bl.from_id
+                  AND b.embedding IS NOT NULL AND b.is_archived = false
+              )
+              AND EXISTS (
+                SELECT 1 FROM bookmarks b
+                WHERE b.id = bl.to_id
+                  AND b.embedding IS NOT NULL AND b.is_archived = false
+              )
+        """),
+        {"user_id": str(user_id)},
+    )
+    row = result.fetchone()
+    return int(row.n) if row else 0
+
+
 async def get_graph_layout(session: AsyncSession, user_id: UUID) -> dict | None:
     """Закэшированная раскладка полного графа или None, если ещё не строилась."""
     result = await session.execute(
         text("""
-            SELECT nodes, node_count, built_at
+            SELECT nodes, node_count, edge_count, built_at
             FROM graph_layouts
             WHERE user_id = :user_id
         """),
@@ -367,29 +400,33 @@ async def get_graph_layout(session: AsyncSession, user_id: UUID) -> dict | None:
     return {
         "nodes": row.nodes,
         "node_count": int(row.node_count),
+        "edge_count": int(row.edge_count),
         "built_at": row.built_at,
     }
 
 
 async def save_graph_layout(
-    session: AsyncSession, user_id: UUID, nodes: list, node_count: int
+    session: AsyncSession, user_id: UUID, nodes: list, node_count: int, edge_count: int = 0
 ) -> None:
-    """Сохраняет/обновляет раскладку (координаты узлов с клиента) — кэш по кнопке."""
+    """Сохраняет/обновляет раскладку (координаты узлов с клиента) — кэш по кнопке.
+    edge_count фиксирует число связей на момент сборки — база для порога «устарел»."""
     import json
 
     await session.execute(
         text("""
-            INSERT INTO graph_layouts (user_id, nodes, node_count, built_at)
-            VALUES (:user_id, CAST(:nodes AS jsonb), :node_count, now())
+            INSERT INTO graph_layouts (user_id, nodes, node_count, edge_count, built_at)
+            VALUES (:user_id, CAST(:nodes AS jsonb), :node_count, :edge_count, now())
             ON CONFLICT (user_id) DO UPDATE
               SET nodes = EXCLUDED.nodes,
                   node_count = EXCLUDED.node_count,
+                  edge_count = EXCLUDED.edge_count,
                   built_at = now()
         """),
         {
             "user_id": str(user_id),
             "nodes": json.dumps(nodes),
             "node_count": node_count,
+            "edge_count": edge_count,
         },
     )
     await session.commit()

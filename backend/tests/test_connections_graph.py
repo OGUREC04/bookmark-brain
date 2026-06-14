@@ -122,24 +122,29 @@ async def test_graph_local_404_for_foreign_center():
     assert ei.value.status_code == 404
 
 
-async def test_graph_full_stale_when_no_layout(monkeypatch):
+def _patch_graph(monkeypatch, *, nodes=10, edges=0, layout=None):
+    """Хелпер: мокаем 4 зависимости эндпоинта /graph."""
     monkeypatch.setattr(connections, "get_full_graph", AsyncMock(return_value={"nodes": [], "edges": []}))
-    monkeypatch.setattr(connections, "current_graph_node_count", AsyncMock(return_value=10))
-    monkeypatch.setattr(connections, "get_graph_layout", AsyncMock(return_value=None))
+    monkeypatch.setattr(connections, "current_graph_node_count", AsyncMock(return_value=nodes))
+    monkeypatch.setattr(connections, "current_graph_edge_count", AsyncMock(return_value=edges))
+    monkeypatch.setattr(connections, "get_graph_layout", AsyncMock(return_value=layout))
+
+
+async def test_graph_full_stale_when_no_layout(monkeypatch):
+    _patch_graph(monkeypatch, nodes=10, edges=4, layout=None)
     user = SimpleNamespace(id=USER)
 
     resp = await capi.graph_full(current_user=user, session=MagicMock())
-    assert resp.stale is True
+    assert resp.stale is True  # раскладки ещё нет → надо построить
     assert resp.layout is None
     assert resp.node_count == 10
 
 
-async def test_graph_full_not_stale_when_counts_match(monkeypatch):
-    monkeypatch.setattr(connections, "get_full_graph", AsyncMock(return_value={"nodes": [], "edges": []}))
-    monkeypatch.setattr(connections, "current_graph_node_count", AsyncMock(return_value=5))
-    monkeypatch.setattr(
-        connections, "get_graph_layout",
-        AsyncMock(return_value={"nodes": [{"id": "x", "x": 1, "y": 2}], "node_count": 5, "built_at": None}),
+async def test_graph_full_not_stale_when_few_new_connections(monkeypatch):
+    # связей было 5, стало 6 → дельта 1 < порога (8) → НЕ устарел
+    _patch_graph(
+        monkeypatch, nodes=5, edges=6,
+        layout={"nodes": [{"id": "x", "x": 1, "y": 2}], "node_count": 5, "edge_count": 5, "built_at": None},
     )
     user = SimpleNamespace(id=USER)
 
@@ -148,17 +153,42 @@ async def test_graph_full_not_stale_when_counts_match(monkeypatch):
     assert resp.layout == [{"id": "x", "x": 1, "y": 2}]
 
 
-async def test_graph_full_stale_when_counts_differ(monkeypatch):
-    monkeypatch.setattr(connections, "get_full_graph", AsyncMock(return_value={"nodes": [], "edges": []}))
-    monkeypatch.setattr(connections, "current_graph_node_count", AsyncMock(return_value=8))
-    monkeypatch.setattr(
-        connections, "get_graph_layout",
-        AsyncMock(return_value={"nodes": [], "node_count": 5, "built_at": None}),
+async def test_graph_full_stale_when_many_new_connections(monkeypatch):
+    # связей было 5, стало 14 → дельта 9 ≥ порога (8) → устарел
+    _patch_graph(
+        monkeypatch, nodes=8, edges=14,
+        layout={"nodes": [], "node_count": 5, "edge_count": 5, "built_at": None},
     )
     user = SimpleNamespace(id=USER)
 
     resp = await capi.graph_full(current_user=user, session=MagicMock())
-    assert resp.stale is True  # добавились заметки с прошлой сборки
+    assert resp.stale is True
+
+
+async def test_graph_full_stale_when_many_connections_removed(monkeypatch):
+    # массовое архивирование: связей было 20, стало 5 → |дельта| 15 ≥ порога →
+    # устарел (раскладка с висящими узлами; abs() ловит и убыль, не только рост).
+    _patch_graph(
+        monkeypatch, nodes=5, edges=5,
+        layout={"nodes": [], "node_count": 20, "edge_count": 20, "built_at": None},
+    )
+    user = SimpleNamespace(id=USER)
+
+    resp = await capi.graph_full(current_user=user, session=MagicMock())
+    assert resp.stale is True
+
+
+async def test_graph_full_not_stale_on_many_new_notes_but_few_connections(monkeypatch):
+    # ключевой кейс: заметок добавилось МНОГО (5 → 30), но связей почти нет
+    # (5 → 6) → баннер НЕ загорается (раньше загорался по node_count != current).
+    _patch_graph(
+        monkeypatch, nodes=30, edges=6,
+        layout={"nodes": [], "node_count": 5, "edge_count": 5, "built_at": None},
+    )
+    user = SimpleNamespace(id=USER)
+
+    resp = await capi.graph_full(current_user=user, session=MagicMock())
+    assert resp.stale is False
 
 
 async def test_ego_graph_center_always_present_under_cap(monkeypatch):

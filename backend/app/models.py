@@ -421,8 +421,9 @@ class GraphLayout(Base):
     """Кэш раскладки полного графа пользователя (on-demand, AD-8).
 
     Полный граф строится по явному действию: координаты узлов считаются один
-    раз (ForceAtlas2) и кэшируются здесь. `stale` определяется сравнением
-    node_count с текущим числом заметок пользователя.
+    раз (ForceAtlas2) и кэшируются здесь. `stale` определяется ростом числа
+    СВЯЗЕЙ: баннер «устарел» загорается только когда с момента сборки добавилось
+    ≥ GRAPH_STALE_EDGE_DELTA новых связей (не на каждую новую заметку).
     """
 
     __tablename__ = "graph_layouts"
@@ -436,6 +437,11 @@ class GraphLayout(Base):
         JSONB, server_default="[]", default=list, nullable=False
     )
     node_count: Mapped[int] = mapped_column(
+        Integer, server_default="0", default=0, nullable=False
+    )
+    # Число связей на момент сборки — для порога «устарел» (баннер только при
+    # ≥ GRAPH_STALE_EDGE_DELTA новых связях, а не на каждую новую заметку).
+    edge_count: Mapped[int] = mapped_column(
         Integer, server_default="0", default=0, nullable=False
     )
     built_at: Mapped[datetime] = mapped_column(

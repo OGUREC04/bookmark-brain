@@ -129,8 +129,16 @@ async def graph_full(
     """Полный граф пользователя + закэшированная раскладка и флаг устаревания."""
     g = await connections.get_full_graph(session, current_user.id)
     current = await connections.current_graph_node_count(session, current_user.id)
+    current_edges = await connections.current_graph_edge_count(session, current_user.id)
     layout = await connections.get_graph_layout(session, current_user.id)
-    stale = layout is None or layout["node_count"] != current
+    # Баннер «устарел» — при заметном ИЗМЕНЕНИИ числа связей (рост ИЛИ убыль на
+    # ≥ порога), а не на каждую новую заметку (раньше: node_count != current →
+    # загорался при +1). abs() ловит и массовое архивирование: связи упали →
+    # раскладка с висящими узлами, её тоже надо пересобрать.
+    stale = (
+        layout is None
+        or abs(current_edges - layout.get("edge_count", 0)) >= connections.GRAPH_STALE_EDGE_DELTA
+    )
     return GraphResponse(
         nodes=g["nodes"],
         edges=g["edges"],
@@ -149,5 +157,6 @@ async def graph_build(
 ) -> GraphBuildResponse:
     """Сохранить раскладку, посчитанную клиентом (кнопка «Построить граф»)."""
     current = await connections.current_graph_node_count(session, current_user.id)
-    await connections.save_graph_layout(session, current_user.id, body.nodes, current)
+    edges = await connections.current_graph_edge_count(session, current_user.id)
+    await connections.save_graph_layout(session, current_user.id, body.nodes, current, edges)
     return GraphBuildResponse(node_count=current, saved=True)
