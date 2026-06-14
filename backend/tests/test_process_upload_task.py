@@ -307,6 +307,29 @@ async def test_transcode_failure_marks_failed(monkeypatch):
     ctx["redis"].enqueue_job.assert_not_awaited()
 
 
+async def test_enqueue_failure_not_committed_and_retries(monkeypatch):
+    # enqueue happens INSIDE the txn before commit: if it fails, the draft is
+    # NOT committed to 'pending' (real DB rolls it back), the job re-raises for
+    # an arq retry, and the S3 object is kept — never stuck in 'pending'.
+    storage, stt = _wire(monkeypatch)
+    monkeypatch.setattr(uploads, "needs_transcode", lambda name: False)
+    bm = _bookmark()
+    session = MagicMock(get=AsyncMock(return_value=bm), commit=AsyncMock())
+    ctx = {
+        "redis": MagicMock(enqueue_job=AsyncMock(side_effect=RuntimeError("redis down"))),
+        "job_try": 1,
+    }
+
+    with patch("app.database.async_session", _session_cm(session)):
+        with pytest.raises(RuntimeError):
+            await uploads.process_upload_task(
+                ctx, BID, "uploads/x.ogg", "audio", "x.ogg", duration=4.0
+            )
+
+    session.commit.assert_not_awaited()  # enqueue raised before commit
+    storage.delete.assert_not_awaited()  # object kept for the retry
+
+
 # ── registration ─────────────────────────────────────────────────────────────
 
 def test_process_upload_task_registered_in_worker():

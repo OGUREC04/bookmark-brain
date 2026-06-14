@@ -71,6 +71,7 @@ async def process_upload_task(
     storage_key: str,
     kind: str,
     filename: str,
+    content_type: str | None = None,
     duration: float | None = None,
 ) -> None:
     storage = _build_storage()
@@ -95,7 +96,9 @@ async def process_upload_task(
             transcription: str | None = text
             page_count: int | None = None
         else:
-            fmt = detect_format(None, filename)
+            # Use the same signal the endpoint used (MIME + filename), so a
+            # document with a valid MIME but no extension isn't dropped here.
+            fmt = detect_format(content_type, filename)
             if fmt is None:
                 raise ExtractError(f"Неподдерживаемый формат файла: {filename}")
             result = await extract_text(src, fmt)
@@ -103,10 +106,10 @@ async def process_upload_task(
 
         final_text = f"{caption}\n\n{text}".strip() if caption else text
 
-        # 3. persist the result and hand it to the normal AI pipeline
-        await _write_result(bookmark_id, final_text, transcription, page_count)
-        await ctx["redis"].enqueue_job(
-            "process_bookmark_task", bookmark_id, None, None, False
+        # 3. persist the result AND enqueue the pipeline in one transaction —
+        # commit only AFTER enqueue succeeds (see _finalize_and_enqueue).
+        await _finalize_and_enqueue(
+            ctx, bookmark_id, final_text, transcription, page_count
         )
         await _safe_delete(storage, storage_key)  # success — object no longer needed
     except (STTError, ExtractError, TranscodeError) as e:
@@ -166,9 +169,21 @@ async def _read_draft(bookmark_id: str) -> str | None:
         return bm.raw_text or ""
 
 
-async def _write_result(
-    bookmark_id: str, text: str, transcription: str | None, page_count: int | None
+async def _finalize_and_enqueue(
+    ctx: dict,
+    bookmark_id: str,
+    text: str,
+    transcription: str | None,
+    page_count: int | None,
 ) -> None:
+    """Write recognised text, set 'pending', enqueue the pipeline, THEN commit.
+
+    Enqueue happens BEFORE commit so a failed enqueue rolls the row back to its
+    draft status (transcribing/extracting) — the arq retry of this job then
+    re-processes it, instead of stranding it in 'pending' with the AI pipeline
+    never started (Redis blip between commit and enqueue would otherwise lose it
+    silently).
+    """
     from app.database import async_session
     from app.models import Bookmark
 
@@ -180,6 +195,9 @@ async def _write_result(
         bm.transcription = transcription
         bm.document_page_count = page_count
         bm.ai_status = "pending"
+        await ctx["redis"].enqueue_job(
+            "process_bookmark_task", bookmark_id, None, None, False
+        )
         await session.commit()
 
 

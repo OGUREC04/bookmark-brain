@@ -42,6 +42,10 @@ _UPLOAD_JOB_TIMEOUT_SEC = 300
 # Defer the job briefly so the get_session dependency commits the draft row
 # before the worker reads it (mirrors create_bookmark's enqueue-then-commit).
 _UPLOAD_DEFER_SEC = 3
+# Caps so a hostile upload can't blow up raw_text (LLM cost / O(n²) difflib) or
+# overflow the title column — the normal create path is capped by BookmarkCreate.
+_MAX_CAPTION_CHARS = 50_000  # mirrors BookmarkCreate.raw_text max_length
+_MAX_TITLE_CHARS = 500       # Bookmark.title is String(500)
 
 
 def _resolve_kind(
@@ -121,8 +125,8 @@ async def upload_media(
     try:
         bookmark = Bookmark(
             user_id=current_user.id,
-            raw_text=caption or "",
-            title=title or file.filename,
+            raw_text=(caption or "")[:_MAX_CAPTION_CHARS],
+            title=(title or file.filename or "")[:_MAX_TITLE_CHARS] or None,
             source="miniapp",
             content_type="voice" if resolved == "audio" else "document",
             ai_status="transcribing" if resolved == "audio" else "extracting",
@@ -138,6 +142,7 @@ async def upload_media(
             key,
             resolved,
             file.filename or key,
+            file.content_type,
             duration,
             _job_timeout=_UPLOAD_JOB_TIMEOUT_SEC,
             _defer_by=_UPLOAD_DEFER_SEC,
