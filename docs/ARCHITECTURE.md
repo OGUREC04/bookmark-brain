@@ -74,11 +74,21 @@ FastAPI + async SQLAlchemy. Версионирование `/api/v1/`, healthche
 arq на Redis. Запуск — `python run_worker.py` → `create_worker(WorkerSettings)` через `asyncio.run()` (CLI arq ломается на Python 3.14, см. TROUBLESHOOTING). `app/worker/` — пакет:
 
 - `processing.py` — `process_bookmark_task` (основной AI pipeline)
+- `uploads.py` — `process_upload_task` (3sr): STT/extract медиа-загрузок из Mini App → дозаполняет черновик → отдаёт в обычный pipeline
 - `reminder_decision.py` — Phase 2.6 three-form dispatch, CAS-идемпотентность
 - `reminder_offer.py` — weak-offer «🔔 Создать напоминание?»
 - `scheduled.py` — 5 cron: `scheduled_dispatcher`, `auto_done_reminders`, `retry_failed_task`, `retry_partial_embeddings`, `stale_list_nudge`
 - `dedup.py`, `telegram.py` — dedup-стораджи и low-level Telegram-хелперы
 - `__init__.py` — facade: собирает `WorkerSettings` (functions + cron_jobs)
+
+### Shared (`shared/`)
+Код, переиспользуемый **И ботом, И backend-воркером** — чтобы распознавание/извлечение не дублировалось (3sr):
+- `media/stt.py` — STT (Whisper / Yandex SpeechKit, sync + async через S3)
+- `media/extractor.py` — извлечение текста (PDF / DOCX / TXT / MD)
+- `media/storage.py` — `UploadStorage` (S3): передача загруженного файла из API-контейнера в worker
+- `media/transcode.py` — ffmpeg: браузерный звук (WebM / MP4) → OGG Opus для Yandex STT
+
+`shared` — **лист**: не импортит `bot` / `app`, конфиг инжектится аргументами. Заморожено import-linter контрактом + `tests/test_shared_is_leaf.py`. Образы бота/бэка/воркера копируют `shared/`; build-контекст backend и worker — корень репо (compose `context: .`).
 
 ### Services
 - `ai_classifier.py` — `BaseClassifier` → GigaChat (slot под DeepSeek/Claude, `AI_PROVIDER`)
