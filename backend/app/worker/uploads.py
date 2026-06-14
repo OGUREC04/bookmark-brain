@@ -27,6 +27,8 @@ from shared.media.transcode import (
     transcode_to_ogg_opus,
 )
 
+from .processing import _PROCESS_MAX_TRIES
+
 logger = logging.getLogger(__name__)
 
 _settings = get_settings()
@@ -82,7 +84,9 @@ async def process_upload_task(
         #    across the (slow) STT/extract below.
         caption = await _read_draft(bookmark_id)
         if caption is None:
-            return  # missing bookmark or already processed — nothing to do
+            # missing bookmark or already processed — drop any orphan object.
+            await _safe_delete(storage, storage_key)
+            return
 
         # 2. download + recognise / extract (no DB session held)
         await storage.download_to_path(storage_key, src)
@@ -104,16 +108,32 @@ async def process_upload_task(
         await ctx["redis"].enqueue_job(
             "process_bookmark_task", bookmark_id, None, None, False
         )
+        await _safe_delete(storage, storage_key)  # success — object no longer needed
     except (STTError, ExtractError, TranscodeError) as e:
-        logger.warning("Upload %s failed: %s", bookmark_id, e)
+        # Permanent media error (unrecognisable / corrupt file) — retry won't help.
+        logger.warning("Upload %s failed (media): %s", bookmark_id, e)
         await _mark_failed(bookmark_id, str(e))
+        await _safe_delete(storage, storage_key)
+    except Exception as e:  # noqa: BLE001 — unexpected (S3 / DB / etc.)
+        # Possibly transient: let arq retry, KEEPING the S3 object so the next
+        # attempt can re-download it. On the LAST try, mark the draft failed so
+        # it doesn't stay stuck in transcribing/extracting forever (mirrors the
+        # final-try safety-net in process_bookmark_task) and drop the object.
+        job_try = (ctx or {}).get("job_try", 1)
+        if job_try < _PROCESS_MAX_TRIES:
+            logger.warning(
+                "Upload %s errored (try %s/%s) — retrying: %s",
+                bookmark_id, job_try, _PROCESS_MAX_TRIES, e,
+            )
+            raise
+        logger.error("Upload %s failed after %s tries: %s", bookmark_id, job_try, e)
+        await _mark_failed(bookmark_id, f"Не удалось обработать загрузку: {e}")
+        await _safe_delete(storage, storage_key)
     finally:
+        # Temp files are per-attempt — always clean. The S3 object is cleaned
+        # only on terminal outcomes above (kept across retries).
         for p in work_paths:
             _safe_unlink(p)
-        try:
-            await storage.delete(storage_key)
-        except Exception as e:  # noqa: BLE001 — orphan cleanup is best-effort
-            logger.warning("Upload %s: storage cleanup failed: %s", bookmark_id, e)
 
 
 async def _transcribe(
@@ -174,6 +194,14 @@ async def _mark_failed(bookmark_id: str, error: str) -> None:
         bm.ai_status = "failed"
         bm.ai_error = error[:500]
         await session.commit()
+
+
+async def _safe_delete(storage: UploadStorage, key: str) -> None:
+    """Best-effort removal of the uploaded object (called only on terminal paths)."""
+    try:
+        await storage.delete(key)
+    except Exception as e:  # noqa: BLE001 — orphan cleanup must never break the job
+        logger.warning("Upload: storage cleanup failed for %s: %s", key, e)
 
 
 def _safe_unlink(p: Path) -> None:

@@ -58,6 +58,8 @@ async def test_transcode_invokes_ffmpeg_with_src_and_dest(tmp_path: Path):
     assert str(src) in args
     assert str(dest) in args
     assert "libopus" in args  # opus codec for the ogg container
+    # -vn drops the video track so mp4 / video_note inputs encode (regression guard)
+    assert "-vn" in args
 
 
 async def test_transcode_nonzero_exit_raises(tmp_path: Path):

@@ -199,6 +199,114 @@ async def test_missing_bookmark_is_noop(monkeypatch):
     ctx["redis"].enqueue_job.assert_not_awaited()
 
 
+# ── unexpected errors / retry safety-net ─────────────────────────────────────
+
+async def test_unexpected_error_retries_before_last_try(monkeypatch):
+    storage, stt = _wire(monkeypatch)
+    storage.download_to_path = AsyncMock(side_effect=RuntimeError("s3 down"))
+    monkeypatch.setattr(uploads, "needs_transcode", lambda name: False)
+    bm = _bookmark()
+    session = MagicMock(get=AsyncMock(return_value=bm), commit=AsyncMock())
+    ctx = {"redis": MagicMock(enqueue_job=AsyncMock()), "job_try": 1}
+
+    with patch("app.database.async_session", _session_cm(session)):
+        with pytest.raises(RuntimeError):
+            await uploads.process_upload_task(
+                ctx, BID, "uploads/x.ogg", "audio", "x.ogg", duration=4.0
+            )
+
+    # transient error before the last try → re-raised for arq retry, draft NOT
+    # marked failed, S3 object KEPT so the next attempt can re-download it.
+    assert bm.ai_status == "transcribing"
+    storage.delete.assert_not_awaited()
+    ctx["redis"].enqueue_job.assert_not_awaited()
+
+
+async def test_unexpected_error_last_try_marks_failed(monkeypatch):
+    from app.worker.processing import _PROCESS_MAX_TRIES
+
+    storage, stt = _wire(monkeypatch)
+    storage.download_to_path = AsyncMock(side_effect=RuntimeError("s3 down"))
+    monkeypatch.setattr(uploads, "needs_transcode", lambda name: False)
+    bm = _bookmark()
+    session = MagicMock(get=AsyncMock(return_value=bm), commit=AsyncMock())
+    ctx = {"redis": MagicMock(enqueue_job=AsyncMock()), "job_try": _PROCESS_MAX_TRIES}
+
+    with patch("app.database.async_session", _session_cm(session)):
+        await uploads.process_upload_task(
+            ctx, BID, "uploads/x.ogg", "audio", "x.ogg", duration=4.0
+        )
+
+    # last try → no more retries: mark failed so the draft isn't stuck forever.
+    assert bm.ai_status == "failed"
+    assert bm.ai_error
+    ctx["redis"].enqueue_job.assert_not_awaited()
+    storage.delete.assert_awaited_once()  # gave up → drop the object
+
+
+async def test_document_extract_failure_marks_failed(monkeypatch):
+    from shared.media.extractor import ExtractError
+
+    storage, _ = _wire(monkeypatch)
+    monkeypatch.setattr(uploads, "detect_format", lambda mime, name: "pdf")
+    monkeypatch.setattr(
+        uploads, "extract_text", AsyncMock(side_effect=ExtractError("битый pdf"))
+    )
+    bm = _bookmark(ai_status="extracting")
+    session = MagicMock(get=AsyncMock(return_value=bm), commit=AsyncMock())
+    ctx = _ctx()
+
+    with patch("app.database.async_session", _session_cm(session)):
+        await uploads.process_upload_task(
+            ctx, BID, "uploads/d.pdf", "document", "d.pdf",
+        )
+
+    assert bm.ai_status == "failed"
+    assert "битый pdf" in bm.ai_error
+    ctx["redis"].enqueue_job.assert_not_awaited()
+    storage.delete.assert_awaited_once()
+
+
+async def test_document_unsupported_format_marks_failed(monkeypatch):
+    storage, _ = _wire(monkeypatch)
+    monkeypatch.setattr(uploads, "detect_format", lambda mime, name: None)
+    bm = _bookmark(ai_status="extracting")
+    session = MagicMock(get=AsyncMock(return_value=bm), commit=AsyncMock())
+    ctx = _ctx()
+
+    with patch("app.database.async_session", _session_cm(session)):
+        await uploads.process_upload_task(
+            ctx, BID, "uploads/weird.bin", "document", "weird.bin",
+        )
+
+    assert bm.ai_status == "failed"
+    ctx["redis"].enqueue_job.assert_not_awaited()
+
+
+async def test_transcode_failure_marks_failed(monkeypatch):
+    from shared.media.transcode import TranscodeError
+
+    storage, stt = _wire(monkeypatch)
+    monkeypatch.setattr(uploads, "needs_transcode", lambda name: True)
+    monkeypatch.setattr(
+        uploads, "transcode_to_ogg_opus",
+        AsyncMock(side_effect=TranscodeError("ffmpeg нет")),
+    )
+    bm = _bookmark()
+    session = MagicMock(get=AsyncMock(return_value=bm), commit=AsyncMock())
+    ctx = _ctx()
+
+    with patch("app.database.async_session", _session_cm(session)):
+        await uploads.process_upload_task(
+            ctx, BID, "uploads/r.webm", "audio", "r.webm", duration=5.0
+        )
+
+    assert bm.ai_status == "failed"
+    assert "ffmpeg" in bm.ai_error
+    stt.transcribe.assert_not_awaited()  # transcode failed before STT
+    ctx["redis"].enqueue_job.assert_not_awaited()
+
+
 # ── registration ─────────────────────────────────────────────────────────────
 
 def test_process_upload_task_registered_in_worker():

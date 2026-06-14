@@ -99,45 +99,56 @@ async def upload_media(
             detail="Неподдерживаемый тип файла. Поддерживаются аудио и PDF/DOCX/TXT/MD.",
         )
 
-    data = await file.read()
+    limit = _max_bytes(resolved, settings)
+    # Read at most limit+1 bytes: an oversized upload is rejected without ever
+    # slurping the whole file into memory (Starlette spools the rest to disk).
+    data = await file.read(limit + 1)
     if not data:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail="Пустой файл."
         )
-    limit = _max_bytes(resolved, settings)
     if len(data) > limit:
         raise HTTPException(
             status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
             detail=f"Файл слишком большой (максимум {limit // (1024 * 1024)} МБ).",
         )
 
-    # Store the bytes first — if this fails we never create a dangling draft.
+    # Store the bytes first; if persisting the draft fails afterwards, delete the
+    # object so it doesn't orphan in the bucket.
     key = _storage_key(file.filename)
-    await _build_storage().put_bytes(key, data, content_type=file.content_type)
+    storage = _build_storage()
+    await storage.put_bytes(key, data, content_type=file.content_type)
+    try:
+        bookmark = Bookmark(
+            user_id=current_user.id,
+            raw_text=caption or "",
+            title=title or file.filename,
+            source="miniapp",
+            content_type="voice" if resolved == "audio" else "document",
+            ai_status="transcribing" if resolved == "audio" else "extracting",
+        )
+        session.add(bookmark)
+        await session.flush()
+        await session.refresh(bookmark, ["tags"])
 
-    bookmark = Bookmark(
-        user_id=current_user.id,
-        raw_text=caption or "",
-        title=title or file.filename,
-        source="miniapp",
-        content_type="voice" if resolved == "audio" else "document",
-        ai_status="transcribing" if resolved == "audio" else "extracting",
-    )
-    session.add(bookmark)
-    await session.flush()
-    await session.refresh(bookmark, ["tags"])
+        pool = await get_arq_pool()
+        await pool.enqueue_job(
+            "process_upload_task",
+            str(bookmark.id),
+            key,
+            resolved,
+            file.filename or key,
+            duration,
+            _job_timeout=_UPLOAD_JOB_TIMEOUT_SEC,
+            _defer_by=_UPLOAD_DEFER_SEC,
+        )
+    except Exception:
+        try:
+            await storage.delete(key)
+        except Exception as ce:  # noqa: BLE001 — best-effort orphan cleanup
+            logger.warning("Upload: failed to clean orphan object %s: %s", key, ce)
+        raise
 
-    pool = await get_arq_pool()
-    await pool.enqueue_job(
-        "process_upload_task",
-        str(bookmark.id),
-        key,
-        resolved,
-        file.filename or key,
-        duration,
-        _job_timeout=_UPLOAD_JOB_TIMEOUT_SEC,
-        _defer_by=_UPLOAD_DEFER_SEC,
-    )
     logger.info(
         "Mini App upload accepted: bookmark=%s kind=%s key=%s",
         bookmark.id, resolved, key,
