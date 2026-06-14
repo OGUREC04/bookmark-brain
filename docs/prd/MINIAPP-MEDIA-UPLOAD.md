@@ -8,6 +8,36 @@
 > Описывает, что нужно фронту, чтобы заработали кнопки 🎤/📎 в QuickCreate.
 > Здесь **продуктовая развилка A/B** — её решает юзер. Технические под-решения — за бэком.
 
+---
+
+## ✅ БЭК ГОТОВ — финальный контракт для фронта (2026-06-14, PR #15)
+
+Выбран **Path A**. Бэкенд реализован (за тестами, деплой в PR #15). Открытые вопросы закрыты: STT/extract в общем пакете, файл идёт через S3, **транскод браузерного аудио — на бэке (ffmpeg)**, поэтому фронт шлёт что угодно из MediaRecorder. ADR: `docs/decisions/0011-miniapp-media-upload.md`, БТ: `docs/requirements/бт-12-загрузка-медиа-miniapp.md`.
+
+**Эндпоинт:** `POST /api/v1/bookmarks/upload` · `multipart/form-data` · авторизация как у всех вызовов Mini App (init_data).
+
+| Поле | Тип | Обяз. | Примечание |
+|---|---|---|---|
+| `file` | binary | да | blob из MediaRecorder (webm/mp4) или файл |
+| `kind` | `"audio"`/`"document"` | нет | можно не слать — бэк определит по типу |
+| `duration` | float (сек) | нет | для аудио — длительность из MediaRecorder |
+| `caption` | string | нет | приписка, уйдёт в начало текста |
+| `title` | string | нет | для документов — имя файла |
+
+**Ответы:** `201` + `BookmarkResponse` сразу (`ai_status` = `transcribing`/`extracting`). Ошибки до создания заметки: `415` неподдерж. тип, `413` слишком большой (аудио **25 МБ**, документ **20 МБ**), `400` пустой, `401` без авторизации.
+
+**Поток (как уже сделано для других async-полей):**
+1. Записал голос (MediaRecorder) / выбрал файл → `POST /upload` → получил заметку с `ai_status=transcribing`.
+2. **Поллинг уже есть** — рефетчишь `GET /bookmarks/{id}` по `ai_status`: `transcribing/extracting → pending → completed`. Покажи «Brain слушает…/читает…».
+3. `ai_status=failed` + `ai_error` → покажи ошибку, дай переотправить.
+
+**Что сделать фронту (тикет `ti0`):**
+- Снять `disabled` с 🎤/📎 в `QuickCreateSheet`.
+- MediaRecorder (голос) + `<input type=file>` (документ). Формат конвертировать НЕ надо — бэк сам транскодит.
+- `src/lib/api.ts`: `uploadMedia(file, { kind?, caption?, duration? })`.
+- Тосты по `413`/`415`/`ai_error`. Лимиты (25/20 МБ) можно зарубить и на фронте до отправки.
+- iOS: если MediaRecorder/микрофон недоступен в Telegram WebView — деградация на deep-link «записать в боте» (вариант B как запасной).
+
 ## Проблема
 
 В `QuickCreateSheet` кнопки **🎤 голос** и **📎 файл** намеренно `disabled` (подсказка
