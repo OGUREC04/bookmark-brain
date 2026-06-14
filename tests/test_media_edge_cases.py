@@ -523,34 +523,34 @@ class TestWhisperSTTService:
     """Tests for the STT service itself."""
 
     def test_init_with_empty_key_raises(self):
-        from bot.services.stt import WhisperSTTService
+        from shared.media.stt import WhisperSTTService
 
         with pytest.raises(ValueError, match="WHISPER_API_KEY"):
             WhisperSTTService("", provider="groq")
 
     def test_init_openai_provider(self):
-        from bot.services.stt import WhisperSTTService
+        from shared.media.stt import WhisperSTTService
 
         svc = WhisperSTTService("test-key", provider="openai")
         assert "openai.com" in svc._url
         assert svc._model == "whisper-1"
 
     def test_init_groq_provider(self):
-        from bot.services.stt import WhisperSTTService
+        from shared.media.stt import WhisperSTTService
 
         svc = WhisperSTTService("test-key", provider="groq")
         assert "groq.com" in svc._url
         assert svc._model == "whisper-large-v3"
 
     def test_init_unknown_provider_falls_back_to_openai(self):
-        from bot.services.stt import WhisperSTTService
+        from shared.media.stt import WhisperSTTService
 
         svc = WhisperSTTService("test-key", provider="unknown_provider")
         assert "openai.com" in svc._url
 
     @pytest.mark.asyncio
     async def test_transcribe_missing_file(self, tmp_path):
-        from bot.services.stt import STTError, WhisperSTTService
+        from shared.media.stt import STTError, WhisperSTTService
 
         svc = WhisperSTTService("test-key")
         with pytest.raises(STTError, match="not found"):
@@ -558,7 +558,7 @@ class TestWhisperSTTService:
 
     @pytest.mark.asyncio
     async def test_transcribe_empty_file(self, tmp_path):
-        from bot.services.stt import STTError, WhisperSTTService
+        from shared.media.stt import STTError, WhisperSTTService
 
         empty_file = tmp_path / "empty.ogg"
         empty_file.write_bytes(b"")
@@ -568,7 +568,7 @@ class TestWhisperSTTService:
 
     @pytest.mark.asyncio
     async def test_transcribe_oversized_file(self, tmp_path):
-        from bot.services.stt import _MAX_FILE_SIZE_WHISPER, STTError, WhisperSTTService
+        from shared.media.stt import _MAX_FILE_SIZE_WHISPER, STTError, WhisperSTTService
 
         big_file = tmp_path / "big.ogg"
         # Create a file just over the limit (write sparse)

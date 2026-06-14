@@ -49,7 +49,7 @@ jobs:
       - name: Type-check (mypy) — strict on key new modules
         run: |
           python -m mypy \
-            bot/onboarding.py bot/services/stt.py \
+            bot/onboarding.py shared/media/stt.py \
             backend/app/services/task_list_detector.py
 
       - name: Run tests (bot + backend)

@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from bot.services.extractor import (
+from shared.media.extractor import (
     MAX_CHARS,
     EmptyDocumentError,
     EncryptedPDFError,

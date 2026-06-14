@@ -5,6 +5,7 @@ from app.api.connections import router as connections_router
 from app.api.folders import router as folders_router
 from app.api.reminders import router as reminders_router
 from app.api.search import router as search_router
+from app.api.uploads import router as uploads_router
 from app.api.users import router as users_router
 from app.config import get_settings
 from fastapi import FastAPI
@@ -52,6 +53,7 @@ app.include_router(folders_router)
 app.include_router(reminders_router)
 app.include_router(search_router)
 app.include_router(connections_router)
+app.include_router(uploads_router)
 
 
 @app.get("/health")

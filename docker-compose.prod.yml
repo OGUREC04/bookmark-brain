@@ -32,8 +32,8 @@ services:
   # ── Migrations (runs once before app starts) ─────────
   migrations:
     build:
-      context: ./backend
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: backend/Dockerfile
     container_name: bb_migrations
     depends_on:
       postgres:
@@ -49,8 +49,8 @@ services:
   # ── Application ──────────────────────────────────────
   backend:
     build:
-      context: ./backend
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: backend/Dockerfile
     container_name: bb_backend
     restart: unless-stopped
     depends_on:
@@ -73,8 +73,8 @@ services:
 
   worker:
     build:
-      context: ./backend
-      dockerfile: worker.Dockerfile
+      context: .
+      dockerfile: backend/worker.Dockerfile
     container_name: bb_worker
     restart: unless-stopped
     depends_on:

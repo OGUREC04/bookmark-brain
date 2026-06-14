@@ -98,6 +98,7 @@ from .telegram import (
     _set_reaction,
     aioredis_from_url,
 )
+from .uploads import process_upload_task
 
 settings = get_settings()
 
@@ -108,6 +109,7 @@ class WorkerSettings:
         redispatch_reminder_task,
         backfill_bookmark_links,  # Phase 5A one-shot (enqueue вручную)
         reembed_all_bookmarks,    # Phase 5A one-shot: пере-эмбеддинг под новый рецепт
+        process_upload_task,      # 3sr: STT/extract медиа-загрузок из Mini App
     ]
     cron_jobs = [
         cron(retry_failed_task, hour=3, minute=0),
@@ -175,6 +177,7 @@ __all__ = [
     "auto_done_reminders",
     "backfill_bookmark_links",
     "process_bookmark_task",
+    "process_upload_task",
     "redispatch_reminder_task",
     "reembed_all_bookmarks",
     "retry_failed_task",

@@ -10,7 +10,9 @@ __pycache__
 .idea
 .beads
 .claude
-backend
+# NB: backend/ is NOT ignored — the backend & worker images now build from the
+# repo root (compose context: .) so they can COPY both backend/ and shared/.
+# Images stay lean via selective COPY in each Dockerfile, not via this ignore. (3sr)
 frontend
 docs
 tests

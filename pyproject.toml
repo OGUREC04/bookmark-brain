@@ -42,7 +42,7 @@ ban-relative-imports = "parents"
 # Run locally: lint-imports
 # ──────────────────────────────────────────────────────────────────────────
 [tool.importlinter]
-root_packages = ["bot"]
+root_packages = ["bot", "shared"]
 include_external_packages = true
 
 [[tool.importlinter.contracts]]
@@ -82,3 +82,16 @@ layers = [
 # share now lives in `bot.common.auth` (public `ensure_user`), so it is a
 # downward import under this layers contract — fully enforced, no longer a
 # hidden intra-layer fan-in to the orchestration module.
+
+[[tool.importlinter.contracts]]
+name = "shared/ is a leaf — must not import project packages"
+type = "forbidden"
+source_modules = ["shared"]
+forbidden_modules = ["bot"]
+# Rationale (3sr): shared.media (STT + document extraction) was extracted from
+# bot.services so the FastAPI backend/worker can reuse it WITHOUT importing
+# bot.* (bot and backend are separate deploy artifacts). If shared ever reaches
+# back into bot it would couple the two deployments and break the backend build.
+# `app` (backend) is not a root_package here (it lives under backend/ and is not
+# on the import path at lint time), so the shared->app direction is guarded by
+# the pytest mirror tests/test_shared_is_leaf.py instead.
