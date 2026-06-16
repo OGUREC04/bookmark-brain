@@ -37,6 +37,10 @@ bot/
     tasks/                # FEATURE package — owns its Router, facade __init__
     <other handlers>.py
   api_client.py state_store.py services/    # backend/redis clients
+    services/
+      timestamps.py          # add_timestamps(): [MM:SS] markers for long voice
+      transcript_format.py   # wrap_expandable(): expandable blockquote for long transcripts
+      voice_intent.py nl_date.py voice_list.py
 backend/
   app/
     api/                  # FastAPI routers

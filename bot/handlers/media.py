@@ -15,6 +15,7 @@ from aiogram.utils.chat_action import ChatActionSender
 from bot import onboarding
 from bot.config import get_settings
 from bot.services.timestamps import add_timestamps, strip_timestamps
+from bot.services.transcript_format import wrap_expandable
 from bot.services.voice_intent import VoiceIntent, detect_intent
 from bot.services.voice_list import preprocess_voice_list
 from bot.utils import ephemeral_error, safe_react
@@ -312,8 +313,10 @@ async def _process_audio(
         return
 
     # Default: save as note bookmark
-    # Always reply with transcription text (with timestamps if long)
-    reply_msg = await message.reply(text_with_ts, parse_mode=None)
+    # Always reply with transcription text (with timestamps if long).
+    # Длинные транскрипты схлопываются в expandable blockquote чтобы не засорять чат.
+    _reply_text, _reply_parse_mode = wrap_expandable(text_with_ts)
+    reply_msg = await message.reply(_reply_text, parse_mode=_reply_parse_mode)
 
     # Caption (if any) prepended to transcription
     caption = message.caption or ""
