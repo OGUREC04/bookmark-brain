@@ -1,8 +1,8 @@
 # БТ-12: Загрузка медиа из Mini App (голос и файлы)
 
 > Бизнес-требования · living-doc «как ведёт себя сейчас»
-> Обновлено: 2026-06-14 · Связано: ADR `docs/decisions/0011-miniapp-media-upload.md`, бриф `docs/prd/MINIAPP-MEDIA-UPLOAD.md`, код `backend/app/api/uploads.py`, `backend/app/worker/uploads.py`, `shared/media/`
-> Статус реализации: Backend (эндпоинт + воркер-джоба) — реализовано за тестами, не задеплоено. Mini App (кнопки 🎤/📎 в QuickCreate) — в задаче `ti0`, UI пока `disabled`.
+> Обновлено: 2026-06-17 · Связано: ADR `docs/decisions/0011-miniapp-media-upload.md`, бриф `docs/prd/MINIAPP-MEDIA-UPLOAD.md`, код `backend/app/api/uploads.py`, `backend/app/worker/uploads.py`, `shared/media/`; фронт (отд. репо `bookmark-brain-miniapp`): `src/lib/recorder.ts`, `lib/api.ts` (`uploadMedia`), `components/ds/QuickCreateSheet.tsx`
+> Статус реализации: Backend (эндпоинт + воркер-джоба) — реализовано за тестами, не задеплоено. Mini App: 🎤 ГОЛОС (фаза 1, `ti0`) — РЕАЛИЗОВАНО за флагом `VOICE_UPLOAD` (в репо false / локально true), запись MediaRecorder → `POST /upload` → поллинг `ai_status`; 📎 документы (фаза 2) — пока `disabled`. ai_error: бэк его НЕ отдаёт в `BookmarkResponse` (модель пишет, схема нет) → фронт показывает ОБЩИЙ текст ошибки; точную причину — отдельным мини-тикетом бэку.
 
 ## Назначение и границы
 
@@ -73,6 +73,9 @@
   - A3. Сбой S3/БД при обработке → воркер ретраит; на последней попытке ставит `failed` (заметка не зависает в `transcribing`).
 - **Результат:** надиктованная заметка появляется без ухода из приложения.
 - **Правила:** приложение не ждёт распознавания синхронно; статус — единственный канал прогресса.
+  Заметки из Mini App (`source=miniapp`) **НЕ дублируются сообщением в чат бота** — пользователь уже
+  в приложении (бот шлёт карточку только для контента, пойманного из чата). Заголовок голосовой
+  заметки **генерит AI из распознанного текста**; имя файла (`voice.webm`) в заголовок НЕ попадает.
 
 ### UC-12.2. Документ из Mini App
 

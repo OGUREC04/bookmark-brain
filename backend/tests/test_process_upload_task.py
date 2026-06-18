@@ -335,4 +335,14 @@ async def test_enqueue_failure_not_committed_and_retries(monkeypatch):
 def test_process_upload_task_registered_in_worker():
     from app.worker import WorkerSettings, process_upload_task
 
-    assert process_upload_task in WorkerSettings.functions
+    # Зарегистрирована через arq func(timeout=300): свой таймаут для STT (дольше дефолтных
+    # 120с). Раньше таймаут пытались задать через _job_timeout при enqueue — баг: arq не знает
+    # такого параметра, передавал его в функцию → TypeError, задача падала, заметка вечно
+    # висела в "transcribing". Проверяем И регистрацию, И что таймаут задан на самой функции.
+    matches = [
+        fn
+        for fn in WorkerSettings.functions
+        if fn is process_upload_task or getattr(fn, "coroutine", None) is process_upload_task
+    ]
+    assert matches, "process_upload_task должна быть в WorkerSettings.functions"
+    assert getattr(matches[0], "timeout_s", None) == 300

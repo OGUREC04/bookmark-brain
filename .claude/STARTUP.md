@@ -17,6 +17,12 @@
 
 Если cmd-Python не видит модуль, а bash видит — **НЕ копайся в PYTHONPATH**, просто запусти `install.bat`.
 
+**ffmpeg (для голосового ввода из Mini App, тикет ti0):** браузер пишет webm, воркер перегоняет его
+в ogg через `ffmpeg` перед Yandex STT. Нет `ffmpeg` в PATH → голосовая заметка станет `failed`
+(«Не распознал»). Установка: `winget install -e --id Gyan.FFmpeg`. winget обновляет PATH для НОВЫХ
+оболочек — если воркер стартуешь в той же сессии, где ставил ffmpeg, добавь его bin в PATH вручную
+(или перезапусти оболочку / start.bat). Telegram-голос (боту в чат) — уже ogg, ffmpeg не нужен.
+
 ## Быстрый старт (копипаст)
 
 Все 5 процессов запускаются фоном через `run_in_background: true`. Порядок: Docker → Backend → Worker → Bot → Frontend → ngrok.
@@ -40,19 +46,24 @@ docker compose -f "D:/projects/bookmark-brain/docker-compose.yml" up -d
 
 Контейнеры: `bookmarkbrain_postgres` (5432), `bookmarkbrain_redis` (6379).
 
+> **КРИТИЧНО — PYTHONPATH:** бэкенд И воркер импортят пакет `shared/` (медиа-фича 3sr),
+> который лежит в КОРНЕ репо, а не в `backend/`. Без `PYTHONPATH=<корень репо>` оба падают с
+> `ModuleNotFoundError: No module named 'shared'`. Используй venv-python явно (бин в `%LOCALAPPDATA%`).
+> Так делают `tools/run/backend.bat` и `tools/run/worker.bat`.
+
 ### 2. Backend (FastAPI, порт 8000)
 
 ```bash
-cd "D:/projects/bookmark-brain/backend" && python -m uvicorn main:app --host 0.0.0.0 --port 8000
+cd "D:/projects/bookmark-brain/backend" && PYTHONPATH="D:/projects/bookmark-brain" "$LOCALAPPDATA/bookmark-brain/venv/Scripts/python.exe" -m uvicorn main:app --host 0.0.0.0 --port 8000
 ```
 Запускать с `run_in_background: true`.
 
 ### 3. Worker (arq, AI-обработка)
 
 ```bash
-cd "D:/projects/bookmark-brain/backend" && python run_worker.py
+cd "D:/projects/bookmark-brain/backend" && PYTHONPATH="D:/projects/bookmark-brain" "$LOCALAPPDATA/bookmark-brain/venv/Scripts/python.exe" run_worker.py
 ```
-Запускать с `run_in_background: true`. **ВАЖНО:** воркер может упасть один раз с `redis.TimeoutError` при первом poll — просто перезапусти его.
+Запускать с `run_in_background: true`. **ВАЖНО:** воркер может упасть один раз с `redis.TimeoutError` при первом poll — просто перезапусти его. Безобидный шум в логе (`UnicodeEncodeError` на символах `←`/`●`) — это кодировка Windows-консоли, на работу не влияет.
 
 ### 4. Telegram Bot (@N0teeBot)
 
@@ -103,6 +114,7 @@ curl -s http://127.0.0.1:4040/api/tunnels | grep -o "https://[^\"]*ngrok[^\"]*" 
 |---|---|
 | `TelegramConflictError` у бота | Убить все python.exe кроме бэкенда, подождать 12 сек, запустить заново |
 | `redis.TimeoutError` в воркере при старте | Перезапустить воркер (один раз бывает флаки) |
+| Mini App голос завис на «Brain слушает…» / «Не распознал» | (1) `ffmpeg` в PATH воркера? (`winget install Gyan.FFmpeg` + рестарт воркера). (2) Воркер перезапущен после правок? Баг `process_upload_task _job_timeout` (TypeError, вечный «transcribing») исправлен 2026-06-18. |
 | PowerShell: `ModuleNotFoundError: No module named 'arq'` | Юзер использует системный Python 3.14 с user site-packages. Явно `C:\Python314\python.exe` + если нет модуля — `python -m pip install --user <pkg>`. **НЕ** `pip install -r requirements.txt` — там pydantic-core падает при компиляции (нет msvcrt.lib). |
 | Vite: `Blocked request. This host is not allowed` | В `bookmark-brain-miniapp/vite.config.ts` уже стоит `allowedHosts: true`, `host: true`. Если нет — добавить. |
 | Mini App: `Auth failed` | Бэкенд не запущен или упал. Проверь `/health`. |

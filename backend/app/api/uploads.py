@@ -36,9 +36,6 @@ settings = get_settings()
 # Browser MediaRecorder + Telegram audio formats we route to STT.
 _AUDIO_EXTS = {".ogg", ".oga", ".mp3", ".m4a", ".wav", ".webm", ".mp4", ".aac", ".flac"}
 
-# STT (esp. async Yandex) can take minutes — the global 120s job timeout is too
-# tight, so this job gets a longer per-job timeout.
-_UPLOAD_JOB_TIMEOUT_SEC = 300
 # Defer the job briefly so the get_session dependency commits the draft row
 # before the worker reads it (mirrors create_bookmark's enqueue-then-commit).
 _UPLOAD_DEFER_SEC = 3
@@ -126,7 +123,12 @@ async def upload_media(
         bookmark = Bookmark(
             user_id=current_user.id,
             raw_text=(caption or "")[:_MAX_CAPTION_CHARS],
-            title=(title or file.filename or "")[:_MAX_TITLE_CHARS] or None,
+            # Голос/аудио: имя файла («voice.webm») в заголовок НЕ кладём — его сгенерит
+            # AI из распознанного текста. Документу имя файла как заголовок — ок.
+            title=(title or (file.filename if resolved == "document" else None) or "")[
+                :_MAX_TITLE_CHARS
+            ]
+            or None,
             source="miniapp",
             content_type="voice" if resolved == "audio" else "document",
             ai_status="transcribing" if resolved == "audio" else "extracting",
@@ -144,7 +146,6 @@ async def upload_media(
             file.filename or key,
             file.content_type,
             duration,
-            _job_timeout=_UPLOAD_JOB_TIMEOUT_SEC,
             _defer_by=_UPLOAD_DEFER_SEC,
         )
     except Exception:

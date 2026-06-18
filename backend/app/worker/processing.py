@@ -507,8 +507,9 @@ async def _process_bookmark_task_impl(
                         except Exception as e:
                             logger.debug(f"First task_list tip failed: {e}")
 
-                else:
-                    # Fallback: новое сообщение (нет chat_id/message_id)
+                elif bookmark.source != "miniapp":
+                    # Fallback: новое сообщение (нет chat_id/message_id). НЕ для Mini App —
+                    # чат-дубль не нужен (список создан и виден в приложении, ti0).
                     text = render_task_list_text(
                         bookmark.title,
                         bookmark.structured_data,
@@ -541,8 +542,9 @@ async def _process_bookmark_task_impl(
                         text = "\n".join(lines)
                         buttons = _result_buttons(bookmark_id)
                         await _edit_message(chat_id, message_id, text, buttons)
-                else:
-                    # Fallback: отправить новое сообщение (verbose текст)
+                elif bookmark.source != "miniapp":
+                    # Fallback: новое сообщение по telegram_id. НЕ для Mini App — заметка
+                    # создана в приложении, чат-дубль не нужен (результат виден в app, ti0).
                     user_result = await session.execute(
                         select(User).where(User.id == bookmark.user_id)
                     )

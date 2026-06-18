@@ -31,7 +31,7 @@ exact retargets.
 
 from __future__ import annotations
 
-from arq import cron
+from arq import cron, func
 from arq.connections import RedisSettings
 
 from app.config import get_settings
@@ -109,7 +109,10 @@ class WorkerSettings:
         redispatch_reminder_task,
         backfill_bookmark_links,  # Phase 5A one-shot (enqueue вручную)
         reembed_all_bookmarks,    # Phase 5A one-shot: пере-эмбеддинг под новый рецепт
-        process_upload_task,      # 3sr: STT/extract медиа-загрузок из Mini App
+        # 3sr: STT/extract медиа из Mini App. Свой таймаут 300с — STT (особенно async
+        # Yandex) может длиться минуты, дефолтных job_timeout=120с мало. Таймаут задаётся
+        # ТУТ через func(); enqueue_job НЕ принимает _job_timeout (был баг → TypeError, задача падала).
+        func(process_upload_task, timeout=300),
     ]
     cron_jobs = [
         cron(retry_failed_task, hour=3, minute=0),
