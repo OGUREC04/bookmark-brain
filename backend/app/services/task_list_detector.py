@@ -58,6 +58,11 @@ BOT_RENDERED_NOISE_RE = re.compile(
 # Разделители для inline-списков ("молоко, хлеб, сыр")
 INLINE_SPLIT_RE = re.compile(r"[,;]|\s+и\s+")
 
+# Инфинитив-глагол (купить/позвонить/оплатить) = маркер начала пункта в
+# надиктованном списке БЕЗ разделителей. Берём только «гласная + ть(ся)»,
+# чтобы НЕ ловить существительные на -сть (часть/новость/гость/власть).
+_INFINITIVE_RE = re.compile(r"^[а-яё]+[аеёиоуыэюя]ть(?:ся)?$", re.IGNORECASE)
+
 # Anti-task-list signals: ad/social/contact patterns в пункте.
 # Если такой паттерн встречается в 2+ пунктах — это рекламный/информационный
 # пост, а не список задач.
@@ -186,6 +191,30 @@ def _parse_inline(text: str) -> list[str]:
     return parts
 
 
+def _split_runon_by_verbs(text: str) -> list[str]:
+    """Бьёт сплошную надиктованную фразу на пункты по инфинитив-глаголам.
+
+    «купить хлеб позвонить маме оплатить счёт» →
+        [«купить хлеб», «позвонить маме», «оплатить счёт»].
+
+    Каждый пункт начинается с глагола; режем ПЕРЕД 2-м, 3-м… глаголом (всё
+    до 2-го глагола — первый пункт). Нужно ≥2 глагола-границы, иначе [] —
+    лучше оставить одним пунктом, чем разрезать неверно (юзер поправит reply).
+    """
+    words = text.split()
+    if len(words) < 3:
+        return []
+    verb_idx = [i for i, w in enumerate(words) if _INFINITIVE_RE.match(w)]
+    if len(verb_idx) < 2:
+        return []
+    bounds = [0] + verb_idx[1:] + [len(words)]
+    result = [" ".join(words[a:b]).strip() for a, b in zip(bounds, bounds[1:])]
+    result = [r for r in result if r]
+    if len(result) < 2 or any(len(r) > MAX_TASK_LENGTH for r in result):
+        return []
+    return result
+
+
 def _looks_like_inline_list(text: str) -> bool:
     """≥3 пункта через запятую, каждый короткий."""
     parts = _parse_inline(text)
@@ -292,9 +321,12 @@ def detect(text: str, ai_item_type: str | None = None) -> TaskListDetection:
         lines = _drop_leading_preamble(lines)
         if len(lines) >= 2:
             tasks = lines
+        elif len(lines) == 1:
+            # Одна сплошная строка (надиктовали без пауз/запятых/нумерации) —
+            # пробуем разбить по глаголам-действиям; не вышло → один пункт.
+            tasks = _split_runon_by_verbs(lines[0]) or [lines[0]]
         else:
-            # Одна строка без запятых — один пункт
-            tasks = [lines[0]] if lines else []
+            tasks = []
 
     if not tasks:
         return TaskListDetection(False, forced, [], stripped_text)

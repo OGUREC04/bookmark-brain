@@ -78,6 +78,41 @@ def test_explicit_trigger_overrides_article_filter():
     assert result.forced_by_user is True
 
 
+# ── Разбивка сплошной надиктованной фразы по глаголам ──
+
+
+def test_runon_voice_split_by_verbs():
+    """«купить хлеб позвонить маме оплатить счёт» без пауз/запятых/нумерации
+    → 3 пункта по глаголам (баг: становился одним гигантским пунктом)."""
+    text = "список задач: купить хлеб позвонить маме оплатить счёт"
+    result = detect(text)
+    assert result.is_list is True
+    assert result.forced_by_user is True
+    assert result.tasks == ["купить хлеб", "позвонить маме", "оплатить счёт"]
+
+
+def test_runon_single_verb_stays_one_item():
+    """Один глагол — не разбиваем (это один пункт, не over-split)."""
+    text = "список задач: купить молоко в магазине"
+    result = detect(text)
+    assert result.is_list is True
+    assert result.tasks == ["купить молоко в магазине"]
+
+
+def test_split_runon_by_verbs_unit():
+    from app.services.task_list_detector import _split_runon_by_verbs
+
+    assert _split_runon_by_verbs("купить хлеб позвонить маме") == [
+        "купить хлеб",
+        "позвонить маме",
+    ]
+    # <2 глаголов — не режем
+    assert _split_runon_by_verbs("позвонить маме срочно") == []
+    assert _split_runon_by_verbs("просто заметка без глаголов") == []
+    # Существительные на -сть/-чь не глаголы → не границы (часть/новость/ночь)
+    assert _split_runon_by_verbs("купить новость про часть города") == []
+
+
 # ── Anti-false-positive (НЕ должно детектить) ──
 
 
