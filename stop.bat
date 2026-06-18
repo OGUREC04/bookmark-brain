@@ -7,10 +7,11 @@ echo Останавливаю все сервисы BookmarkBrain...
 echo.
 
 :: Убиваем окна по заголовкам
-taskkill /FI "WINDOWTITLE eq BookmarkBrain Backend*" /F >nul 2>&1
-taskkill /FI "WINDOWTITLE eq BookmarkBrain Worker*" /F >nul 2>&1
-taskkill /FI "WINDOWTITLE eq BookmarkBrain Bot*" /F >nul 2>&1
-taskkill /FI "WINDOWTITLE eq BookmarkBrain Frontend*" /F >nul 2>&1
+taskkill /FI "WINDOWTITLE eq BB Backend*" /F >nul 2>&1
+taskkill /FI "WINDOWTITLE eq BB Worker*" /F >nul 2>&1
+taskkill /FI "WINDOWTITLE eq BB Bot*" /F >nul 2>&1
+taskkill /FI "WINDOWTITLE eq BB Frontend*" /F >nul 2>&1
+taskkill /FI "WINDOWTITLE eq BB ngrok*" /F >nul 2>&1
 
 echo ✅ Все сервисы остановлены
 echo.
