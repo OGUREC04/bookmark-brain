@@ -13,6 +13,8 @@ from aiogram import F, Router
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import CallbackQuery, Message, ReactionTypeEmoji
 
+from shared.messages import DEDUP_COMMANDS, compose, reply_hint_full
+
 from .shared import (
     MSG_DUP_DELETED,
     MSG_LIST_MERGED,
@@ -429,32 +431,33 @@ async def _handle_general_dedup_reply(
                 and structured.get("type") == "task_list"
             )
 
-            lines = [f"📖 <b>{title}</b>"]
+            # Превью оригинала: заголовок + краткое содержание
+            preview = f"📖 <b>{title}</b>"
             if summary:
-                lines.append(summary[:300])
+                preview += f"\n{summary[:300]}"
 
             # Где найти оригинал
-            lines.append("")
             if is_task_list:
-                lines.append(
+                where = (
                     "<i>📋 Список уже в чате — прокрути выше до закреплённого "
                     "сообщения. Или /list — все списки и закладки.</i>"
                 )
             else:
-                lines.append(
+                where = (
                     "<i>📚 Все закладки — /list. "
                     "Поиск по смыслу — /search &lt;запрос&gt;.</i>"
                 )
 
-            # Что делать с дублем
-            lines.append("")
-            lines.append("<b>↩️ Reply что делать с новым дублем:</b>")
-            lines.append("• <b>удали</b> — убрать дубль (старый останется)")
-            lines.append("• <b>замени</b> — обновить старый данными нового")
-            lines.append("• <b>оставь оба</b> — сохранить и старый, и новый")
+            # Канон: reply-подсказка первой, затем превью, затем команды
+            text = compose(
+                reply_hint_full(action="выбрать что делать с дублем"),
+                preview,
+                where,
+                DEDUP_COMMANDS,
+            )
 
             await replied.edit_text(
-                "\n".join(lines),
+                text,
                 parse_mode="HTML",
                 disable_web_page_preview=True,
             )
@@ -526,11 +529,13 @@ async def _handle_general_dedup_reply(
                     pass
 
     else:
-        # Неизвестный интент — переспрашиваем
+        # Неизвестный интент — переспрашиваем единым набором команд.
+        # _ephemeral шлёт plain-text (parse_mode=None), поэтому снимаем
+        # <b>-теги из DEDUP_COMMANDS, но слова берём из общего словаря.
+        commands_plain = DEDUP_COMMANDS.replace("<b>", "").replace("</b>", "")
         await _ephemeral(
             message,
-            "Не понял. Ответь или напиши:\n"
-            "открой / удали / обнови / сохрани как новую",
+            "Не понял. Ответь reply или напиши:\n" + commands_plain,
             delay=10,
         )
         # Удаляем reply юзера, но НЕ чистим Redis — дать ещё попытку

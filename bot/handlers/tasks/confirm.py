@@ -16,6 +16,8 @@ from aiogram import F, Router
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import CallbackQuery, Message, ReactionTypeEmoji
 
+from shared.messages import DEDUP_COMMANDS, compose, reply_hint_full
+
 from .shared import _build_keyboard, _render_text
 
 logger = logging.getLogger(__name__)
@@ -155,13 +157,10 @@ async def _send_general_dedup_alert(
             pass
     similarity = float(general_dup.get("similarity") or 0.0)
     prefix = "⚠️ Уже есть почти такая же" if similarity >= 0.95 else "🔄 Похожая запись уже сохранялась"
-    alert_text = (
-        f"{prefix} {dup_type}: <b>{title}</b>{date_str}\n\n"
-        f"Что делаем с новой? Ответь reply на это сообщение:\n"
-        f"• <b>открой</b> — покажу старую\n"
-        f"• <b>удали</b> — удалю новую (старая останется)\n"
-        f"• <b>обнови</b> — заменю старую новой\n"
-        f"• <b>сохрани как новую</b> — оставлю обе"
+    alert_text = compose(
+        reply_hint_full(action="выбрать что делать с дублем"),
+        f"{prefix} {dup_type}: <b>{title}</b>{date_str}",
+        DEDUP_COMMANDS,
     )
     gen_id = general_dup.get("id")
     if gen_id is None:

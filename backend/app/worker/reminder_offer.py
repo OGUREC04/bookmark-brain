@@ -13,6 +13,7 @@ import html
 import logging
 
 from app.config import get_settings
+from shared.messages import compose, reply_hint_full
 
 from .telegram import _delete_message, _send_message, aioredis_from_url
 
@@ -43,26 +44,29 @@ def _reminder_offer_buttons(bookmark_id: str) -> dict:
 
 
 def _reminder_offer_text(label: str = "") -> str:
-    """Тело сообщения: подсказка про reply с примерами времени.
+    """Текст оффера в КАНОН-порядке: reply-подсказка → заголовок → примеры.
 
     ``label`` — текст закладки (про что напоминание), УЖЕ html-экранированный
-    вызывающим (slice→escape). Пустой → общий текст.
+    вызывающим (slice→escape). Пустой → общий заголовок.
     """
-    head = (
-        f"Похоже, про «<b>{label}</b>» что-то напомнить. "
+    heading = (
+        f"🔔 Напомнить про «<b>{label}</b>»?"
         if label else
-        "Похоже, тут что-то напомнить. "
+        "🔔 Что-то напомнить?"
     )
-    return (
-        head + "Если да — нажми кнопку, "
-        "потом ответь <i>reply'ем</i> на это сообщение, когда напомнить.\n\n"
-        "Примеры:\n"
+    examples = (
+        "Примеры времени:\n"
         "• <code>завтра в 9</code>\n"
         "• <code>через час</code>\n"
         "• <code>в субботу</code>\n"
         "• <code>в субботу в 18</code>\n"
         "• <code>15 мая</code>\n"
         "• <code>на праздниках</code>"
+    )
+    return compose(
+        reply_hint_full(action="указать время после кнопки «Создать»"),
+        heading,
+        examples,
     )
 
 

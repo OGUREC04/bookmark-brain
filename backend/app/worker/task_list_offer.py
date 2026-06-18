@@ -16,6 +16,7 @@ import json
 import logging
 
 from app.config import get_settings
+from shared.messages import compose, reply_hint_compact
 
 from .telegram import _delete_message, _send_message, aioredis_from_url
 
@@ -65,17 +66,17 @@ def _offer_items_block(tasks: list) -> str:
 
 
 def _task_list_offer_text(structured_data: dict) -> str:
+    """Текст оффера в КАНОН-порядке: reply-подсказка → заголовок → пункты → вопрос."""
     tasks = structured_data.get("tasks", []) if isinstance(structured_data, dict) else []
     n = len(tasks)
     word = "пункт" if n == 1 else "пункта" if 2 <= n <= 4 else "пунктов"
     items_block = _offer_items_block(tasks)
-    head = f"📋 Похоже на список задач — {n} {word}"
-    if items_block:
-        head += ":\n" + items_block
-    return (
-        f"{head}\n\n"
-        f"Сделать закреплённый список?\n\n"
-        f"<i>Его можно отмечать галочками и редактировать ответом на сообщение.</i>"
+    heading = f"📋 <b>Похоже на список — {n} {word}</b>"
+    body = items_block + "\n\nСделать закреплённый список?" if items_block else "Сделать закреплённый список?"
+    return compose(
+        reply_hint_compact("отмечать и редактировать список"),
+        heading,
+        body,
     )
 
 

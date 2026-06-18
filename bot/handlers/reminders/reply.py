@@ -21,6 +21,8 @@ from bot.common import (
     safe,
 )
 
+from shared.messages import compose, reply_hint_full
+
 from .list import handle_reminders_list_reply
 from .shared import (
     _cap_text,
@@ -34,6 +36,25 @@ router = Router()
 
 
 _FALLBACK_CONFIRM_YES = ("да", "ага", "ок", "окей", "yes", "y", "+", "подтверждаю")
+
+# Хвост для reply-подсказки fallback-confirm: «да» или своё точное время.
+_FALLBACK_CONFIRM_ACTION = "подтвердить или указать время точнее"
+
+
+def _fallback_confirm_text(question_html: str) -> str:
+    """Текст fallback-confirm в КАНОН-порядке: reply-подсказка ПЕРВОЙ →
+    вопрос «Поставить «X» на <время>?» → примеры времени.
+
+    Раньше было три почти одинаковых сообщения со слабой строчной подсказкой
+    «Reply «да» или укажи точнее» в хвосте — её не замечали. Единый стиль
+    reply берём из shared.messages (один на весь бот). ``question_html`` —
+    готовая HTML-строка вопроса (с уже экранированным временем/текстом).
+    """
+    return compose(
+        reply_hint_full(action=_FALLBACK_CONFIRM_ACTION),
+        question_html,
+        TIME_EXAMPLES,
+    )
 
 
 async def _bookmark_reminder_text(api, token: str, bookmark_id) -> str:
@@ -320,9 +341,10 @@ async def handle_reminder_reply(message: Message, api, store) -> bool:
             )
         proposed = format_fire_at(result.dt, user_tz_name)
         prompt = await message.answer(
-            f"Не понял точное время. Поставить на <b>{safe(proposed)}</b>?\n"
-            f"<b>Reply «да»</b> — подтверждаю, или укажи время точнее "
-            f"(например «через час», «завтра в 9»).",
+            _fallback_confirm_text(
+                f"🤔 Не разобрал точное время. Поставить на "
+                f"<b>{safe(proposed)}</b>?"
+            ),
             parse_mode="HTML",
         )
         if prompt is not None and getattr(prompt, "message_id", None) is not None:
@@ -488,8 +510,10 @@ async def _handle_fallback_confirm_reply(
     if result.status == ParseStatus.FALLBACK_DEFAULT and result.dt is not None:
         proposed = format_fire_at(result.dt, user_tz_name)
         prompt = await message.answer(
-            f"Снова не понял. Поставить на <b>{safe(proposed)}</b>?\n"
-            f"<b>Reply «да»</b> или укажи точнее.",
+            _fallback_confirm_text(
+                f"🤔 И это время не разобрал. Поставить на "
+                f"<b>{safe(proposed)}</b>?"
+            ),
             parse_mode="HTML",
         )
         if prompt is not None and getattr(prompt, "message_id", None) is not None:
@@ -506,7 +530,10 @@ async def _handle_fallback_confirm_reply(
         return True
 
     await message.answer(
-        "Не понял. " + TIME_EXAMPLES + "\nИли reply «да» чтобы согласиться с прошлым временем.",
+        _fallback_confirm_text(
+            "🤔 Не разобрал. Напиши «да» — оставлю прошлое время, "
+            "или укажи новое."
+        ),
         parse_mode="HTML",
     )
     return True

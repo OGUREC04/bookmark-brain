@@ -29,6 +29,8 @@ from bot.common import (
     split_remind_text_and_time,
 )
 
+from shared.messages import compose, reply_hint_full
+
 from .shared import (
     _cap_text,
     _purge_reminder_dialog,
@@ -202,8 +204,12 @@ async def process_explicit_remind_args(
     if parse_result.status == ParseStatus.FALLBACK_DEFAULT:
         proposed = format_fire_at(parse_result.dt, user_tz_name)
         prompt = await message.answer(
-            f"Не понял точное время. Поставить «<b>{safe(text_part)}</b>» на "
-            f"<b>{safe(proposed)}</b>?\n<b>Reply «да»</b> или укажи точнее.",
+            compose(
+                reply_hint_full(action="подтвердить или указать время точнее"),
+                f"🤔 Не разобрал точное время. Поставить "
+                f"«<b>{safe(text_part)}</b>» на <b>{safe(proposed)}</b>?",
+                TIME_EXAMPLES,
+            ),
             parse_mode="HTML",
         )
         if prompt is not None and getattr(prompt, "message_id", None) is not None:

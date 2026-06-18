@@ -19,6 +19,7 @@ from sqlalchemy import select
 
 from app.config import get_settings
 from app.database import async_session
+from shared.messages import compose, reply_hint_full
 
 from .reminder_offer import REMINDER_PENDING_TTL_SEC
 from .telegram import _delete_message, _send_message, aioredis_from_url
@@ -123,13 +124,17 @@ def _choice_text(label: str = "", items: list[dict] | None = None) -> str:
 
 
 def _ask_hour_text(label: str = "") -> str:
-    return (
-        _label_prefix(label)
-        + "🕘 Дата есть, но не указано время. Во сколько напомнить?\n\n"
-        "↩️ <b>Сделай Reply</b> на это сообщение со временем "
-        "(зажми/свайпни сообщение → «Ответить»).\n\n"
-        "Примеры: <code>в 9</code>, <code>в 18:30</code>, <code>утром</code>, <code>вечером</code>"
+    """КАНОН-порядок: reply-подсказка → заголовок (про что + вопрос) → примеры.
+
+    Reply-подсказка — единая из shared.messages (один стиль на весь бот).
+    ``label`` приходит УЖЕ html-экранированным.
+    """
+    heading = _label_prefix(label) + "🕘 Дата есть, но не указано время. Во сколько напомнить?"
+    examples = (
+        "Примеры: <code>в 9</code>, <code>в 18:30</code>, "
+        "<code>утром</code>, <code>вечером</code>"
     )
+    return compose(reply_hint_full(), heading, examples)
 
 
 async def _mark_decision_applied_cas(session, bookmark_id, user_id) -> bool:

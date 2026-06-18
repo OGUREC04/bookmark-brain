@@ -25,6 +25,7 @@ from bot.common import (
     get_user_tz_name,
     safe,
 )
+from shared.messages import compose, reply_hint_compact
 
 from .shared import MAX_PARSE_INPUT_LEN, _purge_reminder_dialog
 
@@ -104,17 +105,23 @@ async def cmd_reminders(message: Message, command: CommandObject, api, store):
         )
         return
 
-    lines = ["🔔 <b>Активные напоминания:</b>\n"]
+    # КАНОН-порядок: reply-подсказка ПЕРВОЙ → заголовок + список → примеры команд.
+    body_lines = ["🔔 <b>Активные напоминания:</b>\n"]
     for i, rem in enumerate(items, 1):
-        lines.append(f"{i}. {_format_reminder_short(rem, user_tz_name)}")
-    lines.append(
-        "\n<i>Reply на это сообщение:</i>\n"
+        body_lines.append(f"{i}. {_format_reminder_short(rem, user_tz_name)}")
+    examples = (
+        "Что можно ответить:\n"
         "• «отмени 1»\n"
         "• «перенеси 2 на завтра в 9»\n"
         "• «история» — выполненные"
     )
+    text = compose(
+        reply_hint_compact("управлять списком по номеру"),
+        "\n".join(body_lines),
+        examples,
+    )
 
-    sent = await message.answer("\n".join(lines), parse_mode="HTML")
+    sent = await message.answer(text, parse_mode="HTML")
     if sent is not None and getattr(sent, "message_id", None) is not None:
         # Snapshot IDs — порядок фиксируется
         ids = [str(rem.get("id")) for rem in items]
@@ -263,9 +270,14 @@ async def handle_reminders_list_reply(
         )
         return True
 
-    # Неизвестная команда — показываем подсказку, считаем reply нашим
+    # Неизвестная команда — показываем подсказку, считаем reply нашим.
+    # КАНОН-порядок: reply-подсказка ПЕРВОЙ → что именно написать.
     await message.answer(
-        "Не понял. Reply: «отмени N» / «перенеси N на завтра в 9» / «история»",
-        parse_mode=None,
+        compose(
+            reply_hint_compact("управлять списком по номеру"),
+            "🤔 Не разобрал. Напиши «отмени N», «перенеси N на завтра в 9» "
+            "или «история».",
+        ),
+        parse_mode="HTML",
     )
     return True
