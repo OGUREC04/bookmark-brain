@@ -22,6 +22,7 @@ from aiogram.types import Message
 # Imported under their PUBLIC names — bot.common is the only public surface
 # for these helpers; this package re-exports nothing of them via its facade.
 from bot.common import DEFAULT_TZ, TIME_EXAMPLES, safe
+from shared.messages import compose, reply_hint_full
 
 logger = logging.getLogger(__name__)
 
@@ -167,12 +168,9 @@ def _reply_prompt(question: str, examples: str = TIME_EXAMPLES) -> str:
     «во сколько?» (дата уже известна) передавай HOUR_EXAMPLES; None — не
     показывать примеры (например вопрос «про что?» — ответ это текст).
     """
-    base = (
-        f"{question}\n\n"
-        f"↩️ <b>Сделай Reply</b> на это сообщение "
-        f"(зажми/свайпни сообщение → «Ответить»)."
-    )
-    return f"{base}\n\n{examples}" if examples else base
+    # КАНОН-порядок: reply-подсказка ПЕРВОЙ (самой заметной), потом вопрос,
+    # потом примеры. Единый стиль reply — из shared.messages (один на весь бот).
+    return compose(reply_hint_full(), question, examples or None)
 
 
 
