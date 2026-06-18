@@ -14,6 +14,7 @@ from uuid import UUID
 from sqlalchemy import select
 
 from app.config import get_settings
+from shared.messages import DEDUP_COMMANDS, compose, reply_hint_full
 
 from .dedup import (
     _build_dedup_alert,
@@ -30,6 +31,7 @@ from .telegram import (
     _pin_message,
     _send_message,
     _set_reaction,
+    send_rich_message,
     typing_action,
 )
 
@@ -102,6 +104,54 @@ def _result_buttons(bookmark_id: str) -> dict:
             ],
         ]
     }
+
+
+def _build_result_card_markdown(title: str, summary: str, category: str) -> str:
+    """Markdown rich-карточки результата: заголовок → summary → строка категории."""
+    parts = [f"# ✅ {title}"]
+    if summary:
+        parts.append(summary[:200])
+    if category:
+        parts.append(f"Категория: {category}")
+    return "\n\n".join(parts)
+
+
+async def _send_result_card(
+    chat_id: int,
+    message_id: int,
+    *,
+    title: str,
+    summary: str,
+    category: str,
+    text: str,
+    buttons: dict,
+) -> None:
+    """Показывает карточку результата обработки обычной закладки.
+
+    По умолчанию (RICH_MESSAGES off) — ``_edit_message`` поверх статус-сообщения,
+    ровно как раньше (поведение 1:1). При RICH_MESSAGES on пробуем rich-карточку
+    через ``sendRichMessage``: её нельзя редактировать, поэтому удаляем
+    статус-сообщение и шлём новую. ЛЮБОЙ сбой (ok=false / исключение / выключенный
+    флаг) → тот же ``_edit_message`` без изменений.
+    """
+    if settings.RICH_MESSAGES:
+        try:
+            markdown = _build_result_card_markdown(title, summary, category)
+            resp = await send_rich_message(chat_id, markdown, buttons)
+            if resp and resp.get("ok"):
+                # Rich нельзя редактировать → убираем статус-сообщение,
+                # карточка уже отправлена новой.
+                await _delete_message(chat_id, message_id)
+                return
+            logger.debug(
+                "rich card not sent (ok=false), fallback to edit: %s",
+                (resp or {}).get("description"),
+            )
+        except Exception as e:  # noqa: BLE001 — fallback ниже
+            logger.debug(f"rich card failed, fallback to edit: {e}")
+
+    # Fallback / default: правим статус-сообщение, как раньше.
+    await _edit_message(chat_id, message_id, text, buttons)
 
 
 async def process_bookmark_task(
@@ -332,13 +382,13 @@ async def _process_bookmark_task_impl(
                     else:
                         prefix = "🔄 Похожая запись уже сохранялась"
 
-                    alert_text = (
-                        f"{prefix} {dup_type}: <b>{dup_title}</b>{date_str}\n\n"
-                        f"Что делаем с новой? Ответь reply на это сообщение:\n"
-                        f"• <b>открой</b> — покажу старую\n"
-                        f"• <b>удали</b> — удалю новую (старая останется)\n"
-                        f"• <b>обнови</b> — заменю старую новой\n"
-                        f"• <b>сохрани как новую</b> — оставлю обе"
+                    # Канон: reply-подсказка ПЕРВОЙ → заголовок → команды.
+                    # DEDUP_COMMANDS из shared.messages — один в один с
+                    # bot confirm.py (_send_general_dedup_alert).
+                    alert_text = compose(
+                        reply_hint_full(action="выбрать что делать с дублем"),
+                        f"{prefix} {dup_type}: <b>{dup_title}</b>{date_str}",
+                        DEDUP_COMMANDS,
                     )
 
                     if silent:
@@ -533,15 +583,22 @@ async def _process_bookmark_task_impl(
                     else:
                         title = bookmark.title or "Закладка"
                         summary = bookmark.summary or ""
+                        category = bookmark.category or ""
                         lines = [f"✅ <b>{title}</b>"]
-                        if bookmark.category:
-                            lines.append(f"Категория: {bookmark.category}")
+                        if category:
+                            lines.append(f"Категория: {category}")
                         if summary:
                             lines.append(summary[:200])
                         lines.append(f"\n⏱ Обработано за {duration:.1f} сек")
                         text = "\n".join(lines)
                         buttons = _result_buttons(bookmark_id)
-                        await _edit_message(chat_id, message_id, text, buttons)
+                        # RICH_MESSAGES off (default) → _edit_message 1:1 как раньше.
+                        # on → rich-карточка с fallback на тот же _edit_message.
+                        await _send_result_card(
+                            chat_id, message_id,
+                            title=title, summary=summary, category=category,
+                            text=text, buttons=buttons,
+                        )
                 elif bookmark.source != "miniapp":
                     # Fallback: новое сообщение по telegram_id. НЕ для Mini App — заметка
                     # создана в приложении, чат-дубль не нужен (результат виден в app, ti0).

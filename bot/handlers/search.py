@@ -4,9 +4,13 @@ from aiogram import Router, types
 from aiogram.filters import Command
 from aiogram.utils.chat_action import ChatActionSender
 
+from bot.config import get_settings
+
 logger = logging.getLogger(__name__)
 
 router = Router()
+
+_settings = get_settings()
 
 
 def _format_result(item: dict, score: float) -> str:
@@ -29,6 +33,37 @@ def _format_result(item: dict, score: float) -> str:
 
     lines.append(f"Релевантность: {score:.0%}")
     return "\n".join(lines)
+
+
+def _format_result_rich(item: dict, score: float) -> str:
+    """Один результат в rich-markdown: ## title, summary, строка тегов/релевантности/ссылки."""
+    bookmark = item["bookmark"]
+    title = bookmark.get("title") or "Без названия"
+    summary = bookmark.get("summary") or bookmark["raw_text"][:100]
+    tags = bookmark.get("tags", [])
+    url = bookmark.get("url")
+
+    lines = [f"## {title}", summary]
+
+    meta = []
+    if tags:
+        meta.append(" ".join(f"#{t['name']}" for t in tags[:4]))
+    meta.append(f"релевантность **{score:.0%}**")
+    if url:
+        meta.append(f"[Открыть]({url})")
+    lines.append(" · ".join(meta))
+
+    return "\n".join(lines)
+
+
+def _build_rich_markdown(query: str, results: list, total: int) -> str:
+    """Собирает rich-markdown для всех результатов поиска."""
+    blocks = [f"# 🔍 Поиск: «{query}»", f"_Найдено {total}_"]
+    for item in results:
+        blocks.append(_format_result_rich(item, item["score"]))
+    if total > 5:
+        blocks.append(f"_…и ещё {total - 5}. Уточни запрос для точных результатов._")
+    return "\n\n".join(blocks)
 
 
 @router.message(Command("search"))
@@ -68,5 +103,19 @@ async def cmd_search(message: types.Message, api):
 
     if total > 5:
         parts.append(f"\n...и ещё {total - 5}. Уточни запрос для точных результатов.")
+
+    if _settings.RICH_MESSAGES:
+        try:
+            from aiogram.types import InputRichMessage
+
+            markdown = _build_rich_markdown(query, results, total)
+            await message.bot.send_rich_message(
+                chat_id=message.chat.id,
+                rich_message=InputRichMessage(markdown=markdown),
+            )
+            return
+        except Exception as e:
+            # Rich-режим bleeding-edge — при любой ошибке падаем на текущий HTML.
+            logger.warning(f"Rich search message failed, falling back to HTML: {e}")
 
     await message.answer("\n\n".join(parts), parse_mode="HTML", disable_web_page_preview=True)

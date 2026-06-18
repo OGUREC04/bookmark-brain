@@ -67,6 +67,34 @@ async def _send_message(chat_id: int, text: str, reply_markup: dict | None = Non
         return None
 
 
+async def send_rich_message(
+    chat_id: int, markdown: str, reply_markup: dict | None = None,
+) -> dict | None:
+    """Отправляет rich-карточку через Telegram метод ``sendRichMessage``.
+
+    Тело: ``chat_id`` + ``rich_message`` (с ключом ``markdown``) + опц.
+    ``reply_markup``. Rich-карточку нельзя редактировать (нет editRichMessage),
+    поэтому статус-сообщение удаляется, а карточка присылается новой.
+
+    Возвращает полный ответ Telegram (с ключом ``ok``) или ``None`` при сетевой
+    ошибке. Вызывающий обязан проверить ``ok`` и при False/None — сделать
+    fallback на обычный ``_edit_message`` (см. worker/processing.py).
+    """
+    try:
+        payload: dict = {
+            "chat_id": chat_id,
+            "rich_message": {"markdown": markdown},
+        }
+        if reply_markup:
+            payload["reply_markup"] = reply_markup
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.post(f"{BOT_API}/sendRichMessage", json=payload)
+            return resp.json()
+    except Exception as e:
+        logger.debug(f"Failed to send rich message: {e}")
+        return None
+
+
 async def _bind_task_list_message(chat_id: int, message_id: int, bookmark_id: str) -> None:
     """Регистрируем (chat_id, message_id) → bookmark_id в Redis,
     чтобы bot reply-handler мог применить NL-edit к этому списку.

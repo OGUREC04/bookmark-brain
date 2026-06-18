@@ -55,6 +55,12 @@ class Settings(BaseSettings):
     DEV_AUTH_BYPASS: bool = False
     DEV_AUTH_TELEGRAM_ID: int = 0
 
+    # Rich message cards (Telegram sendRichMessage). OFF by default — при OFF
+    # карточка результата идёт через обычный editMessageText (1:1 как раньше).
+    # При ON воркер рисует rich-карточку; любой сбой sendRichMessage → fallback
+    # на тот же editMessageText (см. worker/processing.py).
+    RICH_MESSAGES: bool = False
+
     # Stale list nudge — hour (UTC) when nudge cron runs
     NUDGE_HOUR_UTC: int = 6  # ~9:00 MSK
 

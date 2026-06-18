@@ -24,6 +24,10 @@ class Settings(BaseSettings):
     YANDEX_S3_ACCESS_KEY: str = ""
     YANDEX_S3_SECRET_KEY: str = ""
     ENVIRONMENT: str = "development"
+    # Rich Messages (Telegram Bot API 10.1, sendRichMessage) для результатов поиска.
+    # OFF по умолчанию — bleeding-edge, клиенты могут рендерить с багами.
+    # При любой ошибке send_rich_message код падает обратно на текущий HTML-формат.
+    RICH_MESSAGES: bool = False
 
     model_config = {"env_file": str(_ENV_FILE), "env_file_encoding": "utf-8", "extra": "ignore"}
 
