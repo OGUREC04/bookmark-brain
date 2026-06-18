@@ -229,7 +229,12 @@ async def handle_reminder_reply(message: Message, api, store) -> bool:
     text = (message.text or "").strip()
     if not text:
         m = await message.answer(
-            "Не понял время. " + TIME_EXAMPLES, parse_mode="HTML",
+            compose(
+                reply_hint_full(action="указать время"),
+                "🤔 Не разобрал время.",
+                TIME_EXAMPLES,
+            ),
+            parse_mode="HTML",
         )
         await _resave_pending(
             store, chat_id, getattr(m, "message_id", None),
@@ -297,7 +302,12 @@ async def handle_reminder_reply(message: Message, api, store) -> bool:
 
     if result.status == ParseStatus.UNPARSEABLE:
         m = await message.answer(
-            "Не понял время. " + TIME_EXAMPLES, parse_mode="HTML",
+            compose(
+                reply_hint_full(action="указать время"),
+                "🤔 Не разобрал время.",
+                TIME_EXAMPLES,
+            ),
+            parse_mode="HTML",
         )
         await _resave_pending(
             store, chat_id, getattr(m, "message_id", None),
@@ -361,7 +371,12 @@ async def handle_reminder_reply(message: Message, api, store) -> bool:
 
     if result.dt is None:
         m = await message.answer(
-            "Не понял время. " + TIME_EXAMPLES, parse_mode="HTML",
+            compose(
+                reply_hint_full(action="указать время"),
+                "🤔 Не разобрал время.",
+                TIME_EXAMPLES,
+            ),
+            parse_mode="HTML",
         )
         await _resave_pending(
             store, chat_id, getattr(m, "message_id", None),
