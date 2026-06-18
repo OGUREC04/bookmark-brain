@@ -1,7 +1,7 @@
 # БТ-12: Загрузка медиа из Mini App (голос и файлы)
 
 > Бизнес-требования · living-doc «как ведёт себя сейчас»
-> Обновлено: 2026-06-17 · Связано: ADR `docs/decisions/0011-miniapp-media-upload.md`, бриф `docs/prd/MINIAPP-MEDIA-UPLOAD.md`, код `backend/app/api/uploads.py`, `backend/app/worker/uploads.py`, `shared/media/`; фронт (отд. репо `bookmark-brain-miniapp`): `src/lib/recorder.ts`, `lib/api.ts` (`uploadMedia`), `components/ds/QuickCreateSheet.tsx`
+> Обновлено: 2026-06-18 · Связано: ADR `docs/decisions/0011-miniapp-media-upload.md`, бриф `docs/prd/MINIAPP-MEDIA-UPLOAD.md`, код `backend/app/api/uploads.py`, `backend/app/worker/uploads.py`, `shared/media/`; фронт (отд. репо `bookmark-brain-miniapp`): `src/lib/recorder.ts`, `lib/api.ts` (`uploadMedia`), `screens/ComposeScreen.tsx` (полноэкранный захват «Новая мысль», заменил шторку QuickCreateSheet), `lib/compose.ts`
 > Статус реализации: Backend (эндпоинт + воркер-джоба) — реализовано за тестами, не задеплоено. Mini App: 🎤 ГОЛОС (фаза 1, `ti0`) — РЕАЛИЗОВАНО за флагом `VOICE_UPLOAD` (в репо false / локально true), запись MediaRecorder → `POST /upload` → поллинг `ai_status`; 📎 документы (фаза 2) — пока `disabled`. ai_error: бэк его НЕ отдаёт в `BookmarkResponse` (модель пишет, схема нет) → фронт показывает ОБЩИЙ текст ошибки; точную причину — отдельным мини-тикетом бэку.
 
 ## Назначение и границы
