@@ -130,6 +130,93 @@ def test_one_date_multi_item_returns_button_choice() -> None:
 
 
 # ──────────────────────────────────────────────────
+# Run-on текст из нескольких дел БЕЗ маркеров → NEEDS_BUTTON_CHOICE
+# (у текста нет intent-классификатора как у голоса; AI часто отдаёт
+#  «купить хлеб позвонить маме оплатить счёт» как single → одно напоминание)
+# ──────────────────────────────────────────────────
+
+
+@freeze_time(NOW_UTC)
+def test_runon_multi_verb_text_upgrades_to_button_choice() -> None:
+    """«купить хлеб позвонить маме оплатить счёт» (3 глагола, набрано текстом)
+    AI отдал как single_statement → иначе ушло бы одним SINGLE_REMINDER/NONE.
+    Роутер видит ≥2 инфинитива-границы → показывает 3-кнопку 📋/🔔/✕.
+    """
+    d = route(
+        text="купить хлеб позвонить маме оплатить счёт завтра в 9",
+        classification=_cls(
+            items=[
+                {
+                    "text": "купить хлеб позвонить маме оплатить счёт",
+                    "raw_date_phrase": "завтра в 9",
+                }
+            ],
+            single=True,
+            hint="single_reminder",
+        ),
+        now=NOW_UTC,
+    )
+    assert d.form == ReminderForm.NEEDS_BUTTON_CHOICE
+
+
+@freeze_time(NOW_UTC)
+def test_runon_multi_verb_needs_hour_upgrades_to_button_choice() -> None:
+    """Тот же run-on, но дата без часа («в пятницу») → иначе NEEDS_HOUR.
+    Run-on из нескольких дел всё равно апгрейдится в 3-кнопку.
+    """
+    d = route(
+        text="купить корм позвонить ветеринару в пятницу",
+        classification=_cls(
+            items=[
+                {
+                    "text": "купить корм позвонить ветеринару",
+                    "raw_date_phrase": "в пятницу",
+                }
+            ],
+            single=True,
+            hint="single_reminder",
+        ),
+        now=NOW_UTC,
+    )
+    assert d.form == ReminderForm.NEEDS_BUTTON_CHOICE
+
+
+@freeze_time(NOW_UTC)
+def test_single_verb_run_on_stays_single_reminder() -> None:
+    """GUARD: одно дело с ОДНИМ глаголом («напомни купить корм») остаётся
+    SINGLE_REMINDER. _split_runon_by_verbs возвращает [] при <2 глаголах-границах.
+    """
+    d = route(
+        text="напомни купить корм завтра в 9",
+        classification=_cls(
+            items=[{"text": "купить корм", "raw_date_phrase": "завтра в 9"}],
+            single=True,
+            hint="single_reminder",
+        ),
+        now=NOW_UTC,
+    )
+    assert d.form == ReminderForm.SINGLE_REMINDER
+    assert len(d.dated_items) == 1
+
+
+@freeze_time(NOW_UTC)
+def test_single_verb_run_on_needs_hour_unchanged() -> None:
+    """GUARD: одно дело, один глагол, дата без часа → остаётся NEEDS_HOUR,
+    run-on-апгрейд не срабатывает.
+    """
+    d = route(
+        text="напомни сдать отчёт в пятницу",
+        classification=_cls(
+            items=[{"text": "сдать отчёт", "raw_date_phrase": "в пятницу"}],
+            single=True,
+            hint="single_reminder",
+        ),
+        now=NOW_UTC,
+    )
+    assert d.form == ReminderForm.NEEDS_HOUR
+
+
+# ──────────────────────────────────────────────────
 # Rule 8: 0 dates + multi-item → TASK_LIST_NO_REMINDERS
 # ──────────────────────────────────────────────────
 

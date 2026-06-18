@@ -33,6 +33,7 @@ from enum import Enum
 from app.schemas import AIClassification, ReminderItem
 from app.services.nl_date import ParseResult, ParseStatus
 from app.services.nl_date import parse as nl_date_parse
+from app.services.task_list_detector import _split_runon_by_verbs
 
 logger = logging.getLogger(__name__)
 
@@ -188,6 +189,16 @@ def route(
     has_time_marker = bool(_TIME_OR_PART_OF_DAY_RE.search(text_norm))
     single = classification.single_statement
 
+    # Текст БЕЗ маркеров, надиктованный/набранный сплошняком из нескольких дел
+    # («купить хлеб позвонить маме оплатить счёт»), у голоса форсит список через
+    # intent-классификатор, а у текста такого слоя нет — AI часто отдаёт его как
+    # single_statement → одно напоминание. Считаем инфинитив-глаголы: ≥2 границы
+    # = ≥2 дела. Тогда не угадываем молча single_reminder, а показываем 3-кнопку
+    # 📋/🔔/✕ (NEEDS_BUTTON_CHOICE) — пусть юзер выберет список или напоминание.
+    # _split_runon_by_verbs возвращает [] при <2 глаголах-границах, поэтому одно
+    # дело с одним глаголом («напомни купить корм») сюда НЕ попадает (guard).
+    looks_like_multi_run_on = len(_split_runon_by_verbs(text_norm)) >= 2
+
     # Резолвим каждый item через nl_date
     items = [
         _resolve_item(it, user_tz=user_tz, now=now)
@@ -197,6 +208,21 @@ def route(
     needs_hour = [i for i in items if i.status == ParseStatus.NEEDS_HOUR]
 
     def _decision(form: ReminderForm) -> RouterDecision:
+        # Run-on из нескольких дел без маркеров, который иначе ушёл бы одним
+        # напоминанием → показываем 3-кнопку 📋/🔔/✕ вместо молчаливого угадывания.
+        # Только для SINGLE_REMINDER/NEEDS_HOUR: формы TASK_LIST_*, STRONG_*,
+        # COMPOSITE, NONE не трогаем — там либо уже список, либо явное намерение.
+        if looks_like_multi_run_on and form in (
+            ReminderForm.SINGLE_REMINDER,
+            ReminderForm.NEEDS_HOUR,
+        ):
+            logger.debug(
+                "router: текст выглядит как несколько дел без маркеров "
+                "(_split_runon_by_verbs ≥2), апгрейд %s → needs_button_choice",
+                form.value,
+            )
+            form = ReminderForm.NEEDS_BUTTON_CHOICE
+
         # B2 measurement: логируем расхождение router-решения и
         # холистической категории AI (reminder_form_hint). По этим данным
         # выберем архитектуру (router-primary / AI-primary / disagreement).
