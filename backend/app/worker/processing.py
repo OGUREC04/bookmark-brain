@@ -106,9 +106,37 @@ def _result_buttons(bookmark_id: str) -> dict:
     }
 
 
+def _open_old_button(old_bid: str) -> dict:
+    """Inline-кнопка «📖 Открыть старую» для dedup-алерта.
+
+    Переиспользует тот же ``view:`` callback, что и кнопки «Открыть» по
+    всему боту (handler — bot.handlers.bookmark_view). Даёт открыть
+    закладку-дубль в один тап, не угадывая её через /list или /search.
+    """
+    return {
+        "inline_keyboard": [[
+            {"text": "📖 Открыть старую", "callback_data": f"view:{old_bid}"},
+        ]]
+    }
+
+
+# Длина title, после которой #-heading в rich-карточке смотрится гигантским
+# (title — это предложение, а не короткое имя). Тогда — обычная жирная строка.
+_RICH_TITLE_HEADING_MAX = 50
+
+
 def _build_result_card_markdown(title: str, summary: str, category: str) -> str:
-    """Markdown rich-карточки результата: заголовок → summary → строка категории."""
-    parts = [f"# ✅ {title}"]
+    """Markdown rich-карточки результата.
+
+    Короткий title → крупный заголовок-heading «# ✅ …». Длинный (предложение
+    длиннее ~50 симв) → обычная жирная строка с галкой, без гигантского H1.
+    Дальше summary одной строкой и категория. Без дубля title/summary.
+    """
+    title = (title or "").strip()
+    if len(title) > _RICH_TITLE_HEADING_MAX:
+        parts = [f"✅ **{title}**"]
+    else:
+        parts = [f"# ✅ {title}"]
     if summary:
         parts.append(summary[:200])
     if category:
@@ -395,7 +423,12 @@ async def _process_bookmark_task_impl(
                         # Снимаем 👀
                         await _set_reaction(chat_id, message_id, None)
 
-                    alert_resp = await _send_message(chat_id, alert_text)
+                    # «📖 Открыть старую» — открыть закладку-дубль в один тап
+                    # (тот же view:-callback, что и кнопки «Открыть» в боте),
+                    # не угадывая её через /list или /search.
+                    alert_resp = await _send_message(
+                        chat_id, alert_text, _open_old_button(dup["id"]),
+                    )
                     if alert_resp and alert_resp.get("message_id"):
                         alert_mid = alert_resp["message_id"]
                         await _store_general_dedup(

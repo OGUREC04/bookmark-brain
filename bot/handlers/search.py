@@ -35,15 +35,52 @@ def _format_result(item: dict, score: float) -> str:
     return "\n".join(lines)
 
 
+# Title закладки — это часто длинное предложение, а не короткий тайтл.
+# Обрезаем, чтобы не разъезжалось в одну гигантскую строку.
+_TITLE_MAX = 60
+
+
+def _truncate(text: str, limit: int) -> str:
+    """Обрезает строку до limit символов с многоточием, по границе слова."""
+    text = text.strip()
+    if len(text) <= limit:
+        return text
+    cut = text[: limit - 1].rstrip()
+    space = cut.rfind(" ")
+    if space > limit // 2:
+        cut = cut[:space].rstrip()
+    return f"{cut}…"
+
+
+def _summary_is_distinct(summary: str, title: str) -> bool:
+    """True, если summary содержательно отличается от title (не дубль)."""
+    norm = lambda s: "".join(ch for ch in s.lower() if ch.isalnum())
+    s_norm = norm(summary)
+    t_norm = norm(title)
+    if not s_norm:
+        return False
+    # Почти равны или один — префикс другого → дубль, не показываем.
+    if s_norm == t_norm:
+        return False
+    if s_norm.startswith(t_norm) or t_norm.startswith(s_norm):
+        return False
+    return True
+
+
 def _format_result_rich(item: dict, score: float) -> str:
-    """Один результат в rich-markdown: ## title, summary, строка тегов/релевантности/ссылки."""
+    """Один результат в rich-markdown: жирный обрезанный title, опц. summary, компактная мета-строка."""
     bookmark = item["bookmark"]
     title = bookmark.get("title") or "Без названия"
     summary = bookmark.get("summary") or bookmark["raw_text"][:100]
     tags = bookmark.get("tags", [])
     url = bookmark.get("url")
 
-    lines = [f"## {title}", summary]
+    # Не используем ## — длинный title даёт огромный heading. Обычная жирная строка.
+    lines = [f"**{_truncate(title, _TITLE_MAX)}**"]
+
+    # Summary показываем только если он реально не дублирует title.
+    if _summary_is_distinct(summary, title):
+        lines.append(_truncate(summary, 140))
 
     meta = []
     if tags:

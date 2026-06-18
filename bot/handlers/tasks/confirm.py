@@ -169,10 +169,15 @@ async def _send_general_dedup_alert(
             f"{list(general_dup.keys())}"
         )
         return
+    # «📖 Открыть старую» — открыть закладку-дубль в один тап (тот же
+    # view:-callback, что и кнопки «Открыть» в боте), не угадывая через /list.
+    open_old_kb = {"inline_keyboard": [[
+        {"text": "📖 Открыть старую", "callback_data": f"view:{gen_id}"},
+    ]]}
     try:
         sent = await bot.send_message(
-            chat_id, alert_text, parse_mode="HTML",
-            disable_web_page_preview=True,
+            chat_id, alert_text, reply_markup=open_old_kb,
+            parse_mode="HTML", disable_web_page_preview=True,
         )
         await store.store_general_dedup(
             chat_id, sent.message_id, new_bid, str(gen_id),
