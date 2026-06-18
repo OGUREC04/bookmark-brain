@@ -51,3 +51,15 @@ def wrap_expandable(text: str) -> tuple[str, str | None]:
     escaped = safe(text)
     html = f"<blockquote expandable>{escaped}</blockquote>"
     return (html, "HTML")
+
+
+def wrap_expandable_prefixed(prefix: str, text: str) -> tuple[str, str | None]:
+    """Как wrap_expandable, но с видимым маркером-префиксом (📋/🔍/🔔).
+
+    Длинный: префикс на отдельной строке над сворачиваемой цитатой (HTML).
+    Короткий: префикс + пробел + текст (plain) — поведение как было.
+    """
+    body, parse_mode = wrap_expandable(text)
+    if parse_mode == "HTML":
+        return (f"{prefix}\n{body}", "HTML")
+    return (f"{prefix} {body}", None)

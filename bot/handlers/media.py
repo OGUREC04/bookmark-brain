@@ -15,7 +15,7 @@ from aiogram.utils.chat_action import ChatActionSender
 from bot import onboarding
 from bot.config import get_settings
 from bot.services.timestamps import add_timestamps, strip_timestamps
-from bot.services.transcript_format import wrap_expandable
+from bot.services.transcript_format import wrap_expandable, wrap_expandable_prefixed
 from bot.services.voice_intent import VoiceIntent, detect_intent
 from bot.services.voice_list import preprocess_voice_list
 from bot.utils import ephemeral_error, safe_react
@@ -380,8 +380,9 @@ async def _handle_voice_search(
     """Voice search: transcribe → search bookmarks → show results."""
     from bot.handlers.search import _format_result
 
-    # Reply with transcription + search marker
-    await message.reply(f"🔍 {full_text}", parse_mode=None)
+    # Reply with transcription + search marker (длинный — сворачиваем)
+    _t, _pm = wrap_expandable_prefixed("🔍", full_text)
+    await message.reply(_t, parse_mode=_pm)
 
     if not query.strip():
         await ephemeral_error(message, "Не удалось распознать поисковый запрос.")
@@ -426,7 +427,8 @@ async def _handle_voice_reminder(
     from bot.handlers.reminders.explicit import process_explicit_remind_args
 
     # Показываем что распознали (как voice-search) — прозрачность STT.
-    await message.reply(f"🔔 {full_text}", parse_mode=None)
+    _t, _pm = wrap_expandable_prefixed("🔔", full_text)
+    await message.reply(_t, parse_mode=_pm)
 
     args = (cleaned_text or "").strip()
     if not args:
@@ -451,7 +453,8 @@ async def _handle_voice_todo(
     """Voice todo: transcribe → detect tasks → create task_list bookmark."""
     # Reply with transcription + todo marker (таймкоды оставляем — для
     # навигации по длинной записи).
-    reply_msg = await message.reply(f"📋 {full_text}", parse_mode=None)
+    _t, _pm = wrap_expandable_prefixed("📋", full_text)
+    reply_msg = await message.reply(_t, parse_mode=_pm)
 
     # AI получает текст БЕЗ [MM:SS] и пере-сгруппированный по нумерации:
     # STT даёт chunks (строки), но границы chunks не = пунктам. Группируем
