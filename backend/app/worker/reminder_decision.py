@@ -75,10 +75,47 @@ def _label_prefix(label: str) -> str:
     return f"Про «<b>{label}</b>»:\n" if label else ""
 
 
-def _choice_text(label: str = "") -> str:
+_CHOICE_ITEM_MAX_LEN = 80
+_CHOICE_ITEMS_CAP = 8
+
+
+def _format_items_block(items: list[dict]) -> str:
+    """Строит блок «• текст\\n• текст\\n» из items[].text.
+
+    - Пустые/пробельные тексты пропускаются.
+    - Каждый текст HTML-экранируется.
+    - Каждый текст обрезается до _CHOICE_ITEM_MAX_LEN с «…».
+    - Показывается не более _CHOICE_ITEMS_CAP пунктов; остаток суммируется.
+    """
+    useful = [i for i in (items or []) if (i.get("text") or "").strip()]
+    if not useful:
+        return ""
+
+    shown = useful[:_CHOICE_ITEMS_CAP]
+    rest = len(useful) - len(shown)
+
+    lines: list[str] = []
+    for item in shown:
+        raw = item["text"].strip()
+        truncated = raw[:_CHOICE_ITEM_MAX_LEN] + "…" if len(raw) > _CHOICE_ITEM_MAX_LEN else raw
+        lines.append("• " + html.escape(truncated))
+
+    block = "\n".join(lines)
+    if rest > 0:
+        block += f"\n…и ещё {rest}"
+    return block
+
+
+def _choice_text(label: str = "", items: list[dict] | None = None) -> str:
+    items_block = _format_items_block(items or [])
+    if items_block:
+        items_section = f"Одна дата, но несколько пунктов:\n{items_block}\n\n"
+    else:
+        items_section = "В сообщении одна дата, но несколько пунктов. "
     return (
         _label_prefix(label)
-        + "🤔 В сообщении одна дата, но несколько пунктов. Как лучше?\n\n"
+        + "🤔 " + items_section
+        + "Как лучше?\n\n"
         "• <b>📋 Список</b> — оставлю чекбоксы, напомню только по пункту с датой\n"
         "• <b>🔔 Напоминание</b> — одно напоминание про весь текст\n"
         "• <b>✕</b> — ничего, просто закладка"
@@ -344,7 +381,7 @@ async def _send_choice_ui(
     Bot reads `reminder_choice:{chat_id}:{msg_id}` → bookmark_id и POSTит
     apply-decision endpoint.
     """
-    text = _choice_text(label)
+    text = _choice_text(label, raw_decision.get("items") or [])
     buttons = _choice_buttons(bookmark_id)
     sent = await _send_message(chat_id, text, buttons)
     if not sent or not sent.get("message_id"):

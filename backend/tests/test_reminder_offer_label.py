@@ -34,6 +34,77 @@ def test_choice_text_no_label_generic():
     assert "Про «" not in _choice_text("")
 
 
+# ── _choice_text with items (новое поведение) ──────────────
+
+def test_choice_text_lists_item_texts():
+    """Пункты items['text'] перечисляются в тексте выбора."""
+    from app.worker.reminder_decision import _choice_text
+    items = [{"text": "Купить хлеб", "fire_at_utc": "2026-06-20T10:00:00Z"},
+             {"text": "Позвонить врачу", "fire_at_utc": None}]
+    text = _choice_text("", items)
+    assert "Купить хлеб" in text
+    assert "Позвонить врачу" in text
+
+
+def test_choice_text_html_escapes_items():
+    """Символы <, >, & в тексте пункта экранируются для HTML parse_mode."""
+    from app.worker.reminder_decision import _choice_text
+    items = [{"text": "A <b>bold</b> & more", "fire_at_utc": None}]
+    text = _choice_text("", items)
+    assert "<b>bold</b>" not in text          # raw HTML не проскочило
+    assert "&lt;b&gt;bold&lt;/b&gt;" in text  # экранировано
+    assert "&amp;" in text                    # & экранирован
+
+
+def test_choice_text_truncates_long_item():
+    """Пункт длиннее 80 символов обрезается с «…»."""
+    from app.worker.reminder_decision import _choice_text
+    long_text = "А" * 100
+    items = [{"text": long_text, "fire_at_utc": None}]
+    text = _choice_text("", items)
+    assert "А" * 100 not in text   # полный текст не вошёл
+    assert "…" in text
+
+
+def test_choice_text_caps_items_at_8():
+    """Если пунктов больше 8 — показывает 8 + «…и ещё N»."""
+    from app.worker.reminder_decision import _choice_text
+    items = [{"text": f"Пункт {i}", "fire_at_utc": None} for i in range(12)]
+    text = _choice_text("", items)
+    assert "Пункт 0" in text
+    assert "Пункт 7" in text
+    assert "Пункт 8" not in text    # 9-й (индекс 8) за пределами
+    assert "и ещё 4" in text
+
+
+def test_choice_text_empty_items_fallback():
+    """Пустой items → сообщение без списка, без ошибки (прежнее поведение)."""
+    from app.worker.reminder_decision import _choice_text
+    text = _choice_text("", [])
+    assert "🤔" in text
+    # Нет маркеров списка пунктов
+    assert "• " not in text.split("Как лучше?")[0] or "📋" in text
+
+
+def test_choice_text_none_items_fallback():
+    """None items (не переданы) → fallback без ошибки."""
+    from app.worker.reminder_decision import _choice_text
+    text = _choice_text("")
+    assert "🤔" in text
+
+
+def test_choice_text_items_with_empty_text_skipped():
+    """Пункты с пустым text не добавляют пустую строку в список."""
+    from app.worker.reminder_decision import _choice_text
+    items = [{"text": "", "fire_at_utc": None},
+             {"text": "  ", "fire_at_utc": None},
+             {"text": "Реальный пункт", "fire_at_utc": None}]
+    text = _choice_text("", items)
+    assert "Реальный пункт" in text
+    # Пустых bullet-строк нет (проверяем что нет «• » за которым сразу новая строка)
+    assert "• \n" not in text
+
+
 def test_ask_hour_text_with_label_prefix():
     from app.worker.reminder_decision import _ask_hour_text
     assert "Про «<b>задача</b>»" in _ask_hour_text("задача")
