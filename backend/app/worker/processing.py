@@ -695,10 +695,22 @@ async def _process_bookmark_task_impl(
         # Phase 2.6: сначала пробуем dispatch по router-decision (auto-create
         # / 3-button / Reply-ask). Если decision пуст или form=NONE/strong —
         # fallback на legacy Phase 2.5 _maybe_offer_reminder.
+        # Правило «один призыв к действию за раз»: task_list уже показал свой
+        # UI (offer/3-кнопка через tlc, либо прямой список + merge-alert). Этот
+        # fall-through reminder-диспатч дал бы ВТОРОЕ сообщение-призыв («Когда
+        # напомнить?» / «Создать напоминание?») рядом со списком — это вводит
+        # юзера в ступор. Напоминания на пунктах списка ставятся reply-правкой
+        # списка («1 завтра в 9»), не этим диспатчем.
+        _bm_is_task_list = bool(
+            bookmark
+            and isinstance(bookmark.structured_data, dict)
+            and bookmark.structured_data.get("type") == "task_list"
+        )
         if (
             bookmark
             and bookmark.ai_status in ("completed", "partial")
             and not near_dup_handled
+            and not _bm_is_task_list
         ):
             try:
                 handled = await _dispatch_reminder_decision(
