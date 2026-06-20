@@ -20,7 +20,6 @@ from .shared import (
     MSG_LIST_MERGED,
     MSG_MERGE_FAILED,
     MSG_ORIGINAL_UPDATED,
-    MSG_SAVED_NEW,
     MSG_UPDATE_FAILED,
     _build_keyboard,
     _delete_after,
@@ -485,10 +484,16 @@ async def _handle_general_dedup_reply(
             pass
 
     elif intent == "save_new":
-        # Оставляем оба — просто убираем alert
+        # Оставляем оба. Кнопки выбора типа (c6ti): near-dup ловит только
+        # заметки → тут даём сделать списком/напоминанием. Не нажал → заметка
+        # (дефолт). Не авто-удаляем — кнопки должны жить до тапа.
+        from .convert import saved_new_keyboard
         try:
-            await replied.edit_text(MSG_SAVED_NEW, parse_mode=None)
-            asyncio.create_task(_delete_after(replied, 5.0))
+            await replied.edit_text(
+                "✅ Сохранено как новая заметка",
+                reply_markup=saved_new_keyboard(new_bid),
+                parse_mode=None,
+            )
         except TelegramBadRequest:
             pass
         # #10: вернуть фидбэк на исходное сообщение (silent снял 👀)
@@ -609,8 +614,16 @@ async def handle_pending_dedup(
         asyncio.create_task(_delete_after_by_id(bot, chat_id, alert_msg_id, 5.0))
 
     elif intent == "save_new":
-        await _edit_alert(MSG_SAVED_NEW)
-        asyncio.create_task(_delete_after_by_id(bot, chat_id, alert_msg_id, 5.0))
+        # Кнопки выбора типа (c6ti) — см. reply-ветку выше. Не авто-удаляем.
+        from .convert import saved_new_keyboard
+        try:
+            await bot.edit_message_text(
+                "✅ Сохранено как новая заметка",
+                chat_id=chat_id, message_id=alert_msg_id,
+                reply_markup=saved_new_keyboard(new_bid), parse_mode=None,
+            )
+        except TelegramBadRequest:
+            pass
         await _react_src(bot, chat_id, src_msg_id, "\U0001f44d")
         await _materialize_if_task_list(
             bot, chat_id, token, api, store,

@@ -43,6 +43,13 @@ from .commands import cmd_todo, cmd_unpin_all
 from .commands import router as _commands_router
 from .confirm import cb_tasklist_confirm, cb_tasklist_decline
 from .confirm import router as _confirm_router
+from .convert import (
+    cb_convert_to_list,
+    cb_convert_to_reminder,
+    handle_convert_list_reply,
+    saved_new_keyboard,
+)
+from .convert import router as _convert_router
 from .dedup import (
     _apply_dedup_update,
     _handle_general_dedup_reply,
@@ -100,6 +107,7 @@ from .task_callbacks import router as _task_callbacks_router
 # includes them all via the native aiogram 3.x mechanism.
 router = _Router()
 router.include_router(_confirm_router)
+router.include_router(_convert_router)
 router.include_router(_task_callbacks_router)
 router.include_router(_dedup_router)
 router.include_router(_nl_edit_router)
@@ -132,6 +140,8 @@ __all__ = [
     "_show_updated_task_list_after_dedup_update",
     "_try_fast_edit",
     "cb_back",
+    "cb_convert_to_list",
+    "cb_convert_to_reminder",
     "cb_dedup_keep",
     "cb_dedup_merge",
     "cb_delete_list",
@@ -145,8 +155,10 @@ __all__ = [
     "cmd_lists",
     "cmd_todo",
     "cmd_unpin_all",
+    "handle_convert_list_reply",
     "handle_pending_dedup",
     "msg_nl_edit_on_reply",
+    "saved_new_keyboard",
     "on_pin_service_message",
     "parse_dedup_intent",
     "router",

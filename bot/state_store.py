@@ -547,6 +547,26 @@ class StateStore:
         r = await self._get()
         await r.delete(f"reminder_pending:{chat_id}:{msg_id}")
 
+    async def store_convert_list_pending(
+        self, chat_id: int, msg_id: int, bookmark_id: str,
+    ) -> None:
+        """c6ti: «Сделать списком» на dedup-заметке, но текст — одна фраза.
+        Ждём reply с пунктами под prompt ``msg_id``; reply-handler соберёт
+        список из присланных пунктов (allow_single)."""
+        r = await self._get()
+        await r.set(
+            f"convert_list_pending:{chat_id}:{msg_id}",
+            bookmark_id,
+            ex=self._REMINDER_PENDING_TTL,
+        )
+
+    async def pop_convert_list_pending(
+        self, chat_id: int, msg_id: int,
+    ) -> str | None:
+        """Атомарный GETDEL — защита от double-reply / race."""
+        r = await self._get()
+        return await r.getdel(f"convert_list_pending:{chat_id}:{msg_id}")
+
     async def restore_reminder_pending(
         self, chat_id: int, msg_id: int, pending: dict,
         carry_from: int | None = None,

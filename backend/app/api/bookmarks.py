@@ -31,6 +31,19 @@ class NLEditRequest(BaseModel):
     text: str
 
 
+class StructureAsListRequest(BaseModel):
+    # text=None → структурируем из raw_text закладки; иначе из явных пунктов.
+    text: str | None = None
+    # allow_single: юзер прислал пункты вручную → принимаем даже 1 пункт.
+    allow_single: bool = False
+
+
+class StructureAsListResponse(BaseModel):
+    structured: bool
+    reason: str = "ok"  # ok | empty | single_phrase
+    tasks_count: int = 0
+
+
 # Тикет 0rn: порог «материальной» правки текста. Если похожесть старого и
 # нового текста ниже порога — считаем, что смысл мог поменяться, и запускаем
 # полную переобработку (embedding + summary/title/теги). Выше порога (пара
@@ -504,6 +517,47 @@ async def nl_edit_bookmark(
 
     bookmark.structured_data = new_structured
     return bookmark
+
+
+@router.post(
+    "/{bookmark_id}/structure-as-list", response_model=StructureAsListResponse
+)
+async def structure_as_list(
+    bookmark_id: UUID,
+    data: StructureAsListRequest,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    """Превратить заметку в task_list (кнопка «Сделать списком» после
+    near-dup «сохрани как новую»).
+
+    Источник пунктов — `data.text` (явно присланные пункты) либо raw_text
+    закладки, если text не задан. structured=False, reason='single_phrase' —
+    текст одна фраза без выделяемых пунктов; закладка НЕ мутируется, бот
+    спросит пункты явно. См. bookmark-brain-c6ti.
+    """
+    result = await session.execute(
+        select(Bookmark).where(
+            Bookmark.id == bookmark_id, Bookmark.user_id == current_user.id
+        )
+    )
+    bookmark = result.scalar_one_or_none()
+    if bookmark is None:
+        raise HTTPException(status_code=404, detail="Bookmark not found")
+
+    from app.services.task_list_detector import force_structure_as_list
+
+    source = data.text if data.text is not None else (bookmark.raw_text or "")
+    structured, reason = force_structure_as_list(
+        source, allow_single=data.allow_single
+    )
+    if structured is None:
+        return StructureAsListResponse(structured=False, reason=reason)
+
+    bookmark.structured_data = structured
+    return StructureAsListResponse(
+        structured=True, reason="ok", tasks_count=len(structured["tasks"])
+    )
 
 
 @router.post("/{new_id}/merge-into/{old_id}", response_model=BookmarkResponse)

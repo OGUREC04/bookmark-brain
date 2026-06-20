@@ -372,3 +372,32 @@ def build_structured_data(detection: TaskListDetection) -> dict | None:
             for t in detection.tasks
         ],
     }
+
+
+def force_structure_as_list(
+    text: str, *, allow_single: bool = False,
+) -> tuple[dict | None, str]:
+    """Форсирует task_list-структуру для произвольного текста — конвертация
+    заметки в список (кнопка «Сделать списком» на dedup-подтверждении).
+
+    Прогоняет текст через ``detect`` с явным триггером (тот же путь, что у
+    голосового TODO), поэтому переиспользует всю разбивку: маркеры, запятые,
+    сплошную надиктовку по глаголам.
+
+    ``allow_single`` — порог числа пунктов:
+      - False (дефолт, авто-конвертация из текста заметки): нужно ≥2 пункта,
+        иначе ``reason='single_phrase'`` — бот спросит пункты явно, а не
+        плодит кривой 1-пунктовый список-клон заголовка.
+      - True (юзер ПРИСЛАЛ пункты вручную): принимаем даже 1 пункт.
+
+    Returns ``(structured_data | None, reason)``; reason ∈
+    {'ok', 'empty', 'single_phrase'}.
+    """
+    source = (text or "").strip()
+    if not source:
+        return None, "empty"
+    detection = detect(f"список задач:\n{source}")
+    min_items = 1 if allow_single else 2
+    if not detection.is_list or len(detection.tasks) < min_items:
+        return None, "single_phrase"
+    return build_structured_data(detection), "ok"

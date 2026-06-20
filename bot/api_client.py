@@ -339,6 +339,25 @@ class BackendClient:
         response.raise_for_status()
         return response.json()
 
+    async def structure_as_list(
+        self, token: str, bookmark_id: str,
+        text: str | None = None, allow_single: bool = False,
+    ) -> dict:
+        """POST /api/v1/bookmarks/{id}/structure-as-list — превратить заметку
+        в task_list. text=None → из raw_text закладки; иначе из явных пунктов.
+        allow_single=True → принять даже 1 пункт (юзер прислал пункты сам).
+
+        Возвращает {structured: bool, reason: str, tasks_count: int}.
+        """
+        response = await self.client.post(
+            f"/api/v1/bookmarks/{bookmark_id}/structure-as-list",
+            headers={"Authorization": f"Bearer {token}"},
+            json={"text": text, "allow_single": allow_single},
+            timeout=40.0,
+        )
+        response.raise_for_status()
+        return response.json()
+
     async def merge_task_list(
         self, token: str, new_id: str, old_id: str
     ) -> dict:
