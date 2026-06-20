@@ -401,3 +401,58 @@ def force_structure_as_list(
     if not detection.is_list or len(detection.tasks) < min_items:
         return None, "single_phrase"
     return build_structured_data(detection), "ok"
+
+
+# Явные временные маркеры в тексте пункта (дата / срок / время). Word-boundary
+# везде, чтобы НЕ ловить «к зубному», «майку», «срочно» как даты.
+_TEMPORAL_RE = re.compile(
+    r"\b(сегодня|завтра|послезавтра|вчера|сейчас)\b"
+    r"|\b(пн|вт|ср|чт|пт|сб|вс)\b"
+    r"|\b(понедельник\w*|вторник\w*|сред[ауыеи]|четверг\w*|пятниц\w*|суббот\w*|воскресень\w*)\b"
+    r"|\b(январ\w*|феврал\w*|март\w*|апрел\w*|мая|май|июн\w*|июл\w*|август\w*|сентябр\w*|октябр\w*|ноябр\w*|декабр\w*)\b"
+    r"|\bна\s+(эт\w+|следующ\w+|выходн\w+|праздник\w+|недел\w+)"
+    r"|\bконц\w+\s+(эт\w+\s+)?недел\w+"
+    r"|\bчерез\s+(\d+|час\w*|день|дн\w+|недел\w+|минут\w*|месяц\w*|год\w*|полчаса)"
+    r"|\b\d{1,2}[:.]\d{2}\b"
+    r"|\b\d{1,2}[./]\d{1,2}\b"
+    r"|\bв\s+\d{1,2}\b",
+    re.IGNORECASE | re.UNICODE,
+)
+
+
+def has_temporal_marker(text: str) -> bool:
+    """True если в тексте есть явный временной маркер (дата/срок/время).
+
+    Гейт против LLM-галлюцинации дедлайнов: для пунктов без даты
+    («купить молоко») extraction-пасс не запускаем и фантомные today-дедлайны
+    не появляются (баг /todo → ⏰ сегодня на всех пунктах).
+    """
+    return bool(text and _TEMPORAL_RE.search(text))
+
+
+def strip_hallucinated_deadlines(
+    original_texts: list[str], structured: dict | None,
+) -> dict | None:
+    """Снимает дедлайны, которые LLM повесил на пункты БЕЗ даты в исходном
+    тексте (GigaChat любит ставить «сегодня» на всё, см. инстинкт проекта).
+
+    Матчим по индексу исходные строки пунктов с результатом extraction-пасса;
+    если у пункта нет временного маркера в оригинале, а дедлайн появился —
+    обнуляем. Длины разошлись (LLM добавил/убрал пункт) → не трогаем (доверяем).
+    Иммутабельно: возвращает новый structured.
+    """
+    if not structured or not isinstance(structured, dict):
+        return structured
+    tasks = structured.get("tasks")
+    if not isinstance(tasks, list) or len(tasks) != len(original_texts):
+        return structured
+    new_tasks = []
+    for orig, task in zip(original_texts, tasks):
+        if (
+            isinstance(task, dict)
+            and task.get("deadline")
+            and not has_temporal_marker(orig)
+        ):
+            task = {**task, "deadline": None}
+        new_tasks.append(task)
+    return {**structured, "tasks": new_tasks}

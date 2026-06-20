@@ -7,6 +7,7 @@ backend/app/services/task_list_renderer.py (синхронизация вруч�
 from __future__ import annotations
 
 from datetime import datetime
+from html import escape
 
 from shared.messages import compose, reply_hint_compact
 
@@ -40,7 +41,9 @@ def _items_block(tasks: list[dict]) -> tuple[str, int]:
     lines: list[str] = []
     for i, t in enumerate(tasks, start=1):
         check = "✅" if t.get("done") else "☐"
-        text = t.get("text", "")
+        # HTML-escape: текст пункта идёт в parse_mode=HTML; «A < B», «C++»,
+        # «A&B» иначе ломают разметку (TelegramBadRequest) или инжектят теги.
+        text = escape(t.get("text", "") or "")
         dl_tag = ""
         deadline = t.get("deadline")
         if deadline:
@@ -56,7 +59,7 @@ def _items_block(tasks: list[dict]) -> tuple[str, int]:
             lines.append(f"{check} {i}. {text}{dl_tag}")
         note = t.get("note")
         if note:
-            lines.append(f"   <i>↳ {note}</i>")
+            lines.append(f"   <i>↳ {escape(str(note))}</i>")
     done = sum(1 for t in tasks if t.get("done"))
     return "\n".join(lines), done
 

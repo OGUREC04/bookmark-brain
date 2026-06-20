@@ -251,33 +251,10 @@ async def handle_text(message: types.Message, api, store=None):
     catch-all'ом «Сохранить как заметку?». Reply на чужое/своё
     сообщение по-прежнему сохраняется заметкой (regression-safe).
     """
-    # Pending dedup: следующее сообщение обрабатывается как ответ на dedup
-    if store and not message.reply_to_message:
-        pending_mid = await store.get_pending_dedup(message.chat.id)
-        if pending_mid:
-            from bot.common import send_ephemeral
-            from bot.handlers.tasks import handle_pending_dedup, parse_dedup_intent
-            dedup = await store.get_general_dedup(message.chat.id, pending_mid)
-            if dedup:
-                intent = parse_dedup_intent(message.text or "")
-                if intent != "unknown":
-                    await handle_pending_dedup(
-                        message, api, store, dedup, intent, pending_mid,
-                    )
-                    return
-                else:
-                    # Неизвестное — переспрашиваем, не пускаем в обычный flow
-                    await send_ephemeral(
-                        message,
-                        "Не понял. Напиши или ответь reply:\n"
-                        "открой / удали / обнови / сохрани как новую",
-                        delay=10,
-                    )
-                    try:
-                        await message.delete()
-                    except Exception:
-                        pass
-                    return
+    # Дедуп резолвится ТОЛЬКО через reply на алерт (правило «ответ — только
+    # reply»). Обычное сообщение НЕ перехватывается как ответ на дубль — иначе
+    # любой текст падал в «Не понял …» и зацикливался. Reply-флоу — в
+    # reminders/_reply_dispatch → tasks dedup._handle_general_dedup_reply.
 
     token = await ensure_user(message, api)
     if not token:

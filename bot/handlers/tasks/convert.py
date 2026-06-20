@@ -2,15 +2,13 @@
 
 Контекст (c6ti): near-dup алерт показывается ТОЛЬКО для простых заметок —
 списки и напоминания его пропускают (см. processing.py:_is_task_list_early /
-_reminder_intent_early). Поэтому «сохрани как новую» всегда давало заметку,
-а выбрать тип было негде. Эти две кнопки на подтверждении save_new закрывают
-дырку:
+_reminder_intent_early). Поэтому «сохрани как новую» всегда давало заметку, а
+выбрать тип было негде. Две НЕобязательные кнопки на подтверждении save_new:
 
-  d2l:{bid} — превратить заметку в task_list
+  d2l:{bid} — превратить заметку в task_list (из её же текста, сразу)
   d2r:{bid} — поставить напоминание на текст заметки (спросит «Когда?»)
 
-Кнопки НЕобязательные: не нажал → осталась заметка (дефолт, как было).
-Owns its own Router (нативный aiogram include_router из tasks/__init__.py).
+Не нажал → осталась заметка (дефолт). Own Router (include из tasks/__init__.py).
 """
 from __future__ import annotations
 
@@ -27,14 +25,6 @@ from shared.messages import compose, reply_hint_full
 logger = logging.getLogger(__name__)
 
 router = Router()
-
-
-# Промпт «пришли пункты» — когда текст заметки одна фраза без выделяемых
-# пунктов (вариант (а): спрашиваем пункты явно, а не клонируем заголовок).
-_ASK_ITEMS = compose(
-    reply_hint_full(action="прислать пункты списка"),
-    "📋 Пришли пункты — по одному на строку или через запятую.",
-)
 
 # Промпт «Когда напомнить?» — строим локально из shared.messages + bot.common
 # (НЕ импортируем reminders._reply_prompt: feature-пакеты независимы, см.
@@ -62,7 +52,9 @@ def saved_new_keyboard(bookmark_id: str) -> dict:
     ]]}
 
 
-async def _materialize_list(bot, chat_id: int, token: str, api, store, bid: str, user_id: int) -> None:
+async def _materialize_list(
+    bot, chat_id: int, token: str, api, store, bid: str, user_id: int,
+) -> None:
     """Отрендерить + запинить только что структурированный список."""
     from bot.handlers.settings import is_silent
 
@@ -75,7 +67,12 @@ async def _materialize_list(bot, chat_id: int, token: str, api, store, bid: str,
 
 @router.callback_query(F.data.startswith("d2l:"))
 async def cb_convert_to_list(callback: CallbackQuery, api, store):
-    """📋 Сделать списком — структурируем текст заметки и пиним список."""
+    """📋 Сделать списком — структурируем текст заметки и пиним список СРАЗУ.
+
+    Текст уже отправлен юзером, поэтому не переспрашиваем пункты: текст с
+    несколькими пунктами → список из них; фраза-заголовок → список из 1 пункта
+    (allow_single), дальше растишь через «добавь …».
+    """
     if not isinstance(callback.message, Message):
         await callback.answer("Сообщение устарело.", show_alert=True)
         return
@@ -89,40 +86,58 @@ async def cb_convert_to_list(callback: CallbackQuery, api, store):
     if not token:
         await callback.answer("Не получилось авторизоваться")
         return
-
     if callback.from_user is None:
         await callback.answer("Не удалось определить пользователя")
         return
+
     chat_id = callback.message.chat.id
+    # Анти-двойной-тап: оптимистично снимаем кнопки. Второй тап придёт на уже
+    # отредактированное сообщение → "not modified" → выходим (иначе два
+    # запинённых списка).
     try:
-        resp = await api.structure_as_list(token, bid)
+        await callback.message.edit_text("⏳ Делаю список…", reply_markup=None)
+    except TelegramBadRequest as e:
+        if "not modified" in str(e).lower() or "not found" in str(e).lower():
+            await callback.answer()
+            return
+
+    try:
+        # allow_single: фраза-заголовок → 1-пунктовый список, без переспроса.
+        resp = await api.structure_as_list(token, bid, allow_single=True)
     except Exception as e:
         logger.warning(f"cb_convert_to_list: structure_as_list failed: {e}")
         await callback.answer("Не получилось сделать список")
         return
 
-    if resp.get("structured"):
+    if not resp.get("structured"):
+        # Сюда дойдёт только пустой текст заметки.
+        try:
+            await callback.message.edit_text("✅ Сохранено как новая заметка")
+        except TelegramBadRequest:
+            pass
+        await callback.answer("Пустая заметка — нечего в список")
+        return
+
+    try:
         await _materialize_list(
             callback.message.bot, chat_id, token, api, store, bid,
             callback.from_user.id,
         )
+    except Exception as e:
+        # structured_data уже выставлен бэкендом — список есть в БД, но
+        # рендер/пин упал. Не оставляем сообщение залипшим на «⏳».
+        logger.warning(f"cb_convert_to_list: materialize failed: {e}")
         try:
-            await callback.message.edit_text("📋 Готово — список создан.", reply_markup=None)
+            await callback.message.edit_text("✅ Сохранено как новая заметка")
         except TelegramBadRequest:
             pass
-        await callback.answer("Список создан")
+        await callback.answer("Не получилось показать список — он сохранён, см. /list")
         return
-
-    # single_phrase / empty — спрашиваем пункты явно (вариант (а)).
     try:
-        await callback.message.edit_text(_ASK_ITEMS, parse_mode="HTML", reply_markup=None)
+        await callback.message.edit_text("📋 Готово — список создан.")
     except TelegramBadRequest:
         pass
-    try:
-        await store.store_convert_list_pending(chat_id, callback.message.message_id, bid)
-    except Exception as e:
-        logger.warning(f"cb_convert_to_list: store pending failed: {e}")
-    await callback.answer()
+    await callback.answer("Список создан")
 
 
 @router.callback_query(F.data.startswith("d2r:"))
@@ -144,10 +159,13 @@ async def cb_convert_to_reminder(callback: CallbackQuery, api, store):
 
     chat_id = callback.message.chat.id
     # Снимаем кнопки с подтверждения — заметка сохранена, тип выбран.
+    # Анти-двойной-тап: второй тап → "not modified" → выходим (без 2-го промпта).
     try:
         await callback.message.edit_text("✅ Сохранено как новая заметка", reply_markup=None)
-    except TelegramBadRequest:
-        pass
+    except TelegramBadRequest as e:
+        if "not modified" in str(e).lower():
+            await callback.answer()
+            return
 
     # Промпт «Когда напомнить?» отдельным сообщением — reply на него ловит
     # существующий reminder-reply флоу (kind=bookmark → текст из закладки).
@@ -161,86 +179,3 @@ async def cb_convert_to_reminder(callback: CallbackQuery, api, store):
         except Exception as e:
             logger.warning(f"cb_convert_to_reminder: store pending failed: {e}")
     await callback.answer()
-
-
-async def handle_convert_list_reply(message: Message, api, store) -> bool:
-    """Reply с пунктами на промпт «пришли пункты» (single-phrase ветка d2l).
-
-    Возвращает True если reply относится к convert-list флоу (обработан).
-    False — этот reply нас не касается, идёт дальше по диспетчеру.
-    """
-    rt = message.reply_to_message
-    if rt is None:
-        return False
-    chat_id = message.chat.id
-    try:
-        bid = await store.pop_convert_list_pending(chat_id, rt.message_id)
-    except Exception as e:
-        logger.debug(f"handle_convert_list_reply: pop failed: {e}")
-        return False
-    if not bid:
-        return False
-
-    from bot.common.auth import ensure_user
-    token = await ensure_user(message, api)
-    if not token:
-        await message.answer("⚠️ Не удалось авторизоваться. Попробуй ещё раз.")
-        return True
-    if message.from_user is None:
-        return True
-
-    text = (message.text or "").strip()
-    if not text:
-        # Пустой reply — переспрашиваем, кладём pending обратно под тот же промпт.
-        try:
-            await store.store_convert_list_pending(chat_id, rt.message_id, bid)
-        except Exception as e:
-            logger.debug(f"handle_convert_list_reply: re-store failed: {e}")
-        await message.answer(_ASK_ITEMS, parse_mode="HTML")
-        return True
-
-    try:
-        # allow_single: юзер прислал пункты сам — принимаем даже один.
-        resp = await api.structure_as_list(token, bid, text=text, allow_single=True)
-    except Exception as e:
-        logger.warning(f"handle_convert_list_reply: structure failed: {e}")
-        await message.answer("Не получилось сделать список — попробуй ещё раз.")
-        return True
-
-    if not resp.get("structured"):
-        await message.answer(_ASK_ITEMS, parse_mode="HTML")
-        try:
-            await store.store_convert_list_pending(chat_id, rt.message_id, bid)
-        except Exception as e:
-            logger.debug(f"handle_convert_list_reply: re-store (single) failed: {e}")
-        return True
-
-    await _materialize_list(
-        message.bot, chat_id, token, api, store, bid, message.from_user.id,
-    )
-    # Чистим промпт «пришли пункты» и reply юзера — список сам себе фидбэк.
-    for mid in (rt.message_id, message.message_id):
-        try:
-            await message.bot.delete_message(chat_id, mid)
-        except TelegramBadRequest:
-            pass
-    return True
-
-
-@router.message(
-    F.reply_to_message & F.reply_to_message.from_user.is_bot
-    & F.text & ~F.text.startswith("/")
-)
-async def _convert_reply_dispatch(message: Message, api, store):
-    """Reply-перехват для convert-list (свой Redis-ключ convert_list_pending).
-
-    Живёт в tasks-роутере (а не в reminders/reply.py) — feature-пакеты
-    независимы (import-linter). Не наш reply → SkipHandler, событие падает
-    дальше на остальные reply-обработчики tasks (nl_edit и т.д.).
-    """
-    from aiogram.dispatcher.event.bases import SkipHandler
-
-    handled = await handle_convert_list_reply(message, api, store)
-    if handled:
-        return
-    raise SkipHandler()

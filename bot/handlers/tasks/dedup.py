@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from html import escape
 
 from aiogram import F, Router
 from aiogram.exceptions import TelegramBadRequest
@@ -430,18 +431,31 @@ async def _handle_general_dedup_reply(
                 and structured.get("type") == "task_list"
             )
 
-            # Превью оригинала: заголовок + краткое содержание
-            preview = f"📖 <b>{title}</b>"
-            if summary:
-                preview += f"\n{summary[:300]}"
-
-            # Где найти оригинал
+            # Превью оригинала.
             if is_task_list:
-                where = (
-                    "<i>📋 Список уже в чате — прокрути выше до закреплённого "
-                    "сообщения. Или /list — все списки и закладки.</i>"
+                # Показываем САМИ пункты (чекбоксы), а не только заголовок —
+                # иначе «открыть список» бесполезно: юзер не видит, что внутри.
+                tasks = structured.get("tasks") or []
+                done = sum(
+                    1 for t in tasks if isinstance(t, dict) and t.get("done")
                 )
+                lines = [
+                    f"📖 <b>{escape(title)}</b> "
+                    f"<i>({done}/{len(tasks)} выполнено)</i>"
+                ]
+                for i, t in enumerate(tasks[:15], 1):
+                    if not isinstance(t, dict):
+                        continue
+                    check = "✅" if t.get("done") else "☐"
+                    lines.append(f"{check} {i}. {escape(t.get('text', '') or '')}")
+                if len(tasks) > 15:
+                    lines.append(f"<i>…и ещё {len(tasks) - 15}</i>")
+                preview = "\n".join(lines)
+                where = "<i>Это старый список. /list — все списки.</i>"
             else:
+                preview = f"📖 <b>{escape(title)}</b>"
+                if summary:
+                    preview += f"\n{escape(summary[:300])}"
                 where = (
                     "<i>📚 Все закладки — /list. "
                     "Поиск по смыслу — /search &lt;запрос&gt;.</i>"

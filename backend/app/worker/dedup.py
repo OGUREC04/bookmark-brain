@@ -84,12 +84,9 @@ async def _store_general_dedup(
                 }),
                 ex=24 * 3600,
             )
-            # pending_dedup — чтобы следующее сообщение без reply тоже работало
-            await r.set(
-                f"pending_dedup:{chat_id}",
-                str(alert_msg_id),
-                ex=5 * 60,  # 5 минут
-            )
+            # pending_dedup НЕ ставим: дедуп резолвится только через reply на
+            # алерт (правило «ответ — только reply»). Раньше next-message
+            # перехват зацикливал любой текст в «Не понял …».
         finally:
             await r.aclose()
     except Exception as e:

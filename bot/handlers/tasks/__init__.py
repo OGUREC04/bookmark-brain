@@ -46,7 +46,6 @@ from .confirm import router as _confirm_router
 from .convert import (
     cb_convert_to_list,
     cb_convert_to_reminder,
-    handle_convert_list_reply,
     saved_new_keyboard,
 )
 from .convert import router as _convert_router
@@ -155,7 +154,6 @@ __all__ = [
     "cmd_lists",
     "cmd_todo",
     "cmd_unpin_all",
-    "handle_convert_list_reply",
     "handle_pending_dedup",
     "msg_nl_edit_on_reply",
     "saved_new_keyboard",

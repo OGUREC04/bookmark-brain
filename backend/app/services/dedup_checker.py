@@ -140,6 +140,21 @@ def _dup_overlap(
     return _text_overlap(new_text, existing_text)
 
 
+def _is_completed_task_list(structured) -> bool:
+    """True если это task_list и ВСЕ пункты выполнены.
+
+    Выполненный список НЕ блокирует создание нового: юзер закрыл старый и
+    заводит свежий — это не дубль-шум, а новый цикл (баг: «такое уже есть» на
+    полностью завершённом списке).
+    """
+    if not isinstance(structured, dict) or structured.get("type") != "task_list":
+        return False
+    tasks = structured.get("tasks") or []
+    return bool(tasks) and all(
+        t.get("done") for t in tasks if isinstance(t, dict)
+    )
+
+
 async def find_near_duplicate(
     session: AsyncSession,
     bookmark_id: UUID,
@@ -201,6 +216,10 @@ async def find_near_duplicate(
             isinstance(structured, dict)
             and structured.get("type") == "task_list"
         )
+
+        # Выполненный список не блокирует — юзер начал новый цикл, не дубль.
+        if is_task_list and _is_completed_task_list(structured):
+            continue
 
         # Высокий embedding similarity (>0.95) — сразу дубль
         if sim >= 0.95:
@@ -285,6 +304,9 @@ async def _find_by_text_overlap(
         # task_list ↔ task_list — по пунктам (bug u4z), иначе по raw_text.
         overlap = _dup_overlap(raw_text, new_structured, row.raw_text, structured)
         if overlap >= TEXT_OVERLAP_THRESHOLD:
+            # Выполненный список не блокирует создание нового (см. Pass 1).
+            if _is_completed_task_list(structured):
+                continue
             is_task_list = (
                 isinstance(structured, dict)
                 and structured.get("type") == "task_list"
@@ -361,9 +383,13 @@ async def find_similar_unclosed_task_list(
         tasks = structured.get("tasks", [])
         if not tasks:
             continue
-        has_undone = any(not t.get("done", False) for t in tasks)
+        has_undone = any(
+            not t.get("done", False) for t in tasks if isinstance(t, dict)
+        )
         if has_undone:
-            done_count = sum(1 for t in tasks if t.get("done", False))
+            done_count = sum(
+                1 for t in tasks if isinstance(t, dict) and t.get("done", False)
+            )
             return {
                 "id": str(row.id),
                 "title": row.title,

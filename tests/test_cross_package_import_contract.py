@@ -113,14 +113,15 @@ def test_scan_found_cross_package_imports():
     """
     assert _IMPORTS, "import scanner found nothing — scan logic is broken"
     # The known critical seam must be present in the scan: the start
-    # orchestration layer pulls the public cross-package dedup API from the
-    # tasks facade lazily. `start` is now a package (start/ingest.py owns the
-    # ingest flow), so match anywhere under bot/handlers/start/.
+    # orchestration layer pulls the public explicit-remind API from the
+    # reminders facade lazily. `start` is now a package (start/ingest.py owns
+    # the ingest flow), so match anywhere under bot/handlers/start/.
+    # (Was start -> tasks.handle_pending_dedup before dedup went reply-only.)
     assert any(
         ("bot/handlers/start/" in f or f.endswith("start.py"))
-        and name == "handle_pending_dedup"
+        and name == "process_explicit_remind_args"
         for f, _mod, name, _ln in _IMPORTS
-    ), "expected start -> tasks.handle_pending_dedup seam not detected"
+    ), "expected start -> reminders.process_explicit_remind_args seam not detected"
 
 
 @pytest.mark.parametrize(

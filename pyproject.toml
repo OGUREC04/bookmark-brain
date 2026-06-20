@@ -58,13 +58,13 @@ modules = [
 # reintroduce — reminders and tasks may only share via bot.common.
 #
 # ignore_imports: bot.handlers.start is the legitimate ORCHESTRATION hub —
-# it composes both features (e.g. routing a reply to dedup vs reminder).
-# Independence is about features not importing EACH OTHER directly; the
-# transitive path tasks → start → reminders is start doing its job, not a
-# lateral feature coupling. These two edges are the only allowed bridge.
+# it composes both features (e.g. routing explicit-remind from the ingest
+# catch-all). Independence is about features not importing EACH OTHER
+# directly; the path start → reminders is start doing its job, not a lateral
+# feature coupling. (The start → tasks bridge was removed when dedup went
+# reply-only: next-message dedup interception used to live in ingest.)
 ignore_imports = [
     "bot.handlers.start.ingest -> bot.handlers.reminders",
-    "bot.handlers.start.ingest -> bot.handlers.tasks",
 ]
 
 [[tool.importlinter.contracts]]

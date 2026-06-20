@@ -12,7 +12,11 @@ from app.services.embeddings import BaseEmbeddingService, EmbeddingError, Retrya
 from app.services.reminder_intent import detect_reminder_intent
 from app.services.reminder_router import ReminderForm
 from app.services.reminder_router import route as route_reminder
-from app.services.task_list_detector import build_structured_data
+from app.services.task_list_detector import (
+    build_structured_data,
+    has_temporal_marker,
+    strip_hallucinated_deadlines,
+)
 from app.services.task_list_detector import detect as detect_task_list
 
 logger = logging.getLogger(__name__)
@@ -198,32 +202,43 @@ class BookmarkProcessor:
             )
             structured = build_structured_data(detection)
             if structured is not None:
-                # Прогоняем через NL-редактор для извлечения дат из текста пунктов
-                # ("до вторника", "сегодня-завтра" → deadline поле)
-                try:
-                    from datetime import date as _date
+                # Извлечение дат из текста пунктов («до вторника» → deadline) —
+                # ТОЛЬКО если в пунктах есть временной маркер. Иначе LLM
+                # (GigaChat) галлюцинирует «сегодня» на пунктах без даты
+                # (баг /todo: ⏰ сегодня на всех). Гейт + пост-фильтр.
+                if any(has_temporal_marker(t) for t in detection.tasks):
+                    try:
+                        from datetime import date as _date
 
-                    from app.services.task_list_editor import apply_nl_edit
-                    _today = _date.today().isoformat()
-                    structured = await apply_nl_edit(
-                        structured,
-                        f"Сегодня {_today}. "
-                        "Для каждого пункта: если в тексте есть дата или срок "
-                        "(«до вторника», «сегодня-завтра», «на этой неделе» и т.п.) — "
-                        "1) поставь deadline в формате YYYY-MM-DD, "
-                        "2) ПОЛНОСТЬЮ УДАЛИ упоминание даты/срока из text. "
-                        "НЕ заменяй дату на ISO-формат в тексте — просто убери. "
-                        "Примеры: «Алгосы до вторника» → text=«Алгосы», deadline=«2026-05-06». "
-                        "«Узнать про возврат, сегодня-завтра» → text=«Узнать про возврат», deadline=завтра. "
-                        "Если даты нет — не трогай пункт.",
-                    )
-                except Exception as e:
-                    logger.debug(f"Deadline extraction failed for {bookmark_id}: {e}")
-                bookmark.structured_data = structured
-                # Если юзер явно попросил список — форсим item_type=action,
-                # даже если AI сказал что-то другое.
+                        from app.services.task_list_editor import apply_nl_edit
+                        _today = _date.today().isoformat()
+                        structured = await apply_nl_edit(
+                            structured,
+                            f"Сегодня {_today}. "
+                            "Для каждого пункта: если в тексте есть дата или срок "
+                            "(«до вторника», «сегодня-завтра», «на этой неделе» и т.п.) — "
+                            "1) поставь deadline в формате YYYY-MM-DD, "
+                            "2) ПОЛНОСТЬЮ УДАЛИ упоминание даты/срока из text. "
+                            "НЕ заменяй дату на ISO-формат в тексте — просто убери. "
+                            "Если даты в пункте НЕТ — оставь deadline=null, "
+                            "НЕ подставляй сегодняшнюю дату по умолчанию. "
+                            "Примеры: «Алгосы до вторника» → text=«Алгосы», deadline=«2026-05-06». "
+                            "«Узнать про возврат, сегодня-завтра» → text=«Узнать про возврат», deadline=завтра. "
+                            "Если даты нет — не трогай пункт.",
+                        )
+                    except Exception as e:
+                        logger.debug(f"Deadline extraction failed for {bookmark_id}: {e}")
+                    # Пост-фильтр: снять today-дедлайны, навешанные LLM на пункты
+                    # без даты в оригинале (mixed-кейс: часть с датой, часть без).
+                    structured = strip_hallucinated_deadlines(detection.tasks, structured)
+                # Явный триггер («сделай список:», /todo) → помечаем forced,
+                # чтобы worker создал список СРАЗУ, без оффера «Сделать список?»
+                # (переспрашивать после явной команды — лишний шаг). И форсим
+                # item_type=action, даже если AI сказал другое.
                 if detection.forced_by_user:
+                    structured = {**structured, "forced": True}
                     bookmark.item_type = "action"
+                bookmark.structured_data = structured
                 logger.info(
                     f"Bookmark {bookmark_id} detected as task_list "
                     f"({len(detection.tasks)} tasks, forced={detection.forced_by_user})"

@@ -492,7 +492,21 @@ async def _process_bookmark_task_impl(
                 # dedup-alert — разные слои UX). similar → post-confirm
                 # merge-alert (bot tlc). general_dup → отложенный
                 # near-dup при «Нет» (bot tlx).
-                if can_notify:
+                # Явный триггер (/todo, «сделай список:») → НЕ переспрашиваем
+                # «Сделать список?», создаём сразу (forced в structured_data).
+                _forced = bool(
+                    isinstance(bookmark.structured_data, dict)
+                    and bookmark.structured_data.get("forced")
+                )
+                if _forced:
+                    # forced — транзиентный маркер пропуска оффера; в БД его НЕ
+                    # храним (чистый structured_data — Mini App / nl_edit / dedup
+                    # не должны видеть лишний ключ).
+                    bookmark.structured_data = {
+                        k: v for k, v in bookmark.structured_data.items()
+                        if k != "forced"
+                    }
+                if can_notify and not _forced:
                     from .task_list_offer import _maybe_offer_task_list
                     if await _maybe_offer_task_list(
                         bookmark=bookmark, chat_id=chat_id,
