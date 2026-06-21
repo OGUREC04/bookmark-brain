@@ -208,7 +208,11 @@ def _split_runon_by_verbs(text: str) -> list[str]:
     if len(verb_idx) < 2:
         return []
     bounds = [0] + verb_idx[1:] + [len(words)]
-    result = [" ".join(words[a:b]).strip() for a, b in zip(bounds, bounds[1:])]
+    # strip(" \t,;:") — снимаем хвостовой разделитель на границе глаголов
+    # («позвонить в банк, оплатить …» → «позвонить в банк», а не «…банк,»).
+    result = [
+        " ".join(words[a:b]).strip(" \t,;:") for a, b in zip(bounds, bounds[1:])
+    ]
     result = [r for r in result if r]
     if len(result) < 2 or any(len(r) > MAX_TASK_LENGTH for r in result):
         return []
