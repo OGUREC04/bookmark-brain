@@ -58,7 +58,10 @@ def _offer_items_block(tasks: list) -> str:
     lines = []
     for tx in texts[:_MAX_OFFER_ITEMS]:
         if len(tx) > _MAX_OFFER_ITEM_LEN:
-            tx = tx[: _MAX_OFFER_ITEM_LEN - 1].rstrip() + "…"
+            # h3j2: показываем ровно _MAX_OFFER_ITEM_LEN значимых символов + «…».
+            # Раньше «- 1» → 79: пункт ровно 80 символов выводился целиком, а 81 —
+            # обрезался до 79 (скачок назад). Канон: len > лимита → лимит + «…».
+            tx = tx[:_MAX_OFFER_ITEM_LEN].rstrip() + "…"
         lines.append(f"• {html.escape(tx)}")
     if len(texts) > _MAX_OFFER_ITEMS:
         lines.append(f"…и ещё {len(texts) - _MAX_OFFER_ITEMS}")

@@ -320,6 +320,7 @@ async def backfill_bookmark_links(ctx: dict | None = None, *, batch_size: int = 
     from app.services.connections import build_links_for_bookmark
 
     processed = 0
+    failed = 0
     last_id = None
     async with async_session() as session:
         while True:
@@ -347,13 +348,18 @@ async def backfill_bookmark_links(ctx: dict | None = None, *, batch_size: int = 
                         session, row.id, row.user_id, emb_list,
                     )
                 except Exception as e:  # noqa: BLE001 — не валим весь бэкфилл
-                    logger.debug(f"backfill: link build failed for {row.id}: {e}")
+                    # one-shot, запускается оператором руками — сбои должны быть
+                    # видны (warning), а не теряться в debug.
+                    failed += 1
+                    logger.warning(f"backfill: link build failed for {row.id}: {e}")
                 processed += 1
                 last_id = row.id
 
             await session.commit()
 
-    logger.info(f"backfill_bookmark_links: processed {processed} bookmark(s)")
+    logger.info(
+        f"backfill_bookmark_links: processed {processed} bookmark(s), {failed} failed"
+    )
     return processed
 
 
