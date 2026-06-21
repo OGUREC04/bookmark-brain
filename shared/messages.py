@@ -25,14 +25,14 @@ def reply_hint_full(action: str | None = None) -> str:
     """
     tail = f", чтобы {action}" if action else ""
     return (
-        f"↩️ <b>Сделай Reply</b> на это сообщение{tail} "
+        f"⚡ <b>Сделай Reply</b> на это сообщение{tail} "
         "(зажми/свайпни сообщение → «Ответить»)"
     )
 
 
 def reply_hint_compact(action: str) -> str:
     """Компактная reply-подсказка для постоянного контента (списки и т.п.)."""
-    return f"↩️ <b>Reply</b> на это сообщение, чтобы {action}"
+    return f"⚡ <b>Reply</b> на это сообщение, чтобы {action}"
 
 
 def compose(*parts: str | None) -> str:

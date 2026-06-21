@@ -49,7 +49,7 @@ BULLET_RE = re.compile(
 
 # Служебные строки нашего рендера — игнорируем при подсчёте preamble и tasks.
 BOT_RENDERED_NOISE_RE = re.compile(
-    r"^\s*(?:📋|↩️|💬|⏰|"
+    r"^\s*(?:📋|↩️|⚡|💬|⏰|"
     r"Выполнено:|Reply:|Примеры:|Ответь reply|Ответь на это сообщение|"
     r"\[\d{2}:\d{2}\])",
     re.IGNORECASE,

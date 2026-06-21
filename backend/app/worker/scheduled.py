@@ -636,7 +636,7 @@ async def stale_list_nudge(ctx: dict) -> None:
                 f"📋 <b>{title}</b>{date_str}\n"
                 f"Выполнено: {done}/{total}\n"
                 f"Осталось: {undone_preview}\n\n"
-                f"↩️ <i>Ответь reply: перенести / закрыть / оставить</i>"
+                f"⚡ <i>Ответь reply: перенести / закрыть / оставить</i>"
             )
 
             resp = await _send_message(telegram_id, nudge_text)

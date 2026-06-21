@@ -159,7 +159,7 @@ async def _purge_reminder_dialog(
 def _reply_prompt(question: str, examples: str = TIME_EXAMPLES) -> str:
     """Унифицированный текст prompt'а для ввода времени через reply.
 
-    UX: Reply подсвечено максимально явно — отдельная строка с ↩️ + жирный
+    UX: Reply подсвечено максимально явно — отдельная строка с ⚡ + жирный
     текст + конкретный пример. Без этого юзеры шлют next-message вместо
     reply и попадают в catch-all → save_yes/no → «Не сохраняю».
     См. bookmark-brain-4dr.
