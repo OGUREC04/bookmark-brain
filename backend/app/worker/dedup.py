@@ -121,17 +121,18 @@ async def _store_dedup_alert(
         logger.debug(f"store_dedup_alert failed: {e}")
 
 
-def _build_dedup_alert(similar: dict, new_bookmark_id: str) -> tuple[str, dict]:
-    """Текст и кнопки для dedup-alert.
+def _build_dedup_alert(
+    similar: dict, new_bookmark_id: str, new_structured: dict | None = None,
+) -> tuple[str, dict]:
+    """Текст и кнопки для merge-alert (GitHub-style дифф).
 
-    similar — dict из find_similar_unclosed_task_list().
-    Возвращает (text, reply_markup).
+    similar — dict из find_similar_unclosed_task_list() (несёт structured_data
+    старого списка). new_structured — состав НОВОГО списка. Показываем что есть
+    сейчас + что добавится. Возвращает (text, reply_markup).
     """
-    title = similar.get("title") or "Список задач"
-    done = similar.get("done_count", 0)
-    total = similar.get("total_count", 0)
-    created = similar.get("created_at")
+    from shared.dup_preview import merge_diff_preview
 
+    created = similar.get("created_at")
     date_str = ""
     if created:
         try:
@@ -142,11 +143,8 @@ def _build_dedup_alert(similar: dict, new_bookmark_id: str) -> tuple[str, dict]:
         except Exception:
             pass
 
-    text = (
-        f"🔄 Похожий список <b>{title}</b>{date_str}\n"
-        f"({done}/{total} выполнено)\n\n"
-        f"Объединить новые задачи в него?"
-    )
+    diff = merge_diff_preview(similar.get("structured_data"), new_structured)
+    text = f"🔄 <b>Объединить списки?</b>{date_str}\n\n{diff}"
 
     # Callback key = new_bookmark_id (UUID, 36 chars + prefix 3 = 39 bytes < 64 limit).
     # Это позволяет отправить кнопки сразу без PLACEHOLDER + re-edit.

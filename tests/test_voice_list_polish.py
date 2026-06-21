@@ -270,8 +270,8 @@ class TestConfirmDoesNotDeleteMedia:
             assert call.args != (100, 42)
 
     async def test_post_confirm_dedup_alert_when_similar(self):
-        """Worker нашёл similar и прокинул в pending → bot tlc после
-        пина шлёт «🔄 Похожий список — объединить?» (post-confirm)."""
+        """Worker нашёл similar и прокинул в pending → bot tlc после пина шлёт
+        merge-дифф «Объединить списки?» (текущие пункты + что добавится)."""
         from bot.handlers.tasks import cb_tasklist_confirm
         cb = _make_cb()
         store = AsyncMock()
@@ -280,8 +280,11 @@ class TestConfirmDoesNotDeleteMedia:
             "silent": False, "is_media_src": False,
             "similar": {
                 "id": "old-bid", "title": "Старый",
-                "done_count": 1, "total_count": 3,
+                "done_count": 1, "total_count": 1,
                 "created_at": "2026-05-19T10:00:00",
+                "structured_data": {"type": "task_list", "tasks": [
+                    {"text": "старый пункт", "done": True},
+                ]},
             },
         })
         api = AsyncMock()
@@ -297,7 +300,10 @@ class TestConfirmDoesNotDeleteMedia:
         # Два send_message: первый — сам список (999), второй — dedup alert
         assert cb.message.bot.send_message.await_count >= 2
         alert_call = cb.message.bot.send_message.await_args_list[-1]
-        assert "Похожий список" in alert_call.args[1]
+        alert_text = alert_call.args[1]
+        assert "Объединить списки?" in alert_text   # merge-дифф headline
+        assert "старый пункт" in alert_text          # текущий пункт старого списка
+        assert "➕ a" in alert_text                   # добавится из нового
         # store_dedup_alert вызван
         store.store_dedup_alert.assert_awaited()
         args = store.store_dedup_alert.await_args.args

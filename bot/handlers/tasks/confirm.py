@@ -131,8 +131,17 @@ async def cb_tasklist_confirm(callback: CallbackQuery, api, store=None):
     # прокинул его в pending; теперь спрашиваем про объединение.
     similar = pending.get("similar")
     if similar and isinstance(similar, dict) and similar.get("id"):
+        # Состав НОВОГО списка — для merge-диффа (что добавится).
+        try:
+            _new_bm = await api.get_bookmark(token, bid)
+            _new_structured = (
+                _new_bm.get("structured_data") if isinstance(_new_bm, dict) else None
+            )
+        except Exception:
+            _new_structured = None
         await _send_dedup_alert(
             callback.message.bot, chat_id, bid, new_msg_id, similar, store,
+            new_structured=_new_structured,
         )
 
     await callback.answer("Список создан ✅")
@@ -145,7 +154,6 @@ async def _send_general_dedup_alert(
     Зеркало worker'овской ветки: тот же текст, тот же state, тот же
     reply-флоу (`dedup._handle_general_dedup_reply` подхватит)."""
     title = general_dup.get("title") or "Без названия"
-    dup_type = "список" if general_dup.get("is_task_list") else "закладку"
     created = general_dup.get("created_at")
     date_str = ""
     if created:
@@ -157,9 +165,16 @@ async def _send_general_dedup_alert(
             pass
     similarity = float(general_dup.get("similarity") or 0.0)
     prefix = "⚠️ Уже есть почти такая же" if similarity >= 0.95 else "🔄 Похожая запись уже сохранялась"
+    # Состав записи (dup_preview): список → пункты, заметка → заголовок+содержание.
+    from shared.dup_preview import dup_preview
     alert_text = compose(
         reply_hint_full(action="выбрать что делать с дублем"),
-        f"{prefix} {dup_type}: <b>{title}</b>{date_str}",
+        f"{prefix}{date_str}:",
+        dup_preview(
+            title=title,
+            summary=general_dup.get("summary"),
+            structured_data=general_dup.get("structured_data"),
+        ),
         DEDUP_COMMANDS,
     )
     gen_id = general_dup.get("id")
@@ -189,13 +204,10 @@ async def _send_general_dedup_alert(
 
 async def _send_dedup_alert(
     bot, chat_id: int, new_bid: str, new_msg_id: int,
-    similar: dict, store,
+    similar: dict, store, new_structured: dict | None = None,
 ) -> None:
-    """Отправляет «🔄 Похожий список — объединить?» после подтверждения
-    создания. Зеркало worker._build_dedup_alert + _store_dedup_alert."""
-    title = similar.get("title") or "Список задач"
-    done = similar.get("done_count", 0)
-    total = similar.get("total_count", 0)
+    """Отправляет merge-alert (GitHub-style дифф) после подтверждения создания.
+    Зеркало worker._build_dedup_alert + _store_dedup_alert."""
     created = similar.get("created_at")
     date_str = ""
     if created:
@@ -205,11 +217,9 @@ async def _send_dedup_alert(
             date_str = f" от {dt.strftime('%d.%m')}"
         except Exception:
             pass
-    text = (
-        f"🔄 Похожий список <b>{title}</b>{date_str}\n"
-        f"({done}/{total} выполнено)\n\n"
-        f"Объединить новые задачи в него?"
-    )
+    from shared.dup_preview import merge_diff_preview
+    diff = merge_diff_preview(similar.get("structured_data"), new_structured)
+    text = f"🔄 <b>Объединить списки?</b>{date_str}\n\n{diff}"
     sim_id = similar.get("id")
     if sim_id is None:
         logger.warning(

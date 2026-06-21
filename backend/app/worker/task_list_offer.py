@@ -120,6 +120,7 @@ async def _maybe_offer_task_list(
             "title": similar.get("title"),
             "done_count": int(similar.get("done_count", 0) or 0),
             "total_count": int(similar.get("total_count", 0) or 0),
+            "structured_data": similar.get("structured_data"),  # состав старого списка для merge-диффа
             "created_at": (
                 created.isoformat() if hasattr(created, "isoformat") else created
             ),
@@ -134,6 +135,8 @@ async def _maybe_offer_task_list(
             "title": general_dup.get("title") or "Без названия",
             "is_task_list": bool(general_dup.get("is_task_list")),
             "similarity": float(general_dup.get("similarity") or 0.0),
+            "summary": general_dup.get("summary"),  # состав заметки в алерте
+            "structured_data": general_dup.get("structured_data"),  # состав списка
             "created_at": (
                 gc.isoformat() if hasattr(gc, "isoformat") else gc
             ),

@@ -237,6 +237,7 @@ async def find_near_duplicate(
             "summary": row.summary,
             "item_type": row.item_type,
             "is_task_list": is_task_list,
+            "structured_data": structured,  # для состава в dedup-алерте
             "created_at": row.created_at,
             "similarity": sim,
         }
@@ -321,6 +322,7 @@ async def _find_by_text_overlap(
                 "summary": row.summary,
                 "item_type": row.item_type,
                 "is_task_list": is_task_list,
+                "structured_data": structured,  # для состава в dedup-алерте
                 "created_at": row.created_at,
                 "similarity": overlap,  # используем overlap как similarity
             }

@@ -390,7 +390,6 @@ async def _process_bookmark_task_impl(
                 )
                 if dup:
                     dup_title = dup.get("title") or "Без названия"
-                    dup_type = "список" if dup.get("is_task_list") else "закладку"
                     date_str = ""
                     created = dup.get("created_at")
                     if created:
@@ -410,12 +409,18 @@ async def _process_bookmark_task_impl(
                     else:
                         prefix = "🔄 Похожая запись уже сохранялась"
 
-                    # Канон: reply-подсказка ПЕРВОЙ → заголовок → команды.
-                    # DEDUP_COMMANDS из shared.messages — один в один с
+                    # Канон: reply-подсказка ПЕРВОЙ → заголовок-префикс →
+                    # СОСТАВ записи (dup_preview) → команды. Один в один с
                     # bot confirm.py (_send_general_dedup_alert).
+                    from shared.dup_preview import dup_preview
                     alert_text = compose(
                         reply_hint_full(action="выбрать что делать с дублем"),
-                        f"{prefix} {dup_type}: <b>{dup_title}</b>{date_str}",
+                        f"{prefix}{date_str}:",
+                        dup_preview(
+                            title=dup_title,
+                            summary=dup.get("summary"),
+                            structured_data=dup.get("structured_data"),
+                        ),
                         DEDUP_COMMANDS,
                     )
 
@@ -573,7 +578,9 @@ async def _process_bookmark_task_impl(
                         try:
                             sim_id = similar.get("id") if similar else None
                             if similar and sim_id is not None:
-                                alert_text, alert_buttons = _build_dedup_alert(similar, bookmark_id)
+                                alert_text, alert_buttons = _build_dedup_alert(
+                                    similar, bookmark_id, bookmark.structured_data,
+                                )
                                 alert_resp = await _send_message(chat_id, alert_text, alert_buttons)
                                 if alert_resp:
                                     # Redis key по new_bid (а не msg_id) — кнопки уже содержат bid
