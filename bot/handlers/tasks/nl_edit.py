@@ -459,6 +459,17 @@ async def msg_nl_edit_on_reply(message: Message, api, store=None):
         updated, store=store, silent=silent,
     )
 
+    # Каскад дедлайнов пунктов (БТ-6): API кладёт человекочитаемую сводку в
+    # structured_data.cascade_summary ТОЛЬКО при реальных изменениях напоминаний
+    # (has_changes). Нет изменений → ключа нет → молчим. Показываем коротким reply.
+    try:
+        sd = updated.get("structured_data") if isinstance(updated, dict) else None
+        cascade = (sd or {}).get("cascade_summary")
+        if cascade:
+            await message.answer(f"✅ {cascade}", parse_mode=None)
+    except Exception as e:
+        logger.debug(f"cascade summary send failed: {e}")
+
 
 async def _cleanup_failed_attempts(bot, chat_id: int, list_msg_id: int, store) -> None:
     """Удалить «хвосты» неудачных reply-попыток на этот task_list.

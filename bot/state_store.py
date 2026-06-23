@@ -267,30 +267,9 @@ class StateStore:
         except (json.JSONDecodeError, TypeError):
             return None
 
-    # ── pending dedup (следующее сообщение без reply) ─────────
-
-    _PENDING_DEDUP_TTL = 5 * 60  # 5 минут — потом забываем
-
-    async def set_pending_dedup(
-        self, chat_id: int, alert_msg_id: int,
-    ) -> None:
-        """Запоминаем что в чате ожидается ответ на dedup-alert.
-
-        Ключ: pending_dedup:{chat_id} → alert_msg_id.
-        Следующее сообщение с dedup-ключевым словом обработается как ответ.
-        """
-        r = await self._get()
-        await r.set(
-            f"pending_dedup:{chat_id}",
-            str(alert_msg_id),
-            ex=self._PENDING_DEDUP_TTL,
-        )
-
-    async def get_pending_dedup(self, chat_id: int) -> int | None:
-        """Проверяем ожидается ли ответ на dedup. Возвращает alert_msg_id."""
-        r = await self._get()
-        v = await r.get(f"pending_dedup:{chat_id}")
-        return int(v) if v else None
+    # ── pending dedup ключ (legacy: больше НЕ ставится — дедуп резолвится
+    # только через reply; clear оставлен как defensive no-op, его зовёт
+    # reply-обработчик дедупа _handle_general_dedup_reply) ─────────
 
     async def clear_pending_dedup(self, chat_id: int) -> None:
         r = await self._get()

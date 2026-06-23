@@ -490,6 +490,14 @@ async def nl_edit_bookmark(
     except NLEditError as e:
         raise HTTPException(status_code=422, detail=f"NL-edit failed: {e}")
 
+    # apply_nl_edit делает shallow dict(structured) → старый cascade_summary мог
+    # перенестись из прошлой правки. Чистим, чтобы фантомное «✅ …» не всплыло на
+    # правке без изменений напоминаний (БТ-6: «ключа нет → сообщения нет»).
+    if isinstance(new_structured, dict) and "cascade_summary" in new_structured:
+        new_structured = {
+            k: v for k, v in new_structured.items() if k != "cascade_summary"
+        }
+
     # Phase 2.6 T9: cascade на reminder'ы task_list'а.
     # Best-effort — если падает, NL-edit всё равно применяется.
     try:

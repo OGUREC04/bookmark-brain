@@ -12,8 +12,8 @@ Internal layout:
 - ``commands.py``       — ``/todo`` command (own Router)
 - ``task_callbacks.py`` — inline callbacks tg/tldm/tlds/tback/td/tn +
                           pinned-service-message cleaner (own Router)
-- ``dedup.py``          — dm/dk callbacks, dedup intent + reply/pending
-                          handlers (own Router)
+- ``dedup.py``          — dm/dk callbacks, dedup intent + reply handler
+                          (own Router; дедуп reply-only)
 - ``nl_edit.py``        — stale-list nudge, composite-reminder-on-list,
                           main reply NL-edit dispatcher (own Router)
 
@@ -55,7 +55,6 @@ from .dedup import (
     _show_updated_task_list_after_dedup_update,
     cb_dedup_keep,
     cb_dedup_merge,
-    handle_pending_dedup,
     parse_dedup_intent,
 )
 from .dedup import router as _dedup_router
@@ -154,7 +153,6 @@ __all__ = [
     "cmd_lists",
     "cmd_todo",
     "cmd_unpin_all",
-    "handle_pending_dedup",
     "msg_nl_edit_on_reply",
     "saved_new_keyboard",
     "on_pin_service_message",

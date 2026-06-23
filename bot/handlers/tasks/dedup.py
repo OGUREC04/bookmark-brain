@@ -23,7 +23,6 @@ from .shared import (
     MSG_UPDATE_FAILED,
     _build_keyboard,
     _delete_after,
-    _delete_after_by_id,
     _ephemeral,
     _render_text,
     _rerender_at_bottom,
@@ -363,10 +362,9 @@ async def _show_updated_task_list_after_dedup_update(
 async def _apply_dedup_update(
     api, token: str, new_bid: str, old_bid: str,
 ) -> dict | None:
-    """Общая логика intent='update' для всех 3 dedup flow:
+    """Общая логика intent='update' для обоих dedup flow:
     1. cb_dedup_merge (callback кнопки)
     2. _handle_general_dedup_reply (reply на alert)
-    3. handle_pending_dedup (следующее сообщение по ключевому слову)
 
     Семантика: переносит поля new → old, удаляет new, возвращает обновлённый old.
     None если что-то упало (вызывающий покажет error).
@@ -556,107 +554,4 @@ async def _handle_general_dedup_reply(
 
     # Чистим Redis (atomic)
     await store.pop_general_dedup(chat_id, replied.message_id)
-    await store.clear_pending_dedup(chat_id)
-
-
-async def handle_pending_dedup(
-    message: Message, api, store, dedup: dict,
-    intent: str, alert_msg_id: int,
-) -> None:
-    """Обработка dedup-ответа БЕЗ reply (следующее сообщение с ключевым словом).
-
-    В отличие от _handle_general_dedup_reply, у нас нет replied message,
-    поэтому alert редактируем через bot.edit_message_text.
-    """
-    from bot.common.auth import ensure_user
-    token = await ensure_user(message, api)
-    if not token:
-        return
-
-    new_bid = dedup["new_bid"]
-    old_bid = dedup["old_bid"]
-    src_msg_id = dedup.get("src_msg_id")
-    chat_id = message.chat.id
-    bot = message.bot
-
-    async def _edit_alert(text: str) -> None:
-        try:
-            await bot.edit_message_text(
-                text, chat_id=chat_id, message_id=alert_msg_id, parse_mode=None,
-            )
-        except TelegramBadRequest:
-            pass
-
-    if intent == "open":
-        try:
-            await api.delete_bookmark(token, new_bid)
-        except Exception:
-            pass
-        try:
-            old_bm = await api.get_bookmark(token, old_bid)
-            title = old_bm.get("title") or "Без названия"
-            summary = old_bm.get("summary") or ""
-            lines = [f"\U0001f4d6 {title}"]
-            if summary:
-                lines.append(summary[:300])
-            await _edit_alert("\n".join(lines))
-        except Exception:
-            await _edit_alert("Дубль удалён, оригинал сохранён ✅")
-
-    elif intent == "delete":
-        try:
-            await api.delete_bookmark(token, new_bid)
-        except Exception:
-            pass
-        await _edit_alert(MSG_DUP_DELETED)
-        asyncio.create_task(_delete_after_by_id(bot, chat_id, alert_msg_id, 5.0))
-
-    elif intent == "save_new":
-        # Кнопки выбора типа (c6ti) — см. reply-ветку выше. Не авто-удаляем.
-        from .convert import saved_new_keyboard
-        try:
-            await bot.edit_message_text(
-                "✅ Сохранено как новая заметка",
-                chat_id=chat_id, message_id=alert_msg_id,
-                reply_markup=saved_new_keyboard(new_bid), parse_mode=None,
-            )
-        except TelegramBadRequest:
-            pass
-        await _react_src(bot, chat_id, src_msg_id, "\U0001f44d")
-        await _materialize_if_task_list(
-            bot, chat_id, token, api, store,
-            new_bid, src_msg_id, message.from_user.id,
-        )
-        # ied: near-dup также пропустил reminder-dispatch — досоздаём.
-        await _redispatch_reminders_after_save_new(api, token, new_bid, chat_id)
-
-    elif intent == "update":
-        # См. docs/bugs/2026-05-11-task-list-duplicates-and-merge-ui.md
-        old_bm = await _apply_dedup_update(api, token, new_bid, old_bid)
-        if old_bm is None:
-            await _edit_alert(MSG_UPDATE_FAILED)
-        else:
-            await _react_src(bot, chat_id, src_msg_id, "\U0001f44d")
-            from bot.handlers.settings import is_silent
-            silent = await is_silent(api, token, message.from_user.id)
-            rendered = await _show_updated_task_list_after_dedup_update(
-                bot, chat_id, old_bid, old_bm, store, silent=silent,
-            )
-            if rendered:
-                try:
-                    await bot.delete_message(chat_id, alert_msg_id)
-                except TelegramBadRequest:
-                    pass
-            else:
-                await _edit_alert(MSG_ORIGINAL_UPDATED)
-                asyncio.create_task(_delete_after_by_id(bot, chat_id, alert_msg_id, 5.0))
-
-    # Удаляем сообщение юзера
-    try:
-        await message.delete()
-    except TelegramBadRequest:
-        pass
-
-    # Чистим Redis
-    await store.pop_general_dedup(chat_id, alert_msg_id)
     await store.clear_pending_dedup(chat_id)

@@ -4,7 +4,7 @@ Why this exists: the reminders/tasks/worker monoliths were split into
 packages with facade re-exports. The orchestration layer (`start.py`)
 imports the public cross-package API of a *sibling* package via **lazy
 in-function imports** (e.g. `bot/handlers/start.py` does
-`from bot.handlers.tasks import handle_pending_dedup, parse_dedup_intent`
+`from bot.handlers.tasks import parse_dedup_intent`
 inside `handle_text`).
 
 Such imports execute only when that code path runs. The unit suite does
