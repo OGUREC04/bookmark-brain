@@ -88,7 +88,8 @@ class FolderResponse(BaseModel):
 
 
 class BookmarkCreate(BaseModel):
-    raw_text: str
+    # max_length — граница против DoS (как BookmarkUpdate.raw_text)
+    raw_text: str = Field(..., max_length=50_000)
     url: str | None = None
     title: str | None = None
     source: str = "manual"

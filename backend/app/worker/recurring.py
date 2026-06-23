@@ -59,41 +59,50 @@ async def materialize_recurring(ctx: dict) -> None:
                     row["id"], h, m,
                 )
                 continue
-            old_next = row["next_fire_at"]
-            new_next = next_fire_utc(h, m, row["timezone"], now)
+            try:
+                old_next = row["next_fire_at"]
+                new_next = next_fire_utc(h, m, row["timezone"], now)
 
-            # CAS-advance: продвигаем серию только если next_fire_at не менялся
-            # (защита от наложения cron-ранов). Кто выиграл — материализует.
-            cas = await session.execute(sa_text(
-                """
-                UPDATE recurring_reminders
-                SET next_fire_at = :new_next, last_fired_at = NOW()
-                WHERE id = :id AND next_fire_at = :old_next AND active = true
-                RETURNING id
-                """
-            ).bindparams(id=row["id"], new_next=new_next, old_next=old_next))
-            if cas.scalar_one_or_none() is None:
-                continue  # другой ран уже продвинул эту серию
+                # CAS-advance: продвигаем серию только если next_fire_at не менялся
+                # (защита от наложения cron-ранов). Кто выиграл — материализует.
+                cas = await session.execute(sa_text(
+                    """
+                    UPDATE recurring_reminders
+                    SET next_fire_at = :new_next, last_fired_at = NOW()
+                    WHERE id = :id AND next_fire_at = :old_next AND active = true
+                    RETURNING id
+                    """
+                ).bindparams(id=row["id"], new_next=new_next, old_next=old_next))
+                if cas.scalar_one_or_none() is None:
+                    continue  # другой ран уже продвинул эту серию
 
-            # Кладём одноразовую копию — доставит штатный dispatcher.
-            await session.execute(sa_text(
-                """
-                INSERT INTO scheduled_messages (user_id, kind, fire_at, status, payload)
-                VALUES (
-                    :uid, 'reminder', :fire_at, 'pending',
-                    jsonb_build_object(
-                        'text', CAST(:text AS text),
-                        'source', 'recurring',
-                        'recurring_id', CAST(:rid AS text)
+                # Кладём одноразовую копию — доставит штатный dispatcher.
+                await session.execute(sa_text(
+                    """
+                    INSERT INTO scheduled_messages (user_id, kind, fire_at, status, payload)
+                    VALUES (
+                        :uid, 'reminder', :fire_at, 'pending',
+                        jsonb_build_object(
+                            'text', CAST(:text AS text),
+                            'source', 'recurring',
+                            'recurring_id', CAST(:rid AS text)
+                        )
                     )
+                    """
+                ).bindparams(
+                    uid=row["user_id"], fire_at=old_next, text=row["text"],
+                    rid=str(row["id"]),
+                ))
+                await session.commit()
+                materialized += 1
+            except Exception as e:
+                # Одна упавшая серия не должна валить весь батч: откат + лог + дальше.
+                await session.rollback()
+                logger.error(
+                    "materialize_recurring: серия %s (user %s) упала: %s",
+                    row["id"], row.get("user_id"), e,
                 )
-                """
-            ).bindparams(
-                uid=row["user_id"], fire_at=old_next, text=row["text"],
-                rid=str(row["id"]),
-            ))
-            await session.commit()
-            materialized += 1
+                continue
 
         if materialized:
             logger.info(

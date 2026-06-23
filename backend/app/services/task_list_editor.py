@@ -19,6 +19,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import uuid
 from datetime import date
 from typing import Any
 
@@ -227,13 +228,23 @@ def _extract_json(raw: str) -> dict:
 
 async def _call_gigachat(system: str, user: str, auth_key: str) -> str:
     """Прямой вызов GigaChat через httpx (как в ai_classifier)."""
+    # Sber CA не в стандартном bundle — гейтим verify за GIGACHAT_CA_BUNDLE
+    # (как embeddings/ai_classifier), иначе OAuth-ключ уходит по непроверенному TLS.
+    ca_bundle = get_settings().GIGACHAT_CA_BUNDLE
+    if ca_bundle:
+        ssl_verify: str | bool = ca_bundle
+    else:
+        logger.warning(
+            "GIGACHAT_CA_BUNDLE not set — TLS verification disabled for GigaChat NL-edit."
+        )
+        ssl_verify = False
     # OAuth
-    async with httpx.AsyncClient(timeout=30, verify=False) as client:
+    async with httpx.AsyncClient(timeout=30, verify=ssl_verify) as client:
         oauth = await client.post(
             "https://ngw.devices.sberbank.ru:9443/api/v2/oauth",
             headers={
                 "Authorization": f"Basic {auth_key}",
-                "RqUID": "00000000-0000-0000-0000-000000000001",
+                "RqUID": str(uuid.uuid4()),
                 "Content-Type": "application/x-www-form-urlencoded",
             },
             data={"scope": "GIGACHAT_API_PERS"},

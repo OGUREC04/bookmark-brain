@@ -11,7 +11,11 @@ from uuid import uuid4
 
 import pytest
 from app.worker import recurring as rec
-from app.worker.scheduled import _format_recurring_text, _recurring_reminder_buttons
+from app.worker.scheduled import (
+    _format_recurring_text,
+    _format_reminder_text,
+    _recurring_reminder_buttons,
+)
 
 
 class _Result:
@@ -84,6 +88,16 @@ def test_recurring_buttons_shape():
 def test_recurring_text_uses_repeat_icon():
     assert _format_recurring_text({"text": "полить цветы"}) == "🔁 полить цветы"
     assert _format_recurring_text({}) == "🔁 Напоминание"
+
+
+def test_format_funcs_escape_html():
+    # security: текст уходит в parse_mode=HTML → теги должны экранироваться
+    payload = {"text": "<b>x</b> & <a href='tg://'>y</a>"}
+    rec_out = _format_recurring_text(payload)
+    rem_out = _format_reminder_text(payload)
+    assert "<b>" not in rec_out and "&lt;b&gt;" in rec_out
+    assert "<a href" not in rec_out
+    assert "<b>" not in rem_out and "&lt;b&gt;" in rem_out
 
 
 # ── materialize control-flow ──

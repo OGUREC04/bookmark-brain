@@ -12,6 +12,7 @@ target ``app.worker.scheduled.*``.
 from __future__ import annotations
 
 import asyncio
+import html
 import logging
 
 from sqlalchemy import select
@@ -71,7 +72,7 @@ def _format_reminder_text(payload: dict) -> str:
     text = text.strip()
     if not text:
         return "🔔 Напоминание"
-    return f"🔔 Напомню: {text}"
+    return f"🔔 Напомню: {html.escape(text)}"
 
 
 def _recurring_reminder_buttons(recurring_id: str) -> dict:
@@ -100,7 +101,7 @@ def _format_recurring_text(payload: dict) -> str:
     text = text.strip()
     if not text:
         return "🔁 Напоминание"
-    return f"🔁 {text}"
+    return f"🔁 {html.escape(text)}"
 
 
 async def _save_reminder_redis_state(
@@ -659,8 +660,9 @@ async def stale_list_nudge(ctx: dict) -> None:
             if await r.exists(f"nudged:{bid}"):
                 continue
 
-            # Формируем nudge
-            title = bookmark.title or "Список задач"
+            # Формируем nudge (title/тексты пунктов — user-controlled → escape,
+            # т.к. _send_message шлёт parse_mode=HTML)
+            title = html.escape(bookmark.title or "Список задач")
             created = bookmark.created_at
             date_str = ""
             if created:
@@ -670,7 +672,7 @@ async def stale_list_nudge(ctx: dict) -> None:
                     pass
 
             undone = [t.get("text", "?") for t in tasks if not t.get("done")]
-            undone_preview = ", ".join(undone[:3])
+            undone_preview = html.escape(", ".join(undone[:3]))
             if len(undone) > 3:
                 undone_preview += f" (+{len(undone) - 3})"
 

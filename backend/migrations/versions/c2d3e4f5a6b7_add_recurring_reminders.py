@@ -87,6 +87,11 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    # Чистим осиротевшие материализованные копии — иначе dispatcher попытается
+    # доставить их с recurring_id, но таблицы-источника уже нет.
+    op.execute(
+        "DELETE FROM scheduled_messages WHERE payload->>'recurring_id' IS NOT NULL"
+    )
     op.execute("DROP INDEX IF EXISTS uq_recurring_active_dedup")
     op.drop_index("ix_recurring_reminders_user_id", table_name="recurring_reminders")
     op.drop_index("ix_recurring_next_fire", table_name="recurring_reminders")

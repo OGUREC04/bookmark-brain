@@ -382,13 +382,23 @@ async def _apply_dedup_update(
         if new_bm.get(field):
             update_fields[field] = new_bm[field]
 
+    # Update и delete — РАЗДЕЛЬНО: если update прошёл, а delete упал, НЕ возвращаем
+    # None (иначе caller соврёт «не удалось», хотя old уже обновлён). Лучше принять
+    # лишний new_bid, чем разъехавшиеся данные в двух закладках.
     try:
         if update_fields:
             await api.update_bookmark(token, old_bid, update_fields)
+    except Exception as e:
+        logger.warning(f"_apply_dedup_update: обновление old {old_bid} упало: {e}")
+        return None
+
+    try:
         await api.delete_bookmark(token, new_bid)
     except Exception as e:
-        logger.warning(f"_apply_dedup_update: patch/delete failed: {e}")
-        return None
+        logger.warning(
+            f"_apply_dedup_update: old {old_bid} обновлён, но дубль {new_bid} "
+            f"не удалён (останется лишним): {e}"
+        )
 
     try:
         return await api.get_bookmark(token, old_bid)
