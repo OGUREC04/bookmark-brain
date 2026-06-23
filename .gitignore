@@ -75,3 +75,9 @@ _*_dbg.*
 # Claude plan files
 streamed-*.md
 .claude/worktrees/
+
+# Scratch / ручные тест-артефакты (ID, fire_at, reading-pack для телефона)
+bid.txt
+rid.txt
+rfire.txt
+READING-PACK-*.md
