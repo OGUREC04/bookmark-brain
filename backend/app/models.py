@@ -11,10 +11,12 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    SmallInteger,
     String,
     Text,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import ENUM as PG_ENUM
 from sqlalchemy.dialects.postgresql import JSONB, TSVECTOR, UUID
@@ -332,6 +334,68 @@ class ScheduledMessage(Base):
         foreign_keys=[bookmark_id],
         lazy="noload",
     )
+
+
+class RecurringReminder(Base):
+    """Регулярные (ежедневные) напоминания — /repeat (PRD RECURRING-REMINDERS).
+
+    Отдельно от scheduled_messages: тот fire-once (pending→sending→sent, строки
+    не удаляет). Materializer-cron (worker) по next_fire_at кладёт очередную
+    одноразовую строку в scheduled_messages с payload.recurring_id, дальше её
+    доставляет штатный scheduled_dispatcher. rule — строка ради forward-compat
+    (MVP всегда 'daily'; позже 'weekly:mon,tue').
+    """
+
+    __tablename__ = "recurring_reminders"
+    __table_args__ = (
+        # Partial index — materializer сканирует только активные серии.
+        Index(
+            "ix_recurring_next_fire",
+            "next_fire_at",
+            postgresql_where="active",
+        ),
+        # FK user_id не индексируется автоматически — нужен для dedup/list-запросов.
+        Index("ix_recurring_reminders_user_id", "user_id"),
+        # DB-backstop дедупа: одна активная серия на (user, час, минута, норм-текст).
+        # Норм-текст зеркалит normalize_series_text (lower + схлопнутые пробелы + trim).
+        Index(
+            "uq_recurring_active_dedup",
+            "user_id",
+            "hour",
+            "minute",
+            text("btrim(regexp_replace(lower(text), '\\s+', ' ', 'g'))"),
+            unique=True,
+            postgresql_where="active",
+        ),
+        # CHECK — час/минута в диапазоне (defense-in-depth, см. миграцию).
+        CheckConstraint("hour >= 0 AND hour <= 23", name="ck_recurring_hour_range"),
+        CheckConstraint("minute >= 0 AND minute <= 59", name="ck_recurring_minute_range"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid()
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    # MVP всегда 'daily'; строка ради forward-compat без миграции схемы.
+    rule: Mapped[str] = mapped_column(Text, nullable=False)
+    hour: Mapped[int] = mapped_column(SmallInteger, nullable=False)
+    minute: Mapped[int] = mapped_column(SmallInteger, nullable=False)
+    next_fire_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    active: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="true", default=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    last_fired_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class AnalyticsEvent(Base):

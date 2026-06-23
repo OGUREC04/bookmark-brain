@@ -140,6 +140,7 @@ async def main():
         await bot.set_my_commands([
             BotCommand(command="todo", description="Список задач: /todo пункт1, пункт2"),
             BotCommand(command="remind", description="Создать напоминание: /remind текст время"),
+            BotCommand(command="repeat", description="Регулярное: /repeat текст каждый день в 10:00"),
             BotCommand(command="reminders", description="Активные напоминания + история"),
             BotCommand(command="list", description="Все закладки"),
             BotCommand(command="lists", description="Только списки задач"),

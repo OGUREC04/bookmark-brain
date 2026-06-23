@@ -179,3 +179,77 @@ async def cb_snooze_reminder(callback: CallbackQuery, api, store):
         await callback.answer()
     except Exception:
         pass
+
+
+@router.callback_query(F.data.startswith("rrok:"))
+async def cb_recurring_ok(callback: CallbackQuery, api, store):
+    """«✅ Ок» на регулярном срабатывании — принять этот раз, серия продолжается.
+
+    Серверного действия не нужно: next_fire_at уже сдвинут материализатором.
+    Просто убираем кнопки.
+    """
+    try:
+        await callback.message.edit_text("✅", parse_mode=None)
+    except Exception as e:
+        logger.debug(f"cb_recurring_ok: edit_text failed: {e}")
+    try:
+        await callback.answer("Ок, напомню в следующий раз")
+    except Exception:
+        pass
+
+
+@router.callback_query(F.data.startswith("rrstop:"))
+async def cb_recurring_stop(callback: CallbackQuery, api, store):
+    """«🛑 Больше не напоминать» — останавливаем серию через API."""
+    from bot.common.auth import ensure_user
+
+    recurring_id = (callback.data or "").split(":", 1)[1] if ":" in (callback.data or "") else ""
+
+    # H1: callback_data — attacker-controlled. Валидируем как UUID до API.
+    if not _is_valid_uuid(recurring_id):
+        try:
+            await callback.answer("Сообщение устарело")
+        except Exception:
+            pass
+        return
+
+    token = await ensure_user(callback, api)
+    if not token:
+        return
+
+    stopped_ok = False
+    try:
+        await api.stop_recurring(token, recurring_id)
+        stopped_ok = True
+    except httpx.HTTPStatusError as e:
+        if e.response is not None and e.response.status_code == 404:
+            # Уже остановлена / повторный клик — считаем успехом.
+            stopped_ok = True
+        else:
+            logger.warning(f"cb_recurring_stop: stop 5xx: {e}")
+    except Exception as e:
+        logger.warning(f"cb_recurring_stop: stop failed: {e}")
+
+    if not stopped_ok:
+        # 🛑 что молча не сработал = серия продолжит срабатывать. Делаем сбой
+        # заметным: модальный alert (а не исчезающий тост) + error-лог.
+        logger.error(
+            "cb_recurring_stop: серия %s не остановлена — продолжит срабатывать",
+            recurring_id,
+        )
+        try:
+            await callback.answer(
+                "Не получилось остановить — попробуй ещё раз", show_alert=True
+            )
+        except Exception:
+            pass
+        return
+
+    try:
+        await callback.message.edit_text("🛑 Больше не напоминаю", parse_mode=None)
+    except Exception as e:
+        logger.debug(f"cb_recurring_stop: edit_text failed: {e}")
+    try:
+        await callback.answer("Остановил")
+    except Exception:
+        pass

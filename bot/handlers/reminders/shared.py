@@ -22,7 +22,7 @@ from aiogram.types import Message
 # Imported under their PUBLIC names — bot.common is the only public surface
 # for these helpers; this package re-exports nothing of them via its facade.
 from bot.common import DEFAULT_TZ, TIME_EXAMPLES, safe
-from shared.messages import compose, reply_hint_full
+from shared.messages import RECURRING_HINT, compose, reply_hint_full
 
 logger = logging.getLogger(__name__)
 
@@ -88,8 +88,11 @@ async def _send_reminder_confirmation_with_chip(
     # напоминание — пишем «👌 Уже напомню…», чтобы юзер понял что нового
     # будильника не появилось (а не подумал что наплодил дублей).
     prefix = "👌 Уже напомню" if deduplicated else "🔔 Напомню"
+    # Хвост-подсказка про регулярные напоминания (/repeat) — всегда, одной
+    # строкой (выбор владельца: максимальная заметность фичи).
     await message.answer(
-        f"{prefix} <b>{safe(formatted_full)}</b> — «{safe(short_text)}»",
+        f"{prefix} <b>{safe(formatted_full)}</b> — «{safe(short_text)}»"
+        f"\n\n{RECURRING_HINT}",
         parse_mode="HTML",
     )
 

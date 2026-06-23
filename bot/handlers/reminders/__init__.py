@@ -30,6 +30,8 @@ from .callbacks import (
     cb_create_reminder,
     cb_dismiss_reminder,
     cb_done_reminder,
+    cb_recurring_ok,
+    cb_recurring_stop,
     cb_snooze_reminder,
 )
 from .callbacks import router as _callbacks_router
@@ -40,6 +42,8 @@ from .explicit import (
 from .explicit import router as _explicit_router
 from .list import cmd_reminders, handle_reminders_list_reply
 from .list import router as _list_router
+from .repeat import cmd_repeat
+from .repeat import router as _repeat_router
 from .reply import handle_reminder_reply
 from .reply import router as _reply_router
 from .shared import (
@@ -60,6 +64,7 @@ from .strong import (
 router = _Router()
 router.include_router(_list_router)
 router.include_router(_explicit_router)
+router.include_router(_repeat_router)
 router.include_router(_callbacks_router)
 router.include_router(_reply_router)
 # NOTE: strong_router is registered SEPARATELY in bot/main.py BEFORE start.router
@@ -73,10 +78,13 @@ __all__ = [
     "cb_create_reminder",
     "cb_dismiss_reminder",
     "cb_done_reminder",
+    "cb_recurring_ok",
+    "cb_recurring_stop",
     "cb_snooze_reminder",
     "cb_strong_choice",
     "cmd_remind",
     "cmd_reminders",
+    "cmd_repeat",
     "extract_first_datetime_entity",
     "handle_reminder_reply",
     "handle_reminders_list_reply",

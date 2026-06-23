@@ -74,6 +74,35 @@ def _format_reminder_text(payload: dict) -> str:
     return f"🔔 Напомню: {text}"
 
 
+def _recurring_reminder_buttons(recurring_id: str) -> dict:
+    """Inline-клавиатура регулярного срабатывания (/repeat).
+
+    Без «продлить» — следующее уже завтра. Callback префиксы:
+      rrok:<recurring_id>   — принять это срабатывание (серия продолжается)
+      rrstop:<recurring_id> — остановить серию
+    """
+    return {
+        "inline_keyboard": [
+            [
+                {"text": "✅ Ок", "callback_data": f"rrok:{recurring_id}"},
+                {
+                    "text": "🛑 Больше не напоминать",
+                    "callback_data": f"rrstop:{recurring_id}",
+                },
+            ]
+        ]
+    }
+
+
+def _format_recurring_text(payload: dict) -> str:
+    """Текст регулярного срабатывания — значок 🔁 отличает его от разового 🔔."""
+    text = (payload or {}).get("text") or ""
+    text = text.strip()
+    if not text:
+        return "🔁 Напоминание"
+    return f"🔁 {text}"
+
+
 async def _save_reminder_redis_state(
     chat_id: int, message_id: int, scheduled_message_id: str,
 ) -> None:
@@ -170,8 +199,15 @@ async def scheduled_dispatcher(ctx: dict) -> None:
 
             # Берём свежий payload из CAS-результата, не из SELECT-snapshot
             actual_payload = locked["payload"] or (row[6] or {})
-            text_msg = _format_reminder_text(actual_payload)
-            buttons = _reminder_buttons(str(sm_id))
+            # Регулярное срабатывание (/repeat) — другой значок + другие кнопки
+            # (✅ Ок / 🛑 Стоп) с recurring_id, не sm_id.
+            _recurring_id = actual_payload.get("recurring_id")
+            if _recurring_id:
+                text_msg = _format_recurring_text(actual_payload)
+                buttons = _recurring_reminder_buttons(str(_recurring_id))
+            else:
+                text_msg = _format_reminder_text(actual_payload)
+                buttons = _reminder_buttons(str(sm_id))
 
             send_result = await _send_message(telegram_id, text_msg, buttons)
 

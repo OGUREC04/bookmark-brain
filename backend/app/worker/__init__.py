@@ -48,6 +48,7 @@ from .processing import (
     process_bookmark_task,
     redispatch_reminder_task,
 )
+from .recurring import materialize_recurring
 from .reminder_decision import (
     _ask_hour_text,
     _auto_create_per_item,
@@ -121,6 +122,9 @@ class WorkerSettings:
         # Phase 2.5 Reminders MVP
         # Каждую минуту проверяем due reminder'ы. set() = «каждую минуту любого часа».
         cron(scheduled_dispatcher, minute=set(range(60)), run_at_startup=False),
+        # Регулярные напоминания (/repeat): каждую минуту материализуем
+        # due-серии в очередь scheduled_messages (доставит dispatcher выше).
+        cron(materialize_recurring, minute=set(range(60)), run_at_startup=False),
         # Раз в час, в :15 (чтобы не совпадало с пиком dispatcher на :00)
         cron(auto_done_reminders, minute={15}, run_at_startup=False),
         # Phase M1: катим месячные партиции analytics_events + retention.

@@ -107,6 +107,29 @@ class BackendClient:
         )
         response.raise_for_status()
 
+    async def create_recurring(self, token: str, raw: str) -> dict:
+        """POST /api/v1/recurring/ — завести ежедневную серию (/repeat).
+
+        ``raw`` — сырой хвост команды («полить цветы каждый день в 10:00»);
+        бэкенд парсит расписание. При ошибке парсинга → 422 (хендлер ловит
+        httpx.HTTPStatusError и релеит detail юзеру).
+        """
+        response = await self.client.post(
+            "/api/v1/recurring/",
+            headers={"Authorization": f"Bearer {token}"},
+            json={"raw": raw},
+        )
+        response.raise_for_status()
+        return response.json()
+
+    async def stop_recurring(self, token: str, recurring_id: str) -> None:
+        """DELETE /api/v1/recurring/{id} — остановить серию."""
+        response = await self.client.delete(
+            f"/api/v1/recurring/{recurring_id}",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        response.raise_for_status()
+
     async def apply_reminder_decision(
         self,
         token: str,
@@ -226,10 +249,12 @@ class BackendClient:
     async def search_bookmarks(
         self, token: str, query: str, limit: int = 5
     ) -> dict:
+        # with_summary=False: бот результат AI-саммари не показывает, а дефолт
+        # схемы True → бэк впустую гонял LLM на каждый ботовый /search.
         response = await self.client.post(
             "/api/v1/search/",
             headers={"Authorization": f"Bearer {token}"},
-            json={"query": query, "limit": limit},
+            json={"query": query, "limit": limit, "with_summary": False},
         )
         response.raise_for_status()
         return response.json()

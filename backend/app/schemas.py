@@ -291,3 +291,40 @@ class ReminderResponse(BaseModel):
 class ReminderListResponse(BaseModel):
     items: list[ReminderResponse]
     total: int
+
+
+# ──────────────────── Recurring reminders (/repeat) ────────────────────
+
+
+class RecurringCreate(BaseModel):
+    """Тело POST /api/v1/recurring/ — сырой хвост команды /repeat.
+
+    Бэкенд парсит «<текст> каждый день в HH:MM» (recurrence_parser) и считает
+    next_fire_at в таймзоне юзера. При неуспехе парсинга — 422 с подсказкой.
+    """
+
+    # max_length — граница против DoS (как BookmarkUpdate.raw_text). Чуть выше
+    # MAX_RECURRING_TEXT_LEN=500, чтобы оставить место под токены расписания.
+    raw: str = Field(max_length=600)
+
+
+class RecurringResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    text: str
+    rule: str
+    hour: int
+    minute: int
+    next_fire_at: datetime
+    active: bool
+    created_at: datetime
+
+    # True если вернули существующую серию вместо создания дубля (тот же
+    # нормализованный текст + час:минута). Бот покажет «Уже напоминаю…».
+    deduplicated: bool = False
+
+
+class RecurringListResponse(BaseModel):
+    items: list[RecurringResponse]
+    total: int

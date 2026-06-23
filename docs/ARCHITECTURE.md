@@ -78,6 +78,7 @@ arq на Redis. Запуск — `python run_worker.py` → `create_worker(Worke
 - `reminder_decision.py` — Phase 2.6 three-form dispatch, CAS-идемпотентность
 - `reminder_offer.py` — weak-offer «🔔 Создать напоминание?»
 - `scheduled.py` — 5 cron: `scheduled_dispatcher`, `auto_done_reminders`, `retry_failed_task`, `retry_partial_embeddings`, `stale_list_nudge`
+- `recurring.py` — cron `materialize_recurring`: регулярные напоминания (`/repeat`) из таблицы `recurring_reminders` → одноразовая копия в `scheduled_messages` (доставляет `scheduled_dispatcher`); диспетчер про серии не знает
 - `dedup.py`, `telegram.py` — dedup-стораджи и low-level Telegram-хелперы
 - `__init__.py` — facade: собирает `WorkerSettings` (functions + cron_jobs)
 
