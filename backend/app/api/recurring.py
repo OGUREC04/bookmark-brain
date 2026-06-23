@@ -54,19 +54,39 @@ async def create_recurring(
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ):
-    """Завести ежедневную серию из сырого текста команды /repeat."""
-    parsed = parse_recurrence(body.raw or "")
-    if not parsed.ok:
-        raise HTTPException(
-            status_code=422,
-            detail=_PARSE_ERROR_DETAIL.get(
-                parsed.error, _PARSE_ERROR_DETAIL["NO_SCHEDULE"]
-            ),
-        )
+    """Завести ежедневную серию.
 
-    text = parsed.text[:MAX_RECURRING_TEXT_LEN]
+    Два входа: структурный {text, hour, minute} (Mini App — БЕЗ парсинга) или
+    сырой хвост команды /repeat (бот → recurrence_parser). Структурный путь нужен,
+    чтобы слова расписания внутри текста («полить цветы каждый день») не искажали
+    сохранённый текст серии.
+    """
+    if body.text is not None and body.hour is not None and body.minute is not None:
+        # Структурный путь (Mini App): клиент уже разобрал текст и время — не парсим.
+        text = body.text.strip()
+        if not text:
+            raise HTTPException(status_code=422, detail=_PARSE_ERROR_DETAIL["NO_TEXT"])
+        rule = body.rule or "daily"
+        if rule != "daily":
+            raise HTTPException(
+                status_code=422, detail="Поддерживается только ежедневное повторение."
+            )
+        hour, minute = body.hour, body.minute
+    else:
+        # Бот /repeat: сырой хвост команды → парсер.
+        parsed = parse_recurrence(body.raw or "")
+        if not parsed.ok:
+            raise HTTPException(
+                status_code=422,
+                detail=_PARSE_ERROR_DETAIL.get(
+                    parsed.error, _PARSE_ERROR_DETAIL["NO_SCHEDULE"]
+                ),
+            )
+        text, rule, hour, minute = parsed.text, parsed.rule, parsed.hour, parsed.minute
+
+    text = text[:MAX_RECURRING_TEXT_LEN]
     now = datetime.now(timezone.utc)
-    next_fire = next_fire_utc(parsed.hour, parsed.minute, current_user.timezone, now)
+    next_fire = next_fire_utc(hour, minute, current_user.timezone, now)
     norm = normalize_series_text(text)
 
     # Дедуп серии (#5): тот же нормализованный текст + час:минута среди active.
@@ -74,8 +94,8 @@ async def create_recurring(
         select(RecurringReminder).where(
             RecurringReminder.user_id == current_user.id,
             RecurringReminder.active.is_(True),
-            RecurringReminder.hour == parsed.hour,
-            RecurringReminder.minute == parsed.minute,
+            RecurringReminder.hour == hour,
+            RecurringReminder.minute == minute,
         )
     )
     for row in existing.scalars():
@@ -109,9 +129,9 @@ async def create_recurring(
     series = RecurringReminder(
         user_id=current_user.id,
         text=text,
-        rule=parsed.rule,
-        hour=parsed.hour,
-        minute=parsed.minute,
+        rule=rule,
+        hour=hour,
+        minute=minute,
         next_fire_at=next_fire,
         active=True,
     )
@@ -128,8 +148,8 @@ async def create_recurring(
             select(RecurringReminder).where(
                 RecurringReminder.user_id == current_user.id,
                 RecurringReminder.active.is_(True),
-                RecurringReminder.hour == parsed.hour,
-                RecurringReminder.minute == parsed.minute,
+                RecurringReminder.hour == hour,
+                RecurringReminder.minute == minute,
             )
         )
         for row in again.scalars():

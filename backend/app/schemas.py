@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 # ──────────────────── Auth ────────────────────
 
@@ -298,15 +298,34 @@ class ReminderListResponse(BaseModel):
 
 
 class RecurringCreate(BaseModel):
-    """Тело POST /api/v1/recurring/ — сырой хвост команды /repeat.
+    """Тело POST /api/v1/recurring/ — два входа.
 
-    Бэкенд парсит «<текст> каждый день в HH:MM» (recurrence_parser) и считает
-    next_fire_at в таймзоне юзера. При неуспехе парсинга — 422 с подсказкой.
+    • Бот /repeat шлёт `raw` — бэк парсит «<текст> каждый день в HH:MM»
+      (recurrence_parser) и считает next_fire_at; при неуспехе — 422 с подсказкой.
+    • Mini App шлёт структурно `{text, hour, minute, rule}` — БЕЗ парсинга, чтобы
+      слова расписания внутри текста («полить цветы каждый день») не искажали
+      сохранённый текст серии. Структурный путь имеет приоритет.
+    Нужен ровно один из путей.
     """
 
     # max_length — граница против DoS (как BookmarkUpdate.raw_text). Чуть выше
     # MAX_RECURRING_TEXT_LEN=500, чтобы оставить место под токены расписания.
-    raw: str = Field(max_length=600)
+    raw: str | None = Field(default=None, max_length=600)
+
+    # Структурный путь (Mini App): если заданы text+hour+minute — raw не парсится.
+    text: str | None = Field(default=None, max_length=500)
+    rule: str | None = None  # пока только "daily"; endpoint валидирует
+    hour: int | None = Field(default=None, ge=0, le=23)
+    minute: int | None = Field(default=None, ge=0, le=59)
+
+    @model_validator(mode="after")
+    def _require_one_path(self) -> "RecurringCreate":
+        structured = (
+            self.text is not None and self.hour is not None and self.minute is not None
+        )
+        if not structured and not (self.raw and self.raw.strip()):
+            raise ValueError("Provide either `raw` or structured `{text, hour, minute}`")
+        return self
 
 
 class RecurringResponse(BaseModel):

@@ -61,6 +61,15 @@ class TestRecurringCreateSchema:
         with pytest.raises(ValidationError):
             RecurringCreate()  # type: ignore[call-arg]
 
+    def test_structured_path_valid(self):
+        # Структурный путь (Mini App): text+hour+minute достаточно, raw не нужен.
+        RecurringCreate(text="полить цветы", hour=10, minute=0)
+
+    def test_partial_structured_without_raw_invalid(self):
+        # Только text без часа/минуты и без raw → не хватает ни одного полного пути.
+        with pytest.raises(ValidationError):
+            RecurringCreate(text="полить цветы")  # type: ignore[call-arg]
+
 
 class TestCreateRecurring:
     @pytest.mark.parametrize(
@@ -90,6 +99,28 @@ class TestCreateRecurring:
         assert (added.hour, added.minute) == (10, 0)
         assert added.rule == "daily"
         assert added.next_fire_at > datetime.now(timezone.utc)
+
+    async def test_structured_skips_parser_stores_text_verbatim(self, user):
+        # Mini App шлёт структурно: текст СО словами расписания не искажается
+        # парсером (раньше «полить цветы каждый день» → хранилось «полить цветы»).
+        session = _session(_exec_scalars([]))  # дедуп: пусто
+        await create_recurring(
+            RecurringCreate(text="полить цветы каждый день", hour=23, minute=0),
+            user, session,
+        )
+        added = session.add.call_args[0][0]
+        assert added.text == "полить цветы каждый день"  # ← парсер НЕ вызывался
+        assert (added.hour, added.minute) == (23, 0)
+        assert added.rule == "daily"
+
+    async def test_structured_empty_text_422(self, user):
+        # Структурный путь с пустым (после strip) текстом → 422, без вставки.
+        session = _session()  # до execute дойти не должно
+        with pytest.raises(HTTPException) as exc:
+            await create_recurring(
+                RecurringCreate(text="   ", hour=10, minute=0), user, session
+            )
+        assert exc.value.status_code == 422
 
     async def test_dedup_returns_existing_not_added(self, user):
         existing = _series(user_id=user.id, text="полить цветы", hour=10, minute=0)
