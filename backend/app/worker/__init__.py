@@ -83,6 +83,7 @@ from .scheduled import (
     auto_done_reminders,
     backfill_bookmark_links,
     reembed_all_bookmarks,
+    reembed_bookmark_task,
     retry_failed_task,
     retry_partial_embeddings,
     scheduled_dispatcher,
@@ -110,6 +111,7 @@ class WorkerSettings:
         redispatch_reminder_task,
         backfill_bookmark_links,  # Phase 5A one-shot (enqueue вручную)
         reembed_all_bookmarks,    # Phase 5A one-shot: пере-эмбеддинг под новый рецепт
+        reembed_bookmark_task,    # Notes-as-conversations: classify-free re-index одной заметки (debounce)
         # 3sr: STT/extract медиа из Mini App. Свой таймаут 300с — STT (особенно async
         # Yandex) может длиться минуты, дефолтных job_timeout=120с мало. Таймаут задаётся
         # ТУТ через func(); enqueue_job НЕ принимает _job_timeout (был баг → TypeError, задача падала).
@@ -187,6 +189,7 @@ __all__ = [
     "process_upload_task",
     "redispatch_reminder_task",
     "reembed_all_bookmarks",
+    "reembed_bookmark_task",
     "retry_failed_task",
     "retry_partial_embeddings",
     "scheduled_dispatcher",

@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
@@ -21,6 +21,15 @@ def user():
     u = MagicMock()
     u.id = uuid4()
     return u
+
+
+@pytest.fixture(autouse=True)
+def _mock_arq_pool():
+    """Дописки ставят debounce-reindex джоб — мокаем arq-пул, чтобы не лезть в redis."""
+    pool = AsyncMock()
+    pool.enqueue_job = AsyncMock()
+    with patch("app.api.entries.get_arq_pool", new=AsyncMock(return_value=pool)):
+        yield pool
 
 
 def _owner(found: bool):
@@ -97,6 +106,15 @@ class TestCreateEntry:
         assert added.kind == "user"
         assert added.body == "купить молоко"  # триммится
         assert added.bookmark_id == bid
+
+    async def test_schedules_debounced_reindex(self, user, _mock_arq_pool):
+        bid = uuid4()
+        session = _session(_owner(True))
+        await create_entry(bid, EntryCreate(body="x"), user, session)
+        _mock_arq_pool.enqueue_job.assert_awaited_once()
+        args, kwargs = _mock_arq_pool.enqueue_job.call_args
+        assert args[0] == "reembed_bookmark_task"
+        assert kwargs["_job_id"] == f"reembed:{bid}"  # debounce-дедуп по заметке
 
     async def test_empty_body_422(self, user):
         session = _session(_owner(True))

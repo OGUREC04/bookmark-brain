@@ -14,6 +14,7 @@ Endpoints:
 """
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timezone
 from uuid import UUID
 
@@ -21,15 +22,40 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.bookmarks import get_arq_pool
 from app.auth import get_current_user
 from app.database import get_session
 from app.models import Bookmark, NoteEntry, User
 from app.schemas import EntryCreate, EntryResponse, EntryUpdate, ThreadResponse
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/api/v1", tags=["note-entries"])
 
 # Лимит длины тела (граница против DoS) — в EntryCreate/EntryUpdate (Field max_length),
 # единый источник; на API-границе Pydantic отдаёт 422 до эндпоинта.
+
+# Debounce re-index: дописки копятся, переэмбеддинг/связи/FTS пересчитываются
+# отложенно. arq дедуплицирует по _job_id (burst дописок в окне → 1 джоб), NFR-1.
+REINDEX_DEFER_SEC = 45
+
+
+async def _schedule_reindex(bookmark_id: UUID) -> None:
+    """Отложенно (debounce) пере-индексировать заметку под её лог (reembed_bookmark_task).
+
+    Best-effort: сбой постановки джоба не должен ронять запрос (дописка уже сохранена).
+    arq дедуплицирует по _job_id — burst дописок в окне даёт 1 джоб (NFR-1).
+    """
+    try:
+        pool = await get_arq_pool()
+        await pool.enqueue_job(
+            "reembed_bookmark_task",
+            str(bookmark_id),
+            _job_id=f"reembed:{bookmark_id}",
+            _defer_by=REINDEX_DEFER_SEC,
+        )
+    except Exception as e:  # noqa: BLE001 — реиндекс best-effort
+        logger.warning("reindex enqueue failed for %s: %s", bookmark_id, e)
 
 
 async def _assert_owner(session: AsyncSession, bookmark_id: UUID, user_id: UUID) -> None:
@@ -101,6 +127,7 @@ async def create_entry(
     session.add(entry)
     await session.flush()
     await session.refresh(entry)
+    await _schedule_reindex(bookmark_id)
     return entry
 
 
@@ -124,6 +151,7 @@ async def update_entry(
     entry.edited_at = datetime.now(timezone.utc)
     await session.flush()
     await session.refresh(entry)
+    await _schedule_reindex(bookmark_id)
     return entry
 
 
@@ -142,3 +170,4 @@ async def delete_entry(
     entry = await _load_entry(session, bookmark_id, entry_id)
     entry.is_deleted = True
     await session.flush()
+    await _schedule_reindex(bookmark_id)

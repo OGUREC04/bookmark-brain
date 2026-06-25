@@ -475,6 +475,78 @@ async def reembed_all_bookmarks(ctx: dict | None = None, *, batch_size: int = 10
     return processed
 
 
+async def reembed_bookmark_task(ctx: dict | None = None, bookmark_id: str = "") -> bool:
+    """Classify-free пере-индексация ОДНОЙ заметки под её лог дописок (Notes as Conversations).
+
+    Дёргается с debounce (arq _job_id) при изменении note_entries. Пересобирает
+    embedding из raw_text + неудалённых дописок, обновляет bookmarks.entries_text
+    (денорм под FTS-триггер), пересчитывает связи. НЕ трогает ai_status/classify/
+    summary/title — Brain молчит, речь только про индекс (FR-5/NFR-1). 0 вызовов LLM.
+    """
+    from types import SimpleNamespace
+    from uuid import UUID
+
+    from app.database import async_session
+    from app.models import Bookmark, NoteEntry
+    from app.services.bookmark_processor import _build_embedding_text
+    from app.services.connections import build_links_for_bookmark
+    from app.services.embeddings import (
+        EmbeddingError,
+        RetryableEmbeddingError,
+        create_embedding_service,
+    )
+
+    bid = UUID(bookmark_id)
+    embedding_service = create_embedding_service(
+        provider=settings.EMBEDDING_PROVIDER,
+        auth_key=settings.GIGACHAT_AUTH_KEY,
+        api_key=settings.VOYAGE_API_KEY,
+        ca_bundle=settings.GIGACHAT_CA_BUNDLE,
+    )
+    try:
+        async with async_session() as session:
+            bm = await session.get(Bookmark, bid)
+            if bm is None:
+                return False
+
+            bodies = (
+                await session.execute(
+                    select(NoteEntry.body)
+                    .where(
+                        NoteEntry.bookmark_id == bid,
+                        NoteEntry.is_deleted.is_(False),
+                    )
+                    .order_by(NoteEntry.created_at)
+                )
+            ).scalars().all()
+
+            # Денорм под FTS-триггер: он видит только колонки строки bookmarks, а не
+            # таблицу note_entries. Обновление entries_text пересоберёт search_vector
+            # (триггер расширен миграцией e4f5a6b7c8d9 на UPDATE OF entries_text).
+            bm.entries_text = "\n".join(b for b in bodies if b) or None
+
+            clf = SimpleNamespace(
+                takeaway=bm.takeaway, summary=bm.summary,
+                key_ideas=bm.key_ideas, tags=None,
+            )
+            emb = None
+            try:
+                emb = await embedding_service.get_embedding(
+                    _build_embedding_text(bm, clf, list(bodies))
+                )
+                bm.embedding = emb
+            except (EmbeddingError, RetryableEmbeddingError) as e:
+                logger.warning(f"reembed_bookmark: embed failed for {bid}: {e}")
+
+            await session.flush()
+            if emb is not None:
+                await build_links_for_bookmark(session, bid, bm.user_id, emb)
+            await session.commit()
+        return True
+    finally:
+        await embedding_service.close()
+
+
 async def retry_partial_embeddings(ctx: dict) -> None:
     """Cron: retry embedding for partial bookmarks (classification OK, embedding failed).
 

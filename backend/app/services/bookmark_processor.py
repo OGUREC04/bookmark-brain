@@ -27,7 +27,9 @@ MAX_RETRIES = 3
 MAX_EMBEDDING_TEXT_CHARS = 8000
 
 
-def _build_embedding_text(bookmark: Bookmark, classification) -> str:
+def _build_embedding_text(
+    bookmark: Bookmark, classification, entries_bodies: list[str] | None = None
+) -> str:
     """Текст для embedding: РЕАЛЬНЫЙ текст заметки — основа, ИИ-поля — добавка.
 
     Ревизия 2026-06-13 (AD-7, см. docs/epics/connections-mvp.md): раньше
@@ -55,6 +57,13 @@ def _build_embedding_text(bookmark: Bookmark, classification) -> str:
             stripped = real.strip()
             if stripped and stripped not in real_sources:
                 real_sources.append(stripped)
+    # Дописки лога (Notes as Conversations) — тоже реальный текст пользователя:
+    # включаем в основу, чтобы новые мысли попадали в поиск/связи (FR-5). Порядок —
+    # raw_text, затем дописки; при переполнении cap 8000 обрезается хвост (windowing вне MVP).
+    for body in entries_bodies or []:
+        stripped = (body or "").strip()
+        if stripped and stripped not in real_sources:
+            real_sources.append(stripped)
     parts.extend(real_sources)
     # ИИ-поля — добавка сверху (ключевые мысли, выжимка, теги).
     if classification.takeaway:
