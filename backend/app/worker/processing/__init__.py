@@ -14,17 +14,15 @@ from uuid import UUID
 from sqlalchemy import select
 
 from app.config import get_settings
-from shared.messages import DEDUP_COMMANDS, compose, reply_hint_full
-
-from .dedup import (
+from app.worker.dedup import (
     _build_dedup_alert,
     _maybe_send_first_task_list_tip,
     _store_dedup_alert,
     _store_general_dedup,
 )
-from .reminder_decision import _dispatch_reminder_decision
-from .reminder_offer import _maybe_offer_reminder
-from .telegram import (
+from app.worker.reminder_decision import _dispatch_reminder_decision
+from app.worker.reminder_offer import _maybe_offer_reminder
+from app.worker.telegram import (
     _bind_task_list_message,
     _delete_message,
     _edit_message,
@@ -34,114 +32,18 @@ from .telegram import (
     send_rich_message,
     typing_action,
 )
+from shared.messages import DEDUP_COMMANDS, compose, reply_hint_full
+
+from .cards import _build_result_card_markdown, _open_old_button, _result_buttons
+from .helpers import _PROCESS_MAX_TRIES, _has_reminder_intent, _maybe_build_connections, _spawn_bg
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
 
-# Единый источник правды для max_tries: WorkerSettings.max_tries импортирует
-# эту константу. На последней попытке (job_try >= _PROCESS_MAX_TRIES) safety-net
-# в process_bookmark_task ставит 👎 вместо застрявшего 👀.
-_PROCESS_MAX_TRIES = 5
 
 
-# Phase 2.7: формы reminder_decision, при которых сообщение — напоминание,
-# а не закладка. Такие НЕ гоняем через general dedup: реминдер «купить хлеб
-# завтра в 9» — действие во времени, а не дубль старой заметки про хлеб.
-# Точные дубли реминдеров (тот же текст + минута) ловит E15 в create_reminder.
-# Зеркалит исключение для task_list (_is_task_list_early). См. dedup×reminder bug.
-_REMINDER_INTENT_FORMS = frozenset({
-    "single_reminder",
-    "composite_reminder",
-    "needs_button_choice",
-    "needs_hour",
-    "strong_intent_3button",
-})
 
 
-def _has_reminder_intent(structured) -> bool:
-    """True если у закладки есть reminder-intent (см. _REMINDER_INTENT_FORMS).
-
-    Такие сообщения пропускают general dedup — иначе напоминание матчится
-    как дубль старой заметки, реминдер не создаётся, а юзеру показывается
-    бессмысленный алерт без даты/времени (bug 2026-05-24).
-    """
-    if not isinstance(structured, dict):
-        return False
-    decision = structured.get("reminder_decision")
-    if not isinstance(decision, dict):
-        return False
-    return decision.get("form") in _REMINDER_INTENT_FORMS
-
-
-def _spawn_bg(coro) -> None:
-    """Fire-and-forget таск с логированием ошибок.
-
-    Голый asyncio.create_task теряет исключение ("Task exception was never
-    retrieved" в stderr, без записи в лог). Done-callback логирует фейл.
-    """
-    task = asyncio.create_task(coro)
-
-    def _log_if_failed(t: asyncio.Task) -> None:
-        if t.cancelled():
-            return
-        exc = t.exception()
-        if exc is not None:
-            logger.warning("background task failed: %s", exc)
-
-    task.add_done_callback(_log_if_failed)
-
-
-def _result_buttons(bookmark_id: str) -> dict:
-    """Inline-кнопки для результата обработки."""
-    return {
-        "inline_keyboard": [
-            [
-                {"text": "📖 Открыть", "callback_data": f"view:{bookmark_id}"},
-                {"text": "🗑 Удалить", "callback_data": f"del:{bookmark_id}"},
-            ],
-            [
-                {"text": "📋 Все закладки", "callback_data": "page:1"},
-            ],
-        ]
-    }
-
-
-def _open_old_button(old_bid: str) -> dict:
-    """Inline-кнопка «📖 Открыть старую» для dedup-алерта.
-
-    Переиспользует тот же ``view:`` callback, что и кнопки «Открыть» по
-    всему боту (handler — bot.handlers.bookmark_view). Даёт открыть
-    закладку-дубль в один тап, не угадывая её через /list или /search.
-    """
-    return {
-        "inline_keyboard": [[
-            {"text": "📖 Открыть старую", "callback_data": f"view:{old_bid}"},
-        ]]
-    }
-
-
-# Длина title, после которой #-heading в rich-карточке смотрится гигантским
-# (title — это предложение, а не короткое имя). Тогда — обычная жирная строка.
-_RICH_TITLE_HEADING_MAX = 50
-
-
-def _build_result_card_markdown(title: str, summary: str, category: str) -> str:
-    """Markdown rich-карточки результата.
-
-    Короткий title → крупный заголовок-heading «# ✅ …». Длинный (предложение
-    длиннее ~50 симв) → обычная жирная строка с галкой, без гигантского H1.
-    Дальше summary одной строкой и категория. Без дубля title/summary.
-    """
-    title = (title or "").strip()
-    if len(title) > _RICH_TITLE_HEADING_MAX:
-        parts = [f"✅ **{title}**"]
-    else:
-        parts = [f"# ✅ {title}"]
-    if summary:
-        parts.append(summary[:200])
-    if category:
-        parts.append(f"Категория: {category}")
-    return "\n\n".join(parts)
 
 
 async def _send_result_card(
@@ -203,40 +105,6 @@ async def process_bookmark_task(
         )
 
 
-async def _maybe_build_connections(session, bookmark) -> int:
-    """Phase 5A: строит смысловые связи для заметки на сохранении (best-effort).
-
-    0 вызовов LLM — чистый pgvector kNN (NFR-1). Эмбеддинг уже персистнут
-    выше. Ошибка связывания НЕ должна влиять на обработку закладки. Возвращает
-    число созданных рёбер (для логов/тестов).
-    """
-    if (
-        bookmark is None
-        or bookmark.embedding is None
-        or bookmark.ai_status not in ("completed", "partial")
-    ):
-        return 0
-    try:
-        from app.services.connections import build_links_for_bookmark
-        emb = (
-            bookmark.embedding.tolist()
-            if hasattr(bookmark.embedding, "tolist")
-            else list(bookmark.embedding)
-        )
-        n = await build_links_for_bookmark(
-            session, bookmark.id, bookmark.user_id, emb,
-        )
-        if n:
-            await session.commit()
-            logger.info(f"Connections: built {n} link(s) for {bookmark.id}")
-        return n
-    except Exception as e:  # noqa: BLE001 — best-effort, не валим обработку
-        logger.debug(f"Connections link build failed: {e}")
-        try:
-            await session.rollback()
-        except Exception:
-            pass
-        return 0
 
 
 async def _process_bookmark_task_impl(
@@ -512,7 +380,7 @@ async def _process_bookmark_task_impl(
                         if k != "forced"
                     }
                 if can_notify and not _forced:
-                    from .task_list_offer import _maybe_offer_task_list
+                    from app.worker.task_list_offer import _maybe_offer_task_list
                     if await _maybe_offer_task_list(
                         bookmark=bookmark, chat_id=chat_id,
                         message_id=message_id, silent=silent,
