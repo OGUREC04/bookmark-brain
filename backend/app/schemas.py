@@ -348,3 +348,43 @@ class RecurringResponse(BaseModel):
 class RecurringListResponse(BaseModel):
     items: list[RecurringResponse]
     total: int
+
+
+# ──────────────────── Note entries (заметка-как-диалог) ────────────────────
+
+
+class EntryCreate(BaseModel):
+    """Тело POST /bookmarks/{id}/entries — новая дописка (текст)."""
+
+    # max_length — граница против DoS (как raw_text). Пустоту (после strip) отбивает эндпоинт.
+    body: str = Field(max_length=50_000)
+
+
+class EntryUpdate(BaseModel):
+    """Тело PATCH /bookmarks/{id}/entries/{eid} — правка дописки."""
+
+    body: str = Field(max_length=50_000)
+
+
+class EntryResponse(BaseModel):
+    """Дописка лога. ПЛОСКАЯ форма (как BookmarkResponse), без вложенного voice{}.
+
+    Голосовые поля (transcription/duration/entry_ai_status) — на верхнем уровне,
+    у текстовых записей = None.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    kind: str  # user (MVP) | brain | system — forward-compat под ответы Brain
+    body: str
+    created_at: datetime
+    edited_at: datetime | None = None
+    transcription: str | None = None
+    duration: float | None = None
+    entry_ai_status: str | None = None
+
+
+class ThreadResponse(BaseModel):
+    entries: list[EntryResponse]
+    total: int

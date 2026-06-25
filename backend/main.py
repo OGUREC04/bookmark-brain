@@ -2,6 +2,7 @@ from contextlib import asynccontextmanager
 
 from app.api.bookmarks import router as bookmarks_router
 from app.api.connections import router as connections_router
+from app.api.entries import router as entries_router
 from app.api.folders import router as folders_router
 from app.api.recurring import router as recurring_router
 from app.api.reminders import router as reminders_router
@@ -55,6 +56,7 @@ app.include_router(reminders_router)
 app.include_router(recurring_router)
 app.include_router(search_router)
 app.include_router(connections_router)
+app.include_router(entries_router)
 app.include_router(uploads_router)
 
 
