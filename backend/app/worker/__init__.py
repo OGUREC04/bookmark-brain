@@ -42,6 +42,7 @@ from .dedup import (
     _store_dedup_alert,
     _store_general_dedup,
 )
+from .entry_uploads import process_entry_upload
 from .processing import (
     _PROCESS_MAX_TRIES,
     _result_buttons,
@@ -116,6 +117,9 @@ class WorkerSettings:
         # Yandex) может длиться минуты, дефолтных job_timeout=120с мало. Таймаут задаётся
         # ТУТ через func(); enqueue_job НЕ принимает _job_timeout (был баг → TypeError, задача падала).
         func(process_upload_task, timeout=300),
+        # B4: STT голосовой дописки (note_entries). Свой таймаут 300с — как note-level
+        # upload, async-STT (Yandex) может длиться минуты, дефолтных 120с мало.
+        func(process_entry_upload, timeout=300),
     ]
     cron_jobs = [
         cron(retry_failed_task, hour=3, minute=0),
@@ -186,6 +190,7 @@ __all__ = [
     "auto_done_reminders",
     "backfill_bookmark_links",
     "process_bookmark_task",
+    "process_entry_upload",
     "process_upload_task",
     "redispatch_reminder_task",
     "reembed_all_bookmarks",
