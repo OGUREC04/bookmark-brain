@@ -153,6 +153,10 @@ class Bookmark(Base):
     # Если None — обычная заметка без структуры.
     structured_data: Mapped[dict | None] = mapped_column(JSONB)
 
+    # Notes-as-conversations — денормализованная конкатенация дописок (note_entries)
+    # для FTS; наполняет classify-free reembed-джоб (B3). NULL у заметок без дописок.
+    entries_text: Mapped[str | None] = mapped_column(Text)
+
     # Search
     embedding = mapped_column(Vector(1024), nullable=True)
     search_vector = mapped_column(TSVECTOR, nullable=True)
@@ -511,3 +515,63 @@ class GraphLayout(Base):
     built_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
+
+
+class NoteEntry(Base):
+    """Дописка в «лог-переписку» заметки (Notes as Conversations, MVP).
+
+    Заметка (bookmarks.raw_text) = «запись #0»/шапка; дописки живут здесь
+    отдельными строками (append одним INSERT, без гонки на JSONB-массиве при
+    синке между устройствами). kind ENUM: в MVP всегда 'user'; 'brain'/'system'
+    зарезервированы под будущие ответы Brain без миграции схемы (ALTER TYPE).
+    Голосовая дописка несёт media_file_id/transcription/duration + entry_ai_status
+    (transcribing → done/failed) на УРОВНЕ записи. Удаление — мягкое (is_deleted).
+    Индексацию в поиск/связи делает отдельный classify-free reembed-джоб (B3) —
+    тут лишь хранилище. Грузим дописки явным select по bookmark_id (без ORM
+    relationship на Bookmark, как connections).
+    """
+
+    __tablename__ = "note_entries"
+    __table_args__ = (
+        # Partial index — лента грузит только неудалённые, по времени.
+        Index(
+            "ix_note_entries_thread",
+            "bookmark_id",
+            "created_at",
+            postgresql_where=text("NOT is_deleted"),
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid()
+    )
+    bookmark_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("bookmarks.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    # ENUM в БД (тип создан миграцией) — create_type=False, чтобы asyncpg слал
+    # корректный тип, а ответы Brain (kind='brain') включились через ALTER TYPE.
+    kind: Mapped[str] = mapped_column(
+        PG_ENUM(
+            "user", "brain", "system",
+            name="note_entry_kind", create_type=False,
+        ),
+        nullable=False, server_default="user", default="user",
+    )
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    edited_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Мягкое удаление — чтобы не рвать будущие ссылки ответов Brain на запись.
+    is_deleted: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="false", default=False
+    )
+
+    # Голосовая дописка (статус распознавания — на уровне записи, не всей заметки).
+    media_file_id: Mapped[str | None] = mapped_column(Text)
+    transcription: Mapped[str | None] = mapped_column(Text)
+    duration: Mapped[float | None] = mapped_column(Float)  # сек, дробное (как media_duration)
+    entry_ai_status: Mapped[str | None] = mapped_column(String(20))
