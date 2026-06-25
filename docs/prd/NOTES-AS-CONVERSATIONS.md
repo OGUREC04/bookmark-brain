@@ -71,8 +71,9 @@
 
 ### FR-5. Индексация дописок (поиск + связи)
 - Дописка/правка/удаление записи **планирует отложенный re-embed** заметки (debounce, не на каждый turn).
-- Re-embed: `_build_embedding_text` расширяется — основа = `raw_text` + конкатенация **неудалённых** `note_entries.body` (хронологически), существующий cap 8000 символов. Также пересобирается `search_vector` (FTS) из той же конкатенации.
-- После re-embed — пересчёт связей (`build_links_for_bookmark`, как сейчас).
+- Re-embed = **отдельный classify-free воркер-джоб** `reembed_bookmark_task` (образец `reembed_all_bookmarks`): строит embedding-текст (`raw_text` + конкатенация **неудалённых** `note_entries.body`, cap 8000), пишет `embedding`, зовёт `build_links_for_bookmark`. НЕ переиспользует `process_bookmark_task` (тот гонит classify). Debounce — arq `_job_id`-дедуп (эпик DEC-1/DEC-3).
+- **FTS дописок:** `search_vector` строит Postgres-триггер по `title/raw_text/summary` и НЕ видит `note_entries` → нужна миграция (денорм-колонка `bookmarks.entries_text` в триггер; эпик DEC-2). Без неё семантика работает, FTS — нет.
+- После re-embed — пересчёт связей (`build_links_for_bookmark`).
 - **classify/summary/title/теги НЕ пересчитываются** на дописку (дорого + UI-шум). Только эмбеддинг + search_vector + связи.
 
 ### FR-6. Навигация после создания
@@ -101,7 +102,7 @@
 | `is_deleted` | BOOLEAN | NOT NULL | default `false` (soft-delete) |
 | `media_file_id` | TEXT | NULL | голос: ссылка на исходное аудио |
 | `transcription` | TEXT | NULL | голос: результат STT (дублирует `body` для аудита) |
-| `duration` | SMALLINT | NULL | голос: длительность, сек |
+| `duration` | DOUBLE PRECISION | NULL | голос: длительность, сек (float, как `media_duration`) |
 | `entry_ai_status` | TEXT | NULL | голос: `transcribing`/`done`/`failed`; у текстовых = NULL |
 
 Индекс: `ix_note_entries_thread` на `(bookmark_id, created_at) WHERE NOT is_deleted`.
@@ -118,7 +119,7 @@
 | PATCH | `/api/v1/bookmarks/{id}/entries/{entry_id}` | `{ body }` | `Entry` (edited_at выставлен) |
 | DELETE | `/api/v1/bookmarks/{id}/entries/{entry_id}` | — | 204 (soft-delete) |
 
-`Entry = { id, kind, body, created_at, edited_at, voice?: { transcription, duration, ai_status } }`.
+`Entry = { id, kind, body, created_at, edited_at, transcription?, duration?, entry_ai_status? }` — **плоская** форма (как `BookmarkResponse`), без вложенного `voice{}`. Заморожена в `schemas.py` до старта фронта (эпик DEC-4).
 
 ## Edge cases (корнер-кейсы)
 
@@ -130,7 +131,7 @@
 | 4 | Голосовая дописка, STT упал | `entry_ai_status='failed'`, в ленте «Не распознал»; запись остаётся (можно удалить/переписать текстом) |
 | 5 | Голосовая дописка в обработке, юзер закрыл заметку | Запись с `transcribing` сохранена; при следующем открытии поллинг дотягивает результат |
 | 6 | Правка записи | `edited_at` выставлен; в UI можно тихо пометить «изм.»; материальность-гейт заметки НЕ дёргается |
-| 7 | Удаление записи | Soft-delete (`is_deleted=true`); исчезает из ленты и из конкатенации для эмбеддинга/поиска |
+| 7 | Удаление записи | Soft-delete (`is_deleted=true`); исчезает из ленты и из конкатенации для эмбеддинга/поиска. **Уже построенные связи НЕ откатываются** (нет DELETE в `build_links`) — осознанный MVP-долг (эпик DEC-9) |
 | 8 | Удаление заметки целиком | `note_entries` падают по FK CASCADE |
 | 9 | Очень длинный лог (десятки записей) | Лента пагинируется/виртуализируется по `created_at`; эмбеддинг режется по cap 8000 (поздние записи могут не попасть в смысловой отпечаток — осознанная граница, windowing вне MVP) |
 | 10 | Дописки и поиск | После debounce-reindex заметка находится по тексту дописки (FTS + семантика) |
@@ -174,8 +175,10 @@
 
 ## Open questions
 
-1. **Триггер debounce-reindex:** по таймауту бездействия (N сек), при закрытии заметки, или по порогу накопленного текста? (Влияет на «когда дописка станет искомой».) — решить в дизайн/архитектуре.
-2. **Голос + note-level `ai_status`:** текущий поллинг завязан на статус ВСЕЙ заметки; для записи нужен отдельный статус — не конфликтует ли с обработкой шапки. — уточнить при реализации FR-3.
+> #1, #2, #4 — **закрыты в эпике v2** (DEC-3/DEC-11/DEC-6) после адверсариал-ревью плана.
+
+1. ~~Триггер debounce-reindex~~ → **arq `_job_id`-дедуп + `_defer_by` N≈30–60с** (эпик DEC-3).
+2. ~~Голос + note-level `ai_status`~~ → **отдельный поллинг GET `/thread` по `entry_ai_status`** (эпик DEC-11).
 3. **Стейл AI-саммари:** ок ли для MVP, что key_ideas/summary шапки не учитывают дописки (находится поиском, но саммари «старое»)? — принять как границу или добавить тихий маркер «саммари не учитывает дописки».
 4. **Лимит записей/длины лога** до виртуализации/пагинации — подобрать в дизайне.
 
