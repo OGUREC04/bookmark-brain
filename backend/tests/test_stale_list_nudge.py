@@ -53,7 +53,7 @@ async def _run(rows, mock_session, mock_redis):
     send = AsyncMock(return_value={"message_id": 12345})
 
     with patch("app.database.async_session") as mk_sess, \
-         patch("app.worker.scheduled._send_message", send), \
+         patch("app.worker.scheduled.nudge._send_message", send), \
          patch("redis.asyncio.from_url", return_value=mock_redis):
         mk_sess.return_value.__aenter__.return_value = mock_session
         await stale_list_nudge({})

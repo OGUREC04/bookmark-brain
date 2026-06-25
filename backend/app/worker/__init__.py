@@ -12,8 +12,9 @@ Internal layout (facade-with-re-export pattern, same as
 - ``dedup.py``             — dedup-alert + first-task-list-tip helpers
 - ``reminder_offer.py``    — T8 legacy «Создать напоминание?» offer
 - ``reminder_decision.py`` — Phase 2.6 reminder_decision dispatch
-- ``scheduled.py``         — cron jobs (dispatcher / auto-done / retries /
-                             nudge) + reminder constants
+- ``scheduled/``           — cron jobs package (dispatcher / auto-done /
+                             retries / nudge / analytics) + reminder
+                             constants; facade re-exports the public API
 - ``processing.py``        — the main arq job ``process_bookmark_task``
 
 The arq entrypoint is ``WorkerSettings`` (defined here, wiring the actual

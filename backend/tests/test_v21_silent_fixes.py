@@ -90,7 +90,7 @@ class TestF5AutoDoneGuard:
         mock_result = MagicMock(rowcount=0)
         mock_session.execute = AsyncMock(return_value=mock_result)
 
-        with patch("app.worker.scheduled.async_session") as mk:
+        with patch("app.worker.scheduled.dispatcher.async_session") as mk:
             mk.return_value.__aenter__.return_value = mock_session
             await auto_done_reminders({})
 
@@ -151,9 +151,9 @@ class TestF1PermanentFailureNotify:
         mock_redis.set = AsyncMock()
         mock_redis.aclose = AsyncMock()
 
-        with patch("app.worker.scheduled.async_session") as mk_sess, \
-             patch("app.worker.scheduled._send_message", send_mock), \
-             patch("app.worker.scheduled.aioredis_from_url", return_value=mock_redis):
+        with patch("app.worker.scheduled.dispatcher.async_session") as mk_sess, \
+             patch("app.worker.scheduled.dispatcher._send_message", send_mock), \
+             patch("app.worker.scheduled.dispatcher.aioredis_from_url", return_value=mock_redis):
             mk_sess.return_value.__aenter__.return_value = mock_session
             await scheduled_dispatcher({})
 
