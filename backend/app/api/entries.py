@@ -180,7 +180,9 @@ async def delete_entry(
     entry_id: UUID,
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
-) -> None:
+):
+    # NB: без `-> None` — FastAPI принял бы аннотацию за модель ответа и упал бы на
+    # «204 must not have a response body» при регистрации роута (как у всех DELETE здесь).
     """Мягкое удаление (is_deleted=true) — не рвёт будущие ссылки ответов Brain на запись."""
     await _assert_owner(session, bookmark_id, current_user.id)
     entry = await _load_entry(session, bookmark_id, entry_id)
